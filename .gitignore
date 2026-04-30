@@ -45,3 +45,5 @@ node_modules/
 bin/
 obj/
 dist/study9011_enhanced_final.py
+predict.py
+run_tests.py
