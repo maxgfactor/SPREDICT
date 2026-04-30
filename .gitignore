@@ -1,0 +1,47 @@
+# Data files
+*.csv
+
+# Logs & Reports
+*.log
+*.txt
+memory*.txt
+
+# Config backups (generated)
+config_backup_*.json
+
+# Feature reports (generated)
+feature_importance_report*
+
+# Virtual environment
+tf_venv/
+
+# Saved models
+saved_models/
+catboost_info/
+
+# Cache
+__pycache__/
+*.pyc
+
+# Large CUDA file
+*.deb
+
+# Credentials and Secrets
+.env
+*.pem
+*.key
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# System/IDE folders
+.vscode/
+.idea/
+*.swp
+
+# Build/Dependency folders
+node_modules/
+bin/
+obj/
+dist/
