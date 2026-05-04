@@ -1,0 +1,730 @@
+2026-04-08 17:45:34.636213: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:477] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1775641534.654823 1363122 cuda_dnn.cc:8310] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1775641534.660259 1363122 cuda_blas.cc:1418] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+[INFO] Running in CPU mode
+[RUNNING] Starting Fraud Detection Pipeline...
+   Data path: for_train_x_2025_10_24_clean.csv
+   Sample size: 99999999
+
+
+============================================================
+Running Phase 1: Pipeline Setup
+============================================================
+[chunk_16_phase_1_setup.py] [INFO] Starting Phase 1: Pipeline Setup
+[chunk_16_phase_1_setup.py] [INFO] Data loaded: 6727216 samples, 21 features
+[chunk_16_phase_1_setup.py] [WARNING] SANITY CHECK: Requested 99999999 samples, got 6727216
+[chunk_16_phase_1_setup.py] [INFO] Target Distribution (ChangeY):
+[chunk_16_phase_1_setup.py] [INFO]    Min: -99.75 | Max: 32500.00 | Mean: 0.05
+[chunk_16_phase_1_setup.py] [INFO]    Median: 0.00 | Std: 15.36
+[chunk_16_phase_1_setup.py] [WARNING] SANITY CHECK: Extreme target values detected (max=32500.00)
+[chunk_16_phase_1_setup.py] [INFO]    Samples >= 5: 363,801 (5.41%)
+[chunk_16_phase_1_setup.py] [INFO]    Samples >= 10: 106,942 (1.59%)
+[chunk_16_phase_1_setup.py] [INFO]    Samples >= 20: 25,902 (0.39%)
+[chunk_16_phase_1_setup.py] [INFO]    Samples >= 25: 16,431 (0.24%)
+[CLASS] Class Distribution:
+  Total samples: 6727216
+  Fraud cases: 25902 (0.4%)
+  Normal cases: 6701314 (99.6%)
+  Imbalance ratio: 258.7:1
+[DATE] Temporal Coverage:
+  Date range: 20220301 to 20251023
+  Unique dates: 912
+  Total samples: 6727216
+[STAT] Feature Quality Analysis:
+  feature_0: μ=9052398269.180, σ=75487872163.846, skew=29.226, kurt=1088.935, missing=0.0%
+  feature_1: μ=51.679, σ=2319.524, skew=274.172, kurt=75742.075, missing=0.0%
+  feature_2: μ=121.572, σ=6930.386, skew=90.530, kurt=8454.446, missing=0.0%
+  feature_3: μ=121.623, σ=6933.894, skew=90.527, kurt=8453.539, missing=0.0%
+  feature_4: μ=1546472.682, σ=10645972.580, skew=98.221, kurt=25170.887, missing=0.0%
+  feature_5: μ=601869.475, σ=311523536.564, skew=602.464, kurt=408504.110, missing=0.0%
+  feature_6: μ=4788.175, σ=3194.201, skew=0.516, kurt=-0.675, missing=0.0%
+  feature_7: μ=0.155, σ=2065.310, skew=628.193, kurt=395692.611, missing=0.0%
+  feature_8: μ=-3.410, σ=660.086, skew=1753.096, kurt=3555230.539, missing=0.0%
+  feature_9: μ=-6.106, σ=30.612, skew=7.288, kurt=956.368, missing=0.0%
+  feature_10: μ=-1.910, σ=287.382, skew=1463.037, kurt=2533881.051, missing=0.0%
+  feature_11: μ=1462140.098, σ=5825098.860, skew=20.280, kurt=799.870, missing=0.0%
+  feature_12: μ=-0.094, σ=286.531, skew=1531.525, kurt=2517977.462, missing=0.0%
+  feature_13: μ=-1.408, σ=18.430, skew=33.922, kurt=14061.079, missing=0.0%
+  feature_14: μ=0.209, σ=29.196, skew=83.974, kurt=29950.141, missing=0.0%
+  feature_15: μ=-0.563, σ=12.794, skew=38.680, kurt=9922.640, missing=0.0%
+  feature_16: μ=2.610, σ=121.760, skew=97.447, kurt=10905.725, missing=0.0%
+  feature_17: μ=49.258, σ=12.958, skew=-0.199, kurt=0.704, missing=0.0%
+  feature_18: μ=0.097, σ=16.596, skew=237.479, kurt=190551.254, missing=0.0%
+  feature_19: μ=1.608, σ=373.370, skew=1896.491, kurt=3736928.736, missing=0.0%
+  feature_20: μ=0.043, σ=14.974, skew=1561.009, kurt=3310619.009, missing=0.0%
+[chunk_16_phase_1_setup.py] [INFO] Data concentration: 6727216 samples retained
+[chunk_16_phase_1_setup.py] [INFO] Data preprocessing complete: 21 features
+[chunk_16_phase_1_setup.py] [INFO]   Feature names (21): ['Market_Cap', '52W_Low', 'Prev_Close', 'Price', 'Volume', '52W_High', 'Ticker_id', 'Perf_YTD', 'Perf_Year', 'SMA200', 'Perf_Half_Y', 'Avg_Volume', 'Perf_Quarter', 'SMA50', 'Perf_Month', 'SMA20', 'ATR', 'RSI_14', 'Perf_Week', 'Rel_Volume', 'Change']
+[chunk_16_phase_1_setup.py] [INFO] Phase 1 completed successfully
+[PASS] Phase 1: Pipeline Setup validation passed
+[TIME]  Phase 1: Pipeline Setup completed in 23.17s
+
+============================================================
+Running Phase 3: Temporal Weighting
+============================================================
+[chunk_17_phase_3_temporal.py] [INFO] Starting Phase 3: Temporal Weighting
+[chunk_17_phase_3_temporal.py] [INFO] Processing 6727216 samples with temporal weighting
+[chunk_17_phase_3_temporal.py] [INFO] Extracted 9 temporal features
+[chunk_17_phase_3_temporal.py] [INFO] Temporal weights: min=1.000, max=10.000, mean=4.977
+[chunk_17_phase_3_temporal.py] [INFO] Phase 3 completed successfully
+2026-04-08 17:47:29.920191: E external/local_xla/xla/stream_executor/cuda/cuda_driver.cc:152] failed call to cuInit: INTERNAL: CUDA error: Failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[PASS] Phase 3: Temporal Weighting validation passed
+[TIME]  Phase 3: Temporal Weighting completed in 3.69s
+
+============================================================
+Running Phase Xa: Raw Feature Importance
+============================================================
+================================================================================
+Phase Xa: Raw Feature Importance Analysis - Starting
+================================================================================
+Subsampling 6727216 -> 100000 for feature analysis
+[PhaseXa] Analyzing 21 raw features on 100000 samples
+[FeatureAnalysis] Starting 6-method feature importance analysis
+[FeatureAnalysis] Features: 21, Samples: 100000
+[FeatureAnalysis] Positive rate (t=2.0): 16.681%
+
+[FeatureAnalysis] Method 1/6: Statistical Correlation...
+[FeatureAnalysis]   Done in 2.2s
+[FeatureAnalysis] Method 2/6: Tree-Based Importance...
+[FeatureAnalysis]   Done in 82.9s
+[FeatureAnalysis] Method 3/6: Permutation Importance...
+[FeatureAnalysis]   Permutation baseline AUC: 0.5513
+[FeatureAnalysis]   Done in 55.6s
+[FeatureAnalysis] Method 4/6: Neural Weight Analysis...
+[FeatureAnalysis]   Done in 4.9s
+[FeatureAnalysis] Method 5/6: SHAP Values...
+[FeatureAnalysis]   Done in 16.1s
+[FeatureAnalysis] Method 6/6: Ablation Study...
+[FeatureAnalysis]   Done in 103.6s
+
+[FeatureAnalysis] Computing consolidated ranking...
+[FeatureAnalysis] Computing feature correlation matrix...
+
+[FeatureAnalysis] TOTAL TIME: 265.5s (4.4 min)
+[FeatureAnalysis] FEATURES: 21 total → 16 kept, 5 pruned
+[FeatureAnalysis] DROPPED: ['Market_Cap', 'Perf_Month', 'ATR', 'Perf_Week', 'Rel_Volume']
+
+================================================================================
+FEATURE IMPORTANCE ANALYSIS REPORT
+================================================================================
+
+Original features: 21 | After pruning: 16 | Dropped: 5
+Runtime: 4.4 min
+  - Correlation: 2.2s
+  - Tree: 82.9s
+  - Permutation: 55.6s
+  - Neural: 4.9s
+  - SHAP: 16.1s
+  - Ablation: 103.6s
+
+Dropped features: ['Market_Cap', 'Perf_Month', 'ATR', 'Perf_Week', 'Rel_Volume']
+Kept features: ['52W_High', 'SMA200', 'Prev_Close', 'Perf_Half_Y', 'Ticker_id', '52W_Low', 'Price', 'Perf_Year', 'SMA50', 'Perf_Quarter', 'RSI_14', 'Volume', 'Avg_Volume', 'SMA20', 'Change', 'Perf_YTD']
+
+--------------------------------------------------------------------------------
+CONSOLIDATED RANKING (1 = most important)
+--------------------------------------------------------------------------------
+     feature  mean_rank  consolidated_rank
+    52W_High   7.500000                1.0
+      SMA200   8.000000                2.0
+  Prev_Close  12.000000                3.0
+ Perf_Half_Y  12.333333                4.0
+   Ticker_id  12.500000                5.0
+     52W_Low  12.666667                6.5
+       Price  12.666667                6.5
+   Perf_Year  13.000000                8.0
+       SMA50  14.166667                9.0
+Perf_Quarter  14.833333               10.0
+      RSI_14  15.666667               11.0
+      Volume  15.833333               12.5
+  Avg_Volume  15.833333               12.5
+       SMA20  16.000000               14.0
+      Change  16.166667               15.0
+    Perf_YTD  16.500000               16.0
+         ATR  17.333333               17.0
+   Perf_Week  17.500000               18.0
+  Market_Cap  18.000000               19.0
+  Perf_Month  18.666667               20.0
+  Rel_Volume  20.833333               21.0
+
+--------------------------------------------------------------------------------
+TOP FEATURES PER METHOD
+--------------------------------------------------------------------------------
+
+Spearman Correlation:
+      feature  rank  spearman_abs
+     SMA200  12.0      0.024327
+   52W_High  15.0      0.042011
+Perf_Half_Y  20.0      0.024574
+      Price  25.0      0.038312
+  Perf_Year  25.0      0.035442
+
+Tree Importance (RF+GBM):
+   feature  rank  combined_importance
+52W_High   1.0             0.243909
+     ATR   2.0             0.063053
+   Price   3.0             0.061393
+  Change   4.0             0.059000
+ 52W_Low   5.0             0.052838
+
+Permutation Importance:
+     feature  rank
+Market_Cap   1.0
+    Volume   2.0
+Avg_Volume   3.0
+ Ticker_id   4.0
+Prev_Close   5.0
+
+Neural Weight Magnitude:
+     feature  rank
+    RSI_14   1.0
+    SMA200   2.0
+ Ticker_id   3.0
+   52W_Low   4.0
+Rel_Volume   5.0
+
+SHAP Values:
+     feature  rank  mean_abs_shap
+Market_Cap   1.0       0.227226
+Avg_Volume   2.0       0.084937
+    Volume   3.0       0.075921
+ Ticker_id   4.0       0.001415
+ Perf_Year   5.0       0.000082
+
+Ablation Study (AUC):
+   feature  rank      auc
+52W_High   1.0 0.678114
+  SMA200   2.0 0.661675
+  Change   3.0 0.652741
+   SMA20   4.0 0.650717
+   SMA50   5.0 0.649834
+
+================================================================================
+[FeatureAnalysis] Report saved to ./feature_importance_report.txt
+[FeatureAnalysis] Consolidated ranking saved to ./feature_importance_report.csv
+[FeatureAnalysis] Metadata saved to ./feature_importance_report_meta.json
+Phase Xa: Raw Feature Importance Analysis - COMPLETE: 21 -> 16 raw features (5 pruned)
+Phase Xa: Raw Feature Importance Analysis - Dropped: ['Market_Cap', 'Perf_Month', 'ATR', 'Perf_Week', 'Rel_Volume']
+[SKIP] Phase Xa: Raw Feature Importance validation skipped (no validator)
+[TIME]  Phase Xa: Raw Feature Importance completed in 266.22s
+
+============================================================
+Running Phase 4: Neural Ensemble
+============================================================
+[chunk_18_phase_4_ensemble.py] [INFO] Starting Phase 4: Neural Ensemble
+[chunk_18_phase_4_ensemble.py] [INFO] Target column: ChangeY
+[chunk_18_phase_4_ensemble.py] [INFO] Features (16): ['52W_High', 'SMA200', 'Prev_Close', 'Perf_Half_Y', 'Ticker_id', '52W_Low', 'Price', 'Perf_Year', 'SMA50', 'Perf_Quarter', 'RSI_14', 'Volume', 'Avg_Volume', 'SMA20', 'Change', 'Perf_YTD']
+[chunk_18_phase_4_ensemble.py] [INFO] Training ensemble on 6727216 samples
+[chunk_18_phase_4_ensemble.py] [INFO] Date split: 912 total, top 2 held out
+[chunk_18_phase_4_ensemble.py] [INFO]   Remaining dates: 910 (after excluding top 2)
+[chunk_18_phase_4_ensemble.py] [INFO]   Validation split: 30% = 273 dates
+[chunk_18_phase_4_ensemble.py] [INFO]   Training split: 70% = 637 dates
+[chunk_18_phase_4_ensemble.py] [INFO] Training set: 5,107,062 rows, 637 unique dates
+[chunk_18_phase_4_ensemble.py] [INFO] Validation set: 1,608,310 rows, 273 unique dates
+[chunk_18_phase_4_ensemble.py] [INFO] [STAT] Split Ratio: Train=70.0% | Val=30.0%
+[chunk_18_phase_4_ensemble.py] [INFO] [STAT] Class Distribution at Label Thresholds (20.0 to 0.0, step -2.0):
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold= 20.0: Train positives=16,563 ( 0.32%) | Val positives=9,286 ( 0.58%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold= 18.0: Train positives=20,618 ( 0.40%) | Val positives=11,478 ( 0.71%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold= 16.0: Train positives=26,465 ( 0.52%) | Val positives=14,483 ( 0.90%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold= 14.0: Train positives=35,328 ( 0.69%) | Val positives=19,116 ( 1.19%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold= 12.0: Train positives=48,820 ( 0.96%) | Val positives=25,544 ( 1.59%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold= 10.0: Train positives=71,120 ( 1.39%) | Val positives=35,545 ( 2.21%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold=  8.0: Train positives=110,707 ( 2.17%) | Val positives=52,133 ( 3.24%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold=  6.0: Train positives=188,247 ( 3.69%) | Val positives=82,035 ( 5.10%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold=  4.0: Train positives=358,736 ( 7.02%) | Val positives=143,742 ( 8.94%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold=  2.0: Train positives=813,376 (15.93%) | Val positives=299,087 (18.60%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO]    Label_Threshold=  0.0: Train positives=2,637,443 (51.64%) | Val positives=820,126 (50.99%) [OK]
+[chunk_18_phase_4_ensemble.py] [INFO] Training 6 architectures
+[chunk_18_phase_4_ensemble.py] [INFO] Testing 11 thresholds per architecture (20.0 to 0.0, step -2.0)
+[chunk_18_phase_4_ensemble.py] [INFO] Training VAE with threshold optimization...
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Before threshold optimization:
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Predictions: mean=0.0115, std=0.0090, min=0.0000, max=0.1716
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.00%
+[chunk_18_phase_4_ensemble.py] [WARNING]    [BASELINE] [WARNING] No predictions >= 0.5!
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 1] Baseline: Threshold=20.0 loss=binary_crossentropy, lr=0.001 → P=0.0000 R=0.0000 AUC=0.6212 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1716 MeanPred=0.0115
+   VAE t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping threshold 20.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [REJECT] Skipping threshold 6.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [REJECT] Skipping threshold 4.0: only 0 positive VALIDATION predictions (min=160)
+   VAE t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [DIAG] t=2.0: pred_mean=0.0922, pred_std=0.0476, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.06%
+   VAE t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: pos_pred_ratio=91.07% outside [0%, 70%]
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE t=2.0 | Train: P=0.3037 R=0.0002 AUC=0.6578 F1=0.0003 FN=813253 TN=4293404 TP=123 FP=282
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE t=2.0 | Val:   P=0.2997 R=0.0010 AUC=0.5949 F1=0.0020 FN=298790 TN=1308529 TP=297 FP=694
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE - OPTIMAL: label_threshold=2.0, Val P=0.2997
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 2] Pre-HPO: Threshold=2.0 hyperparams=(loss=binary_crossentropy lr=0.001 dropout=0.07 alpha=1.25 gamma=2.5 latent_dim=64) P=0.2997 R=0.0010 AUC=0.5949 F1=0.0020 TP=297 FP=694 TN=1308529 FN=298790 MaxPred=1.0000 MeanPred=0.0922 (default hyperparams)
+[chunk_18_phase_4_ensemble.py] [INFO]    Running hyperparameter optimization for VAE...
+   Running Bayesian optimization for VAE (20 trials)...
+   Trial 1/20: loss_function=binary_crossentropy, latent_dim=128, learning_rate=0.0015, dropout=0.05, alpha=1.25, gamma=2.0 → P=0.2843 R=0.0015 AUC=0.5555 F1=0.0030 TP=445 FP=1120 TN=1308103 FN=298642 MaxPred=1.0000 MeanPred=0.1507
+   Trial 2/20: REJECTED - MaxPred=0.3340 < 0.5 (no predictions above threshold)
+   Trial 3/20: loss_function=binary_crossentropy, latent_dim=96, learning_rate=0.0005, dropout=0.05, alpha=0.75, gamma=2.5 → P=0.2873 R=0.0012 AUC=0.5620 F1=0.0024 TP=366 FP=908 TN=1308315 FN=298721 MaxPred=1.0000 MeanPred=0.1155
+   Trial 4/20: loss_function=binary_crossentropy, latent_dim=64, learning_rate=0.0005, dropout=0.03, alpha=0.75, gamma=2.5 → P=0.2914 R=0.0022 AUC=0.5828 F1=0.0044 TP=661 FP=1607 TN=1307616 FN=298426 MaxPred=1.0000 MeanPred=0.1502
+   Trial 5/20: loss_function=binary_crossentropy, latent_dim=64, learning_rate=0.001, dropout=0.05, alpha=0.75, gamma=2.0 → P=0.2783 R=0.0049 AUC=0.5623 F1=0.0096 TP=1465 FP=3800 TN=1305423 FN=297622 MaxPred=1.0000 MeanPred=0.1396
+   Trial 6/20: loss_function=focal_loss, latent_dim=64, learning_rate=0.0005, dropout=0.03, alpha=1.25, gamma=3.0 → P=0.0000 R=0.0000 AUC=0.5588 F1=0.0000 TP=0 FP=1 TN=1309222 FN=299087 MaxPred=0.5192 MeanPred=0.2239
+   Trial 7/20: loss_function=focal_loss, latent_dim=128, learning_rate=0.0005, dropout=0.03, alpha=1.25, gamma=3.0 → P=0.2925 R=0.0004 AUC=0.5696 F1=0.0008 TP=117 FP=283 TN=1308940 FN=298970 MaxPred=1.0000 MeanPred=0.2541
+   Trial 8/20: loss_function=focal_loss, latent_dim=64, learning_rate=0.0005, dropout=0.03, alpha=1.0, gamma=2.0 → P=0.3731 R=0.0001 AUC=0.5648 F1=0.0002 TP=25 FP=42 TN=1309181 FN=299062 MaxPred=0.9980 MeanPred=0.1547
+   Trial 9/20: loss_function=focal_loss, latent_dim=128, learning_rate=0.0015, dropout=0.05, alpha=1.0, gamma=3.0 → P=0.1389 R=0.0000 AUC=0.5557 F1=0.0000 TP=5 FP=31 TN=1309192 FN=299082 MaxPred=1.0000 MeanPred=0.2322
+   Trial 10/20: loss_function=binary_crossentropy, latent_dim=64, learning_rate=0.001, dropout=0.05, alpha=0.75, gamma=2.0 → P=0.2927 R=0.0000 AUC=0.5500 F1=0.0001 TP=12 FP=29 TN=1309194 FN=299075 MaxPred=0.9999 MeanPred=0.1409
+   Trial 11/20: loss_function=focal_loss, latent_dim=96, learning_rate=0.001, dropout=0.07, alpha=1.0, gamma=2.0 → P=0.2847 R=0.0035 AUC=0.5783 F1=0.0070 TP=1056 FP=2653 TN=1306570 FN=298031 MaxPred=1.0000 MeanPred=0.1241
+   Trial 12/20: REJECTED - MaxPred=0.2556 < 0.5 (no predictions above threshold)
+   Trial 13/20: loss_function=focal_loss, latent_dim=64, learning_rate=0.001, dropout=0.03, alpha=0.75, gamma=2.0 → P=0.2603 R=0.0023 AUC=0.5587 F1=0.0045 TP=676 FP=1921 TN=1307302 FN=298411 MaxPred=1.0000 MeanPred=0.1647
+   Trial 14/20: loss_function=binary_crossentropy, latent_dim=64, learning_rate=0.001, dropout=0.03, alpha=1.0, gamma=2.0 → P=0.2687 R=0.0014 AUC=0.5682 F1=0.0028 TP=417 FP=1135 TN=1308088 FN=298670 MaxPred=1.0000 MeanPred=0.1247
+   Trial 15/20: loss_function=focal_loss, latent_dim=64, learning_rate=0.0015, dropout=0.07, alpha=1.0, gamma=2.0 → P=0.3063 R=0.0001 AUC=0.5615 F1=0.0002 TP=34 FP=77 TN=1309146 FN=299053 MaxPred=0.9451 MeanPred=0.1329
+   Trial 16/20: REJECTED - MaxPred=0.3108 < 0.5 (no predictions above threshold)
+   Trial 17/20: REJECTED - MaxPred=0.2883 < 0.5 (no predictions above threshold)
+   Trial 18/20: REJECTED - MaxPred=0.3499 < 0.5 (no predictions above threshold)
+   Trial 19/20: loss_function=focal_loss, latent_dim=96, learning_rate=0.0005, dropout=0.03, alpha=1.0, gamma=3.0 → P=0.2973 R=0.0012 AUC=0.5572 F1=0.0024 TP=360 FP=851 TN=1308372 FN=298727 MaxPred=1.0000 MeanPred=0.2209
+   Trial 20/20: loss_function=focal_loss, latent_dim=128, learning_rate=0.0015, dropout=0.07, alpha=1.0, gamma=2.5 → P=0.2534 R=0.0002 AUC=0.5499 F1=0.0005 TP=74 FP=218 TN=1309005 FN=299013 MaxPred=1.0000 MeanPred=0.1910
+   VAE - Best hyperparameters: {'loss_function': 'focal_loss', 'latent_dim': 64, 'learning_rate': 0.0005, 'dropout': 0.03, 'alpha': 1.0, 'gamma': 2.0}
+   VAE - Best validation metrics: P=0.3731 (opt_score=0.3731) R=0.0001 AUC=0.5648 F1=0.0002 TP=25 FP=42 TN=1309181 FN=299062
+[chunk_18_phase_4_ensemble.py] [INFO]    HPO model evaluation: Val P=0.3731
+[chunk_18_phase_4_ensemble.py] [INFO]    HPO IMPROVED: 0.3731 > 0.2997
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 3] HPO: Threshold=2.0 hyperparams=(loss=focal_loss lr=0.0005 dropout=0.03 alpha=1.0 gamma=2.0 latent_dim=64) P=0.3731 R=0.0001 AUC=0.5648 F1=0.0002 TP=25 FP=42 TN=1309181 FN=299062 MaxPred=0.9980 MeanPred=0.1547 Improved=True {'loss_function': 'focal_loss', 'latent_dim': 64, 'learning_rate': 0.0005, 'dropout': 0.03, 'alpha': 1.0, 'gamma': 2.0}
+[chunk_18_phase_4_ensemble.py] [INFO]    Running POST-HPO threshold search for VAE...
+   VAE t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping threshold 20.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [REJECT] Skipping threshold 6.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [REJECT] Skipping threshold 4.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [REJECT] Skipping threshold 2.0: only 67 positive VALIDATION predictions (min=160)
+   VAE t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping threshold 0.0: only 67 positive VALIDATION predictions (min=160)
+[chunk_18_phase_4_ensemble.py] [INFO]    PRE-HPO threshold: t=2.0, Val P=0.2997
+[chunk_18_phase_4_ensemble.py] [INFO]    POST-HPO threshold: t=20.0, Val P=0.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    POST-HPO no improvement: keeping t=2.0
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 4] Post-HPO: Threshold=2.0 hyperparams=(loss=focal_loss lr=0.0005 dropout=0.03 alpha=1.0 gamma=2.0 latent_dim=64) P=0.3731 R=0.0001 AUC=0.5648 F1=0.0002 TP=25 FP=42 TN=1309181 FN=299062 MaxPred=0.9980 MeanPred=0.1547 Source=section3
+[chunk_18_phase_4_ensemble.py] [INFO]    Using HPO model directly (no retraining)
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: mean=0.1519, std=0.0161, min=0.0000, max=0.9023
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   mean=0.1547, std=0.0257, min=0.0000, max=0.9980
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: 0.00% positive predictions (19 / 5,107,062)
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   0.00% positive predictions (67 / 1,608,310)
+[chunk_18_phase_4_ensemble.py] [INFO]    [INFO] Section 4 all rejected - using Section 3 results for Section 5
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE - Train: MCC=0.0019 PR-AUC=0.1593 Spec=1.0000 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE - Val:   MCC=0.0031 PR-AUC=0.2210 Spec=1.0000 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE - FINAL Train: P=0.0000 R=0.0000 AUC=0.0000 F1=0.0000 FN=0 TN=0 TP=0 FP=0
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE - FINAL Val:   P=0.3731 R=0.0001 AUC=0.5648 F1=0.0002 FN=299062 TN=1309181 TP=25 FP=42
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 5] Final: Threshold=2.0 hyperparams=(loss=focal_loss lr=0.0005 dropout=0.03 alpha=1.0 gamma=2.0 latent_dim=64) P=0.3731 R=0.0001 AUC=0.5648 F1=0.0002 TP=25 FP=42 TN=1309181 FN=299062 MaxPred=0.9980 MeanPred=0.1547 (using HPO model directly)
+[chunk_18_phase_4_ensemble.py] [INFO]    [VAE] Loss: focal_loss | Pred_Threshold: 0.5 | Epochs: 3
+[chunk_18_phase_4_ensemble.py] [INFO]    [VAE] HPO: latent_dim=64, learning_rate=0.0005, dropout=0.03, alpha=1.0, gamma=2.0
+[chunk_18_phase_4_ensemble.py] [INFO]    VAE training time: 180270.9s
+[chunk_18_phase_4_ensemble.py] [INFO] [PASS] VAE trained successfully
+[chunk_18_phase_4_ensemble.py] [INFO] Training Dense with threshold optimization...
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Before threshold optimization:
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Predictions: mean=0.0065, std=0.0508, min=0.0000, max=1.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.29%
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 1] Baseline: Threshold=20.0 loss=binary_crossentropy, lr=0.001 → P=0.0758 R=0.0381 AUC=0.6542 F1=0.0507 TP=354 FP=4314 TN=1594710 FN=8932 MaxPred=1.0000 MeanPred=0.0065
+   Dense t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [DIAG] t=20.0: pred_mean=0.0037, pred_std=0.0268, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   Dense t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 300 positive VALIDATION predictions (min=804)
+   Dense t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 693 positive VALIDATION predictions (min=804)
+   Dense t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 390 positive VALIDATION predictions (min=804)
+   Dense t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 639 positive VALIDATION predictions (min=804)
+   Dense t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 707 positive VALIDATION predictions (min=804)
+   Dense t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 41 positive VALIDATION predictions (min=804)
+   Dense t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [DIAG] t=6.0: pred_mean=0.0360, pred_std=0.0441, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.24%
+   Dense t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [DIAG] t=4.0: pred_mean=0.0701, pred_std=0.0282, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   Dense t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [DIAG] t=2.0: pred_mean=0.1316, pred_std=0.0461, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.18%
+   Dense t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: pos_pred_ratio=87.79% outside [0%, 70%]
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=20.0 | Train: P=0.1166 R=0.0043 AUC=0.7980 F1=0.0083 FN=16492 TN=5089961 TP=71 FP=538
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=6.0 | Train: P=0.1307 R=0.0010 AUC=0.6779 F1=0.0020 FN=188061 TN=4917578 TP=186 FP=1237
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=4.0 | Train: P=0.2250 R=0.0004 AUC=0.6969 F1=0.0008 FN=358594 TN=4747837 TP=142 FP=489
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=2.0 | Train: P=0.2654 R=0.0006 AUC=0.6763 F1=0.0011 FN=812920 TN=4292424 TP=456 FP=1262
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=20.0 | Val:   P=0.1225 R=0.0176 AUC=0.7163 F1=0.0307 FN=9123 TN=1597856 TP=163 FP=1168
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=6.0 | Val:   P=0.1518 R=0.0072 AUC=0.6078 F1=0.0137 FN=81448 TN=1522995 TP=587 FP=3280
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=4.0 | Val:   P=0.2260 R=0.0021 AUC=0.6217 F1=0.0043 FN=143433 TN=1463510 TP=309 FP=1058
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense t=2.0 | Val:   P=0.2820 R=0.0028 AUC=0.5995 F1=0.0055 FN=298264 TN=1307128 TP=823 FP=2095
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense - OPTIMAL: label_threshold=2.0, Val P=0.2820
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 2] Pre-HPO: Threshold=2.0 hyperparams=(loss=binary_crossentropy lr=0.001 dropout=0.07 alpha=1.25 gamma=2.5 latent_dim=64) P=0.2820 R=0.0028 AUC=0.5995 F1=0.0055 TP=823 FP=2095 TN=1307128 FN=298264 MaxPred=1.0000 MeanPred=0.1316 (default hyperparams)
+[chunk_18_phase_4_ensemble.py] [INFO]    Running hyperparameter optimization for Dense...
+   Running Bayesian optimization for Dense (20 trials)...
+   Trial 1/20: units=128, layers=1, dropout=0.1, learning_rate=0.001, epochs=10, alpha=1.0, gamma=3.5 → P=0.2425 R=0.0011 AUC=0.5704 F1=0.0021 TP=322 FP=1006 TN=1308217 FN=298765 MaxPred=1.0000 MeanPred=0.1089
+   Trial 2/20: units=64, layers=1, dropout=0.05, learning_rate=0.0005, epochs=20, alpha=0.75, gamma=1.0 → P=0.2779 R=0.0029 AUC=0.5604 F1=0.0058 TP=878 FP=2281 TN=1306942 FN=298209 MaxPred=1.0000 MeanPred=0.1530
+   Trial 3/20: units=512, layers=2, dropout=0.3, learning_rate=0.0001, epochs=8, alpha=1.25, gamma=3.0 → P=0.2927 R=0.0005 AUC=0.5769 F1=0.0009 TP=137 FP=331 TN=1308892 FN=298950 MaxPred=1.0000 MeanPred=0.1641
+   Trial 4/20: units=32, layers=1, dropout=0.2, learning_rate=0.001, epochs=20, alpha=0.5, gamma=2.0 → P=0.2772 R=0.0055 AUC=0.5803 F1=0.0108 TP=1640 FP=4276 TN=1304947 FN=297447 MaxPred=1.0000 MeanPred=0.1422
+   Trial 5/20: units=32, layers=3, dropout=0.3, learning_rate=0.001, epochs=10, alpha=0.5, gamma=1.0 → P=0.2581 R=0.0026 AUC=0.5459 F1=0.0052 TP=792 FP=2276 TN=1306947 FN=298295 MaxPred=1.0000 MeanPred=0.1555
+   Trial 6/20: units=64, layers=3, dropout=0.2, learning_rate=0.001, epochs=15, alpha=0.75, gamma=2.5 → P=0.2220 R=0.0008 AUC=0.5844 F1=0.0017 TP=254 FP=890 TN=1308333 FN=298833 MaxPred=1.0000 MeanPred=0.1443
+   Trial 7/20: units=128, layers=2, dropout=0.3, learning_rate=0.0005, epochs=8, alpha=1.25, gamma=2.5 → P=0.2696 R=0.0036 AUC=0.5497 F1=0.0070 TP=1065 FP=2885 TN=1306338 FN=298022 MaxPred=1.0000 MeanPred=0.1539
+   Trial 8/20: units=512, layers=1, dropout=0.05, learning_rate=0.001, epochs=20, alpha=1.25, gamma=1.0 → P=0.2716 R=0.0020 AUC=0.5778 F1=0.0040 TP=597 FP=1601 TN=1307622 FN=298490 MaxPred=1.0000 MeanPred=0.1318
+   Trial 9/20: units=64, layers=2, dropout=0.3, learning_rate=0.0001, epochs=8, alpha=0.75, gamma=2.5 → P=0.2624 R=0.0008 AUC=0.5913 F1=0.0016 TP=238 FP=669 TN=1308554 FN=298849 MaxPred=1.0000 MeanPred=0.1415
+   Trial 10/20: units=32, layers=2, dropout=0.3, learning_rate=0.0005, epochs=20, alpha=0.75, gamma=3.0 → P=0.2600 R=0.0123 AUC=0.5835 F1=0.0235 TP=3684 FP=10487 TN=1298736 FN=295403 MaxPred=1.0000 MeanPred=0.1227
+   Trial 11/20: units=256, layers=2, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=3.0 → P=0.2931 R=0.0059 AUC=0.5922 F1=0.0116 TP=1770 FP=4269 TN=1304954 FN=297317 MaxPred=1.0000 MeanPred=0.1591
+   Trial 12/20: units=256, layers=2, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=3.0 → P=0.2143 R=0.0035 AUC=0.5413 F1=0.0068 TP=1041 FP=3817 TN=1305406 FN=298046 MaxPred=1.0000 MeanPred=0.1295
+   Trial 13/20: units=256, layers=2, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=3.0 → P=0.2921 R=0.0053 AUC=0.5634 F1=0.0104 TP=1584 FP=3839 TN=1305384 FN=297503 MaxPred=1.0000 MeanPred=0.1317
+   Trial 14/20: units=256, layers=2, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=3.0 → P=0.2666 R=0.0059 AUC=0.5710 F1=0.0115 TP=1754 FP=4825 TN=1304398 FN=297333 MaxPred=1.0000 MeanPred=0.1276
+   Trial 15/20: units=256, layers=2, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=3.0 → P=0.2780 R=0.0023 AUC=0.5369 F1=0.0045 TP=686 FP=1782 TN=1307441 FN=298401 MaxPred=1.0000 MeanPred=0.1191
+   Trial 16/20: units=256, layers=2, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=3.5 → P=0.2820 R=0.0028 AUC=0.5628 F1=0.0055 TP=835 FP=2126 TN=1307097 FN=298252 MaxPred=1.0000 MeanPred=0.1424
+   Trial 17/20: units=256, layers=3, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=2.0 → P=0.2502 R=0.0194 AUC=0.5410 F1=0.0360 TP=5802 FP=17385 TN=1291838 FN=293285 MaxPred=1.0000 MeanPred=0.1600
+   Trial 18/20: units=256, layers=3, dropout=0.1, learning_rate=0.0001, epochs=15, alpha=1.0, gamma=2.0 → P=0.2956 R=0.0011 AUC=0.5474 F1=0.0021 TP=316 FP=753 TN=1308470 FN=298771 MaxPred=1.0000 MeanPred=0.1406
+   Trial 19/20: units=256, layers=3, dropout=0.1, learning_rate=0.0005, epochs=12, alpha=1.0, gamma=2.0 → P=0.2804 R=0.0067 AUC=0.5566 F1=0.0130 TP=1990 FP=5108 TN=1304115 FN=297097 MaxPred=1.0000 MeanPred=0.1396
+   Trial 20/20: units=256, layers=3, dropout=0.05, learning_rate=0.0005, epochs=12, alpha=0.5, gamma=2.0 → P=0.3001 R=0.0011 AUC=0.5582 F1=0.0021 TP=316 FP=737 TN=1308486 FN=298771 MaxPred=1.0000 MeanPred=0.1459
+   Dense - Best hyperparameters: {'units': 256, 'layers': 2, 'dropout': 0.1, 'learning_rate': 0.0005, 'epochs': 12, 'alpha': 1.0, 'gamma': 3.0}
+   Dense - Best validation metrics: P=0.2931 (opt_score=2.1921) R=0.0059 AUC=0.5922 F1=0.0116 TP=1770 FP=4269 TN=1304954 FN=297317
+[chunk_18_phase_4_ensemble.py] [INFO]    HPO model evaluation: Val P=0.2931
+[chunk_18_phase_4_ensemble.py] [INFO]    HPO IMPROVED: 0.2931 > 0.2820
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 3] HPO: Threshold=2.0 hyperparams=(loss=binary_crossentropy lr=0.0005 dropout=0.1 alpha=1.0 gamma=3.0 latent_dim=64) P=0.2931 R=0.0059 AUC=0.5922 F1=0.0116 TP=1770 FP=4269 TN=1304954 FN=297317 MaxPred=1.0000 MeanPred=0.1591 Improved=True {'units': 256, 'layers': 2, 'dropout': 0.1, 'learning_rate': 0.0005, 'epochs': 12, 'alpha': 1.0, 'gamma': 3.0}
+[chunk_18_phase_4_ensemble.py] [INFO]    Running POST-HPO threshold search for Dense...
+   Dense t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping t=20.0: P=0.0510 <= baseline+0.0500=0.0558
+   Dense t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [DIAG] t=18.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [DIAG] t=16.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [DIAG] t=14.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [DIAG] t=12.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [DIAG] t=10.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [DIAG] t=8.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [DIAG] t=6.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [DIAG] t=4.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [DIAG] t=2.0: pred_mean=0.1591, pred_std=0.0534, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.38%
+   Dense t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: P=0.4504 <= baseline+0.0500=0.5599
+[chunk_18_phase_4_ensemble.py] [INFO]    PRE-HPO threshold: t=2.0, Val P=0.2820
+[chunk_18_phase_4_ensemble.py] [INFO]    POST-HPO threshold: t=2.0, Val P=0.2931
+[chunk_18_phase_4_ensemble.py] [INFO]    POST-HPO improved: using t=2.0
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 4] Post-HPO: Threshold=2.0 hyperparams=(loss=binary_crossentropy lr=0.0005 dropout=0.1 alpha=1.0 gamma=3.0 latent_dim=64) P=0.2931 R=0.0059 AUC=0.5922 F1=0.0116 TP=1770 FP=4269 TN=1304954 FN=297317 MaxPred=1.0000 MeanPred=0.1591 Source=section4
+[chunk_18_phase_4_ensemble.py] [INFO]    Using HPO model directly (no retraining)
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: mean=0.1564, std=0.0285, min=0.0000, max=1.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   mean=0.1591, std=0.0534, min=0.0000, max=1.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: 0.07% positive predictions (3,575 / 5,107,062)
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   0.38% positive predictions (6,039 / 1,608,310)
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense - Train: MCC=0.0082 PR-AUC=0.2315 Spec=0.9994 BalAcc=0.5003
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense - Val:   MCC=0.0169 PR-AUC=0.2347 Spec=0.9967 BalAcc=0.5013
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense - FINAL Train: P=0.2722 R=0.0012 AUC=0.6683 F1=0.0024 FN=812403 TN=4291084 TP=973 FP=2602
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense - FINAL Val:   P=0.2931 R=0.0059 AUC=0.5922 F1=0.0116 FN=297317 TN=1304954 TP=1770 FP=4269
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 5] Final: Threshold=2.0 hyperparams=(loss=binary_crossentropy lr=0.0005 dropout=0.1 alpha=1.0 gamma=3.0 latent_dim=64) P=0.2931 R=0.0059 AUC=0.5922 F1=0.0116 TP=1770 FP=4269 TN=1304954 FN=297317 MaxPred=1.0000 MeanPred=0.1591 (using HPO model directly)
+[chunk_18_phase_4_ensemble.py] [INFO]    [Dense] Loss: binary_crossentropy | Pred_Threshold: 0.5 | Epochs: 12
+[chunk_18_phase_4_ensemble.py] [INFO]    [Dense] HPO: units=256, layers=2, dropout=0.1, learning_rate=0.0005, alpha=1.0, gamma=3.0
+[chunk_18_phase_4_ensemble.py] [INFO]    Dense training time: 135138.5s
+[chunk_18_phase_4_ensemble.py] [INFO] [PASS] Dense trained successfully
+[chunk_18_phase_4_ensemble.py] [INFO] Training CNN with threshold optimization...
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Before threshold optimization:
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Predictions: mean=0.0032, std=0.0089, min=0.0000, max=0.1362
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.00%
+[chunk_18_phase_4_ensemble.py] [WARNING]    [BASELINE] [WARNING] No predictions >= 0.5!
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 1] Baseline: Threshold=20.0 loss=binary_crossentropy, lr=0.001 → P=0.0000 R=0.0000 AUC=0.7519 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1362 MeanPred=0.0032
+   CNN t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping threshold 20.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [REJECT] Skipping threshold 6.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [REJECT] Skipping threshold 4.0: only 0 positive VALIDATION predictions (min=80)
+   CNN t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [REJECT] Skipping threshold 2.0: only 8 positive VALIDATION predictions (min=80)
+   CNN t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: pos_pred_ratio=83.47% outside [0%, 70%]
+[chunk_18_phase_4_ensemble.py] [INFO]    CNN - OPTIMAL: label_threshold=20.0, Val P=0.0000
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 2] Pre-HPO: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.001 dropout=0.07 alpha=1.25 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.7519 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1362 MeanPred=0.0032 (default hyperparams)
+[chunk_18_phase_4_ensemble.py] [INFO]    Running hyperparameter optimization for CNN...
+   Running Bayesian optimization for CNN (20 trials)...
+   Trial 1/20: loss_function=focal_loss, filters=64, kernel_size=7, dropout=0.1, learning_rate=0.002, epochs=50, alpha=0.75, gamma=2.0 → P=0.1187 R=0.0170 AUC=0.7731 F1=0.0298 TP=158 FP=1173 TN=1597851 FN=9128 MaxPred=1.0000 MeanPred=0.0027
+   Trial 2/20: loss_function=focal_loss, filters=128, kernel_size=7, dropout=0.05, learning_rate=0.002, epochs=50, alpha=1.0, gamma=3.0 → P=0.0247 R=0.0110 AUC=0.6772 F1=0.0152 TP=102 FP=4027 TN=1594997 FN=9184 MaxPred=1.0000 MeanPred=0.0075
+   Trial 3/20: loss_function=binary_crossentropy, filters=128, kernel_size=5, dropout=0.1, learning_rate=0.002, epochs=30, alpha=0.75, gamma=2.5 → P=0.0754 R=0.0029 AUC=0.7736 F1=0.0056 TP=27 FP=331 TN=1598693 FN=9259 MaxPred=1.0000 MeanPred=0.0043
+   Trial 4/20: REJECTED - MaxPred=0.0485 < 0.5 (no predictions above threshold)
+   Trial 5/20: loss_function=focal_loss, filters=32, kernel_size=7, dropout=0.1, learning_rate=0.005, epochs=20, alpha=1.0, gamma=3.0 → P=0.0114 R=0.0120 AUC=0.4740 F1=0.0117 TP=111 FP=9595 TN=1589429 FN=9175 MaxPred=1.0000 MeanPred=0.0093
+   Trial 6/20: loss_function=focal_loss, filters=64, kernel_size=7, dropout=0.2, learning_rate=0.001, epochs=40, alpha=1.0, gamma=2.0 → P=0.0156 R=0.0001 AUC=0.7569 F1=0.0002 TP=1 FP=63 TN=1598961 FN=9285 MaxPred=1.0000 MeanPred=0.0032
+   Trial 7/20: loss_function=binary_crossentropy, filters=64, kernel_size=3, dropout=0.1, learning_rate=0.001, epochs=20, alpha=1.0, gamma=2.5 → P=0.1159 R=0.0034 AUC=0.7744 F1=0.0067 TP=32 FP=244 TN=1598780 FN=9254 MaxPred=1.0000 MeanPred=0.0060
+   Trial 8/20: loss_function=binary_crossentropy, filters=256, kernel_size=5, dropout=0.2, learning_rate=0.002, epochs=30, alpha=0.75, gamma=3.0 → P=0.0977 R=0.0093 AUC=0.7614 F1=0.0169 TP=86 FP=794 TN=1598230 FN=9200 MaxPred=1.0000 MeanPred=0.0021
+   Trial 9/20: REJECTED - MaxPred=0.0274 < 0.5 (no predictions above threshold)
+   Trial 10/20: loss_function=focal_loss, filters=128, kernel_size=5, dropout=0.1, learning_rate=0.002, epochs=50, alpha=1.0, gamma=3.0 → P=0.1003 R=0.0102 AUC=0.7497 F1=0.0186 TP=95 FP=852 TN=1598172 FN=9191 MaxPred=1.0000 MeanPred=0.0035
+   Trial 11/20: loss_function=focal_loss, filters=32, kernel_size=3, dropout=0.1, learning_rate=0.005, epochs=50, alpha=0.75, gamma=2.0 → P=0.1035 R=0.0156 AUC=0.7808 F1=0.0271 TP=145 FP=1256 TN=1597768 FN=9141 MaxPred=1.0000 MeanPred=0.0041
+   Trial 12/20: loss_function=binary_crossentropy, filters=64, kernel_size=3, dropout=0.1, learning_rate=0.001, epochs=20, alpha=0.75, gamma=2.5 → P=0.0674 R=0.0006 AUC=0.7641 F1=0.0013 TP=6 FP=83 TN=1598941 FN=9280 MaxPred=1.0000 MeanPred=0.0062
+   Trial 13/20: loss_function=binary_crossentropy, filters=64, kernel_size=3, dropout=0.1, learning_rate=0.002, epochs=40, alpha=0.75, gamma=2.5 → P=0.0998 R=0.0065 AUC=0.7382 F1=0.0121 TP=60 FP=541 TN=1598483 FN=9226 MaxPred=1.0000 MeanPred=0.0075
+   Trial 14/20: REJECTED - MaxPred=0.3753 < 0.5 (no predictions above threshold)
+   Trial 15/20: loss_function=focal_loss, filters=64, kernel_size=3, dropout=0.1, learning_rate=0.005, epochs=20, alpha=1.0, gamma=2.0 → P=0.0588 R=0.0205 AUC=0.7298 F1=0.0304 TP=190 FP=3041 TN=1595983 FN=9096 MaxPred=1.0000 MeanPred=0.0040
+   Trial 16/20: REJECTED - MaxPred=0.1293 < 0.5 (no predictions above threshold)
+   Trial 17/20: REJECTED - MaxPred=0.0525 < 0.5 (no predictions above threshold)
+   Trial 18/20: loss_function=focal_loss, filters=256, kernel_size=7, dropout=0.1, learning_rate=0.001, epochs=40, alpha=0.75, gamma=2.0 → P=0.1053 R=0.0255 AUC=0.7698 F1=0.0411 TP=237 FP=2014 TN=1597010 FN=9049 MaxPred=1.0000 MeanPred=0.0070
+   Trial 19/20: loss_function=binary_crossentropy, filters=32, kernel_size=3, dropout=0.2, learning_rate=0.002, epochs=50, alpha=1.0, gamma=2.0 → P=0.0453 R=0.0026 AUC=0.7522 F1=0.0049 TP=24 FP=506 TN=1598518 FN=9262 MaxPred=1.0000 MeanPred=0.0040
+   Trial 20/20: loss_function=focal_loss, filters=64, kernel_size=5, dropout=0.05, learning_rate=0.005, epochs=20, alpha=0.75, gamma=2.5 → P=0.1214 R=0.0159 AUC=0.7649 F1=0.0282 TP=148 FP=1071 TN=1597953 FN=9138 MaxPred=1.0000 MeanPred=0.0050
+   CNN - Best hyperparameters: {'loss_function': 'focal_loss', 'filters': 64, 'kernel_size': 5, 'dropout': 0.05, 'learning_rate': 0.005, 'epochs': 20, 'alpha': 0.75, 'gamma': 2.5}
+   CNN - Best validation metrics: P=0.1214 (opt_score=0.1214) R=0.0159 AUC=0.7649 F1=0.0282 TP=148 FP=1071 TN=1597953 FN=9138
+[chunk_18_phase_4_ensemble.py] [INFO]    HPO model evaluation: Val P=0.1214
+[chunk_18_phase_4_ensemble.py] [INFO]    HPO IMPROVED: 0.1214 > 0.0000
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 3] HPO: Threshold=20.0 hyperparams=(loss=focal_loss lr=0.005 dropout=0.05 alpha=0.75 gamma=2.5 latent_dim=64) P=0.1214 R=0.0159 AUC=0.7649 F1=0.0282 TP=148 FP=1071 TN=1597953 FN=9138 MaxPred=1.0000 MeanPred=0.0050 Improved=True {'loss_function': 'focal_loss', 'filters': 64, 'kernel_size': 5, 'dropout': 0.05, 'learning_rate': 0.005, 'epochs': 20, 'alpha': 0.75, 'gamma': 2.5}
+[chunk_18_phase_4_ensemble.py] [INFO]    Running POST-HPO threshold search for CNN...
+   CNN t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [DIAG] t=20.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [DIAG] t=18.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [DIAG] t=16.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [DIAG] t=14.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [DIAG] t=12.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [DIAG] t=10.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [DIAG] t=8.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [DIAG] t=6.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [DIAG] t=4.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [DIAG] t=2.0: pred_mean=0.0050, pred_std=0.0266, pred_min=0.0000, pred_max=1.0000, %pos@0.5=0.08%
+   CNN t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: P=0.2978 <= baseline+0.0500=0.5599
+[chunk_18_phase_4_ensemble.py] [INFO]    PRE-HPO threshold: t=20.0, Val P=0.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    POST-HPO threshold: t=2.0, Val P=0.2642
+[chunk_18_phase_4_ensemble.py] [INFO]    POST-HPO improved: using t=2.0
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 4] Post-HPO: Threshold=2.0 hyperparams=(loss=focal_loss lr=0.005 dropout=0.05 alpha=0.75 gamma=2.5 latent_dim=64) P=0.2642 R=0.0011 AUC=0.6042 F1=0.0021 TP=322 FP=897 TN=1308326 FN=298765 MaxPred=1.0000 MeanPred=0.0050 Source=section4
+[chunk_18_phase_4_ensemble.py] [INFO]    Using HPO model directly (no retraining)
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: mean=0.0027, std=0.0109, min=0.0000, max=1.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   mean=0.0050, std=0.0266, min=0.0000, max=1.0000
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: 0.01% positive predictions (576 / 5,107,062)
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   0.08% positive predictions (1,219 / 1,608,310)
+[chunk_18_phase_4_ensemble.py] [INFO]    CNN - Train: MCC=0.0031 PR-AUC=0.2200 Spec=0.9999 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    CNN - Val:   MCC=0.0055 PR-AUC=0.2409 Spec=0.9993 BalAcc=0.5002
+[chunk_18_phase_4_ensemble.py] [INFO]    CNN - FINAL Train: P=0.2674 R=0.0002 AUC=0.6212 F1=0.0004 FN=813222 TN=4293264 TP=154 FP=422
+[chunk_18_phase_4_ensemble.py] [INFO]    CNN - FINAL Val:   P=0.2642 R=0.0011 AUC=0.6042 F1=0.0021 FN=298765 TN=1308326 TP=322 FP=897
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 5] Final: Threshold=2.0 hyperparams=(loss=focal_loss lr=0.005 dropout=0.05 alpha=0.75 gamma=2.5 latent_dim=64) P=0.2642 R=0.0011 AUC=0.6042 F1=0.0021 TP=322 FP=897 TN=1308326 FN=298765 MaxPred=1.0000 MeanPred=0.0050 (using HPO model directly)
+[chunk_18_phase_4_ensemble.py] [INFO]    [CNN] Loss: focal_loss | Pred_Threshold: 0.5 | Epochs: 20
+[chunk_18_phase_4_ensemble.py] [INFO]    [CNN] HPO: filters=64, kernel_size=5, dropout=0.05, learning_rate=0.005, alpha=0.75, gamma=2.5
+[chunk_18_phase_4_ensemble.py] [INFO]    CNN training time: 683270.4s
+[chunk_18_phase_4_ensemble.py] [INFO] [PASS] CNN trained successfully
+[chunk_18_phase_4_ensemble.py] [INFO] Training RNN with threshold optimization...
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Before threshold optimization:
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Predictions: mean=0.0080, std=0.0122, min=0.0001, max=0.2592
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.00%
+[chunk_18_phase_4_ensemble.py] [WARNING]    [BASELINE] [WARNING] No predictions >= 0.5!
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 1] Baseline: Threshold=20.0 loss=binary_crossentropy, lr=0.001 → P=0.0000 R=0.0000 AUC=0.8516 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.2592 MeanPred=0.0080
+   RNN t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping threshold 20.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [REJECT] Skipping threshold 6.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [REJECT] Skipping threshold 4.0: only 0 positive VALIDATION predictions (min=804)
+   RNN t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [REJECT] Skipping threshold 2.0: only 1 positive VALIDATION predictions (min=804)
+   RNN t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: P=0.5316 <= baseline+0.0500=0.5599
+[chunk_18_phase_4_ensemble.py] [INFO]    RNN - OPTIMAL: label_threshold=20.0, Val P=0.0000
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 2] Pre-HPO: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.001 dropout=0.07 alpha=1.25 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8516 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.2592 MeanPred=0.0080 (default hyperparams)
+[chunk_18_phase_4_ensemble.py] [INFO]    Running hyperparameter optimization for RNN...
+   Running Bayesian optimization for RNN (20 trials)...
+   Trial 1/20: REJECTED - MaxPred=0.2043 < 0.5 (no predictions above threshold)
+   Trial 2/20: REJECTED - MaxPred=0.1247 < 0.5 (no predictions above threshold)
+   Trial 3/20: REJECTED - TP=0 < 100 (min TP threshold)
+   Trial 4/20: REJECTED - MaxPred=0.0948 < 0.5 (no predictions above threshold)
+   Trial 5/20: REJECTED - MaxPred=0.2456 < 0.5 (no predictions above threshold)
+   Trial 6/20: REJECTED - MaxPred=0.1155 < 0.5 (no predictions above threshold)
+   Trial 7/20: REJECTED - MaxPred=0.1382 < 0.5 (no predictions above threshold)
+   Trial 8/20: REJECTED - MaxPred=0.1268 < 0.5 (no predictions above threshold)
+   Trial 9/20: REJECTED - MaxPred=0.0384 < 0.5 (no predictions above threshold)
+   Trial 10/20: REJECTED - MaxPred=0.0876 < 0.5 (no predictions above threshold)
+   Trial 11/20: REJECTED - MaxPred=0.2471 < 0.5 (no predictions above threshold)
+   Trial 12/20: REJECTED - MaxPred=0.1121 < 0.5 (no predictions above threshold)
+   Trial 13/20: REJECTED - MaxPred=0.1149 < 0.5 (no predictions above threshold)
+   Trial 14/20: REJECTED - MaxPred=0.1635 < 0.5 (no predictions above threshold)
+   Trial 15/20: REJECTED - MaxPred=0.0544 < 0.5 (no predictions above threshold)
+   Trial 16/20: REJECTED - MaxPred=0.2320 < 0.5 (no predictions above threshold)
+   Trial 17/20: REJECTED - MaxPred=0.1830 < 0.5 (no predictions above threshold)
+   Trial 18/20: REJECTED - MaxPred=0.2173 < 0.5 (no predictions above threshold)
+   Trial 19/20: REJECTED - MaxPred=0.1254 < 0.5 (no predictions above threshold)
+   Trial 20/20: REJECTED - MaxPred=0.0801 < 0.5 (no predictions above threshold)
+   RNN - Best hyperparameters: {'loss_function': 'focal_loss', 'units': 64, 'dropout': 0.05, 'learning_rate': 0.002, 'epochs': 10, 'alpha': 0.75, 'gamma': 2.0}
+   RNN - Best validation metrics: P=0.0000 (opt_score=0.0000) R=0.0000 AUC=0.0000 F1=0.0000 TP=0 FP=0 TN=0 FN=0
+[chunk_18_phase_4_ensemble.py] [WARNING]    [WARNING] All HPO trials rejected for RNN - using Section 2 metrics
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 3] HPO: Threshold=20.0 hyperparams=(loss=focal_loss lr=0.002 dropout=0.05 alpha=0.75 gamma=2.0 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8516 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.2592 MeanPred=0.0080 Improved=False {'loss_function': 'focal_loss', 'units': 64, 'dropout': 0.05, 'learning_rate': 0.002, 'epochs': 10, 'alpha': 0.75, 'gamma': 2.0}
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 4] Post-HPO: Threshold=20.0 hyperparams=(loss=focal_loss lr=0.002 dropout=0.05 alpha=0.75 gamma=2.0 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8516 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.2592 MeanPred=0.0080 Source=section3
+[chunk_18_phase_4_ensemble.py] [INFO]    Using optimized hyperparameters: {'loss_function': 'focal_loss', 'units': 64, 'dropout': 0.05, 'learning_rate': 0.002, 'epochs': 10, 'alpha': 0.75, 'gamma': 2.0}
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: mean=0.0031, std=0.0064, min=0.0000, max=0.1849
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   mean=0.0070, std=0.0110, min=0.0000, max=0.2356
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: 0.00% positive predictions (0 / 5,107,062)
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   0.00% positive predictions (0 / 1,608,310)
+[chunk_18_phase_4_ensemble.py] [WARNING]    [WARNING] Model predicts ALL NEGATIVES on training data!
+[chunk_18_phase_4_ensemble.py] [WARNING]    [WARNING] Model predicts ALL NEGATIVES on validation data!
+[chunk_18_phase_4_ensemble.py] [INFO]    [INFO] Section 4 all rejected - using Section 3 results for Section 5
+[chunk_18_phase_4_ensemble.py] [INFO]    RNN - Train: MCC=0.0000 PR-AUC=0.0032 Spec=1.0000 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    RNN - Val:   MCC=0.0000 PR-AUC=0.0395 Spec=1.0000 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    RNN - FINAL Train: P=0.0000 R=0.0000 AUC=0.0000 F1=0.0000 FN=0 TN=0 TP=0 FP=0
+[chunk_18_phase_4_ensemble.py] [INFO]    RNN - FINAL Val:   P=0.0000 R=0.0000 AUC=0.8516 F1=0.0000 FN=9286 TN=1599024 TP=0 FP=0
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 5] Final: Threshold=20.0 hyperparams=(loss=focal_loss lr=0.002 dropout=0.05 alpha=0.75 gamma=2.0 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8516 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.2592 MeanPred=0.0080 (using HPO model directly)
+[chunk_18_phase_4_ensemble.py] [INFO]    [RNN] Loss: focal_loss | Pred_Threshold: 0.5 | Epochs: 10
+[chunk_18_phase_4_ensemble.py] [INFO]    [RNN] HPO: units=64, dropout=0.05, learning_rate=0.002, alpha=0.75, gamma=2.0
+[chunk_18_phase_4_ensemble.py] [INFO]    RNN training time: 659270.6s
+[chunk_18_phase_4_ensemble.py] [INFO] [PASS] RNN trained successfully
+[chunk_18_phase_4_ensemble.py] [INFO] Training LSTM with threshold optimization...
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Before threshold optimization:
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Predictions: mean=0.0065, std=0.0128, min=0.0001, max=0.1870
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.00%
+[chunk_18_phase_4_ensemble.py] [WARNING]    [BASELINE] [WARNING] No predictions >= 0.5!
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 1] Baseline: Threshold=20.0 loss=binary_crossentropy, lr=0.001 → P=0.0000 R=0.0000 AUC=0.8585 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1870 MeanPred=0.0065
+   LSTM t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping threshold 20.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [REJECT] Skipping threshold 6.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [REJECT] Skipping threshold 4.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [REJECT] Skipping threshold 2.0: only 0 positive VALIDATION predictions (min=160)
+   LSTM t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: P=0.5302 <= baseline+0.0500=0.5599
+[chunk_18_phase_4_ensemble.py] [INFO]    LSTM - OPTIMAL: label_threshold=20.0, Val P=0.0000
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 2] Pre-HPO: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.001 dropout=0.07 alpha=1.25 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8585 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1870 MeanPred=0.0065 (default hyperparams)
+[chunk_18_phase_4_ensemble.py] [INFO]    Running hyperparameter optimization for LSTM...
+   Running Bayesian optimization for LSTM (20 trials)...
+   Trial 1/20: REJECTED - MaxPred=0.2543 < 0.5 (no predictions above threshold)
+   Trial 2/20: REJECTED - MaxPred=0.2069 < 0.5 (no predictions above threshold)
+   Trial 3/20: REJECTED - MaxPred=0.1757 < 0.5 (no predictions above threshold)
+   Trial 4/20: REJECTED - MaxPred=0.2694 < 0.5 (no predictions above threshold)
+   Trial 5/20: REJECTED - MaxPred=0.1467 < 0.5 (no predictions above threshold)
+   Trial 6/20: REJECTED - MaxPred=0.1889 < 0.5 (no predictions above threshold)
+   Trial 7/20: REJECTED - MaxPred=0.2748 < 0.5 (no predictions above threshold)
+   Trial 8/20: REJECTED - MaxPred=0.1651 < 0.5 (no predictions above threshold)
+   Trial 9/20: REJECTED - MaxPred=0.2885 < 0.5 (no predictions above threshold)
+   Trial 10/20: REJECTED - MaxPred=0.1232 < 0.5 (no predictions above threshold)
+   Trial 11/20: REJECTED - MaxPred=0.2909 < 0.5 (no predictions above threshold)
+   Trial 12/20: REJECTED - MaxPred=0.2024 < 0.5 (no predictions above threshold)
+   Trial 13/20: REJECTED - MaxPred=0.2558 < 0.5 (no predictions above threshold)
+   Trial 14/20: REJECTED - MaxPred=0.2317 < 0.5 (no predictions above threshold)
+   Trial 15/20: REJECTED - MaxPred=0.2716 < 0.5 (no predictions above threshold)
+   Trial 16/20: REJECTED - MaxPred=0.3158 < 0.5 (no predictions above threshold)
+   Trial 17/20: REJECTED - MaxPred=0.2314 < 0.5 (no predictions above threshold)
+   Trial 18/20: REJECTED - MaxPred=0.2385 < 0.5 (no predictions above threshold)
+   Trial 19/20: REJECTED - MaxPred=0.2135 < 0.5 (no predictions above threshold)
+   Trial 20/20: REJECTED - MaxPred=0.1595 < 0.5 (no predictions above threshold)
+   LSTM - Best hyperparameters: {'loss_function': 'binary_crossentropy', 'lstm_units': 16, 'dropout': 0.03, 'learning_rate': 0.0005, 'epochs': 25, 'alpha': 0.75, 'gamma': 2.5}
+   LSTM - Best validation metrics: P=0.0000 (opt_score=0.0000) R=0.0000 AUC=0.0000 F1=0.0000 TP=0 FP=0 TN=0 FN=0
+[chunk_18_phase_4_ensemble.py] [WARNING]    [WARNING] All HPO trials rejected for LSTM - using Section 2 metrics
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 3] HPO: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.0005 dropout=0.03 alpha=0.75 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8585 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1870 MeanPred=0.0065 Improved=False {'loss_function': 'binary_crossentropy', 'lstm_units': 16, 'dropout': 0.03, 'learning_rate': 0.0005, 'epochs': 25, 'alpha': 0.75, 'gamma': 2.5}
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 4] Post-HPO: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.0005 dropout=0.03 alpha=0.75 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8585 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1870 MeanPred=0.0065 Source=section3
+[chunk_18_phase_4_ensemble.py] [INFO]    Using optimized hyperparameters: {'loss_function': 'binary_crossentropy', 'lstm_units': 16, 'dropout': 0.03, 'learning_rate': 0.0005, 'epochs': 25, 'alpha': 0.75, 'gamma': 2.5}
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: mean=0.0031, std=0.0092, min=0.0000, max=0.3066
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   mean=0.0055, std=0.0125, min=0.0000, max=0.3010
+[chunk_18_phase_4_ensemble.py] [INFO]    Train predictions: 0.00% positive predictions (0 / 5,107,062)
+[chunk_18_phase_4_ensemble.py] [INFO]    Val predictions:   0.00% positive predictions (0 / 1,608,310)
+[chunk_18_phase_4_ensemble.py] [WARNING]    [WARNING] Model predicts ALL NEGATIVES on training data!
+[chunk_18_phase_4_ensemble.py] [WARNING]    [WARNING] Model predicts ALL NEGATIVES on validation data!
+[chunk_18_phase_4_ensemble.py] [INFO]    [INFO] Section 4 all rejected - using Section 3 results for Section 5
+[chunk_18_phase_4_ensemble.py] [INFO]    LSTM - Train: MCC=0.0000 PR-AUC=0.0032 Spec=1.0000 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    LSTM - Val:   MCC=0.0000 PR-AUC=0.0448 Spec=1.0000 BalAcc=0.5000
+[chunk_18_phase_4_ensemble.py] [INFO]    LSTM - FINAL Train: P=0.0000 R=0.0000 AUC=0.0000 F1=0.0000 FN=0 TN=0 TP=0 FP=0
+[chunk_18_phase_4_ensemble.py] [INFO]    LSTM - FINAL Val:   P=0.0000 R=0.0000 AUC=0.8585 F1=0.0000 FN=9286 TN=1599024 TP=0 FP=0
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 5] Final: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.0005 dropout=0.03 alpha=0.75 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.8585 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1870 MeanPred=0.0065 (using HPO model directly)
+[chunk_18_phase_4_ensemble.py] [INFO]    [LSTM] Loss: binary_crossentropy | Pred_Threshold: 0.5 | Epochs: 25
+[chunk_18_phase_4_ensemble.py] [INFO]    [LSTM] HPO: lstm_units=16, dropout=0.03, learning_rate=0.0005, alpha=0.75, gamma=2.5
+[chunk_18_phase_4_ensemble.py] [INFO]    LSTM training time: 462313.5s
+[chunk_18_phase_4_ensemble.py] [INFO] [PASS] LSTM trained successfully
+[chunk_18_phase_4_ensemble.py] [INFO] Training Transformer with threshold optimization...
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Before threshold optimization:
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] Predictions: mean=0.0113, std=0.0082, min=0.0002, max=0.1303
+[chunk_18_phase_4_ensemble.py] [INFO]    [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.00%
+[chunk_18_phase_4_ensemble.py] [WARNING]    [BASELINE] [WARNING] No predictions >= 0.5!
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 1] Baseline: Threshold=20.0 loss=binary_crossentropy, lr=0.001 → P=0.0000 R=0.0000 AUC=0.7126 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1303 MeanPred=0.0113
+   Transformer t=20.0 | Train: 0=5,090,499,1=16,563 [OK] | Val: 0=1,599,024,1=9,286 [OK]
+   [REJECT] Skipping threshold 20.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=18.0 | Train: 0=5,086,444,1=20,618 [OK] | Val: 0=1,596,832,1=11,478 [OK]
+   [REJECT] Skipping threshold 18.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=16.0 | Train: 0=5,080,597,1=26,465 [OK] | Val: 0=1,593,827,1=14,483 [OK]
+   [REJECT] Skipping threshold 16.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=14.0 | Train: 0=5,071,734,1=35,328 [OK] | Val: 0=1,589,194,1=19,116 [OK]
+   [REJECT] Skipping threshold 14.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=12.0 | Train: 0=5,058,242,1=48,820 [OK] | Val: 0=1,582,766,1=25,544 [OK]
+   [REJECT] Skipping threshold 12.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=10.0 | Train: 0=5,035,942,1=71,120 [OK] | Val: 0=1,572,765,1=35,545 [OK]
+   [REJECT] Skipping threshold 10.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=8.0 | Train: 0=4,996,355,1=110,707 [OK] | Val: 0=1,556,177,1=52,133 [OK]
+   [REJECT] Skipping threshold 8.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=6.0 | Train: 0=4,918,815,1=188,247 [OK] | Val: 0=1,526,275,1=82,035 [OK]
+   [REJECT] Skipping threshold 6.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=4.0 | Train: 0=4,748,326,1=358,736 [OK] | Val: 0=1,464,568,1=143,742 [OK]
+   [REJECT] Skipping threshold 4.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=2.0 | Train: 0=4,293,686,1=813,376 [OK] | Val: 0=1,309,223,1=299,087 [OK]
+   [REJECT] Skipping threshold 2.0: only 0 positive VALIDATION predictions (min=160)
+   Transformer t=0.0 | Train: 0=2,469,619,1=2,637,443 [OK] | Val: 0=788,184,1=820,126 [OK]
+   [REJECT] Skipping t=0.0: pos_pred_ratio=85.59% outside [0%, 70%]
+[chunk_18_phase_4_ensemble.py] [INFO]    Transformer - OPTIMAL: label_threshold=20.0, Val P=0.0000
+[chunk_18_phase_4_ensemble.py] [INFO] [SECTION 2] Pre-HPO: Threshold=20.0 hyperparams=(loss=binary_crossentropy lr=0.001 dropout=0.07 alpha=1.25 gamma=2.5 latent_dim=64) P=0.0000 R=0.0000 AUC=0.7126 F1=0.0000 TP=0 FP=0 TN=1599024 FN=9286 MaxPred=0.1303 MeanPred=0.0113 (default hyperparams)
+[chunk_18_phase_4_ensemble.py] [INFO]    Running hyperparameter optimization for Transformer...
+   Running Bayesian optimization for Transformer (20 trials)...
+   Trial 1/20: loss_function=binary_crossentropy, dim=32, heads=1, dropout=0.03, learning_rate=0.0005, alpha=1.25, gamma=1.5 → P=0.0000 R=0.0000 AUC=0.7005 F1=0.0000 TP=0 FP=7 TN=1599017 FN=9286 MaxPred=1.0000 MeanPred=0.0041
+   Trial 2/20: REJECTED - MaxPred=0.0679 < 0.5 (no predictions above threshold)
+   Trial 3/20: REJECTED - MaxPred=0.3506 < 0.5 (no predictions above threshold)
+   Trial 4/20: REJECTED - MaxPred=0.0407 < 0.5 (no predictions above threshold)
+   Trial 5/20: REJECTED - MaxPred=0.1240 < 0.5 (no predictions above threshold)
+   Trial 6/20: REJECTED - MaxPred=0.1895 < 0.5 (no predictions above threshold)
+   Trial 7/20: REJECTED - MaxPred=0.0779 < 0.5 (no predictions above threshold)
+   Trial 8/20: loss_function=binary_crossentropy, dim=64, heads=2, dropout=0.1, learning_rate=0.0005, alpha=1.25, gamma=2.5 → P=0.0000 R=0.0000 AUC=0.6898 F1=0.0000 TP=0 FP=1 TN=1599023 FN=9286 MaxPred=0.5772 MeanPred=0.0045
