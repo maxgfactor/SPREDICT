@@ -19,9 +19,8 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         self.name = "Phase Xb: Temporal Precision Gap Analysis"
     
     def execute(self, context: Dict) -> Dict:
-        print("=" * 80)
-        print(f"{self.name} - Starting")
-        print("=" * 80)
+        if self.logger:
+            self.logger.log(f"{self.name} - Starting", 'info')
         
         val_predictions = context.get('val_predictions')
         val_dates = context.get('val_dates')
@@ -30,35 +29,54 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         temporal_weights = context.get('temporal_weights')
         
         if val_predictions is None or len(val_predictions) == 0:
-            print("[PhaseXb] No validation predictions found in context")
-            print(f"[PhaseXb] Phase 4 must store val_predictions for this analysis")
-            print(f"{self.name} - SKIPPED")
+            if self.logger:
+                self.logger.log("No validation predictions found in context", 'warning')
+                self.logger.log("Phase 4 must store val_predictions for this analysis", 'warning')
+                self.logger.log(f"{self.name} - SKIPPED", 'warning')
             context['phaseXb_complete'] = True
             return context
         
         if val_dates is None or val_y_raw is None:
-            print("[PhaseXb] Validation dates or target values not found")
-            print(f"{self.name} - SKIPPED")
+            if self.logger:
+                self.logger.log("Validation dates or target values not found", 'warning')
+                self.logger.log(f"{self.name} - SKIPPED", 'warning')
             context['phaseXb_complete'] = True
             return context
         
         if len(arch_names) == 0:
-            print("[PhaseXb] No architecture names found")
-            print(f"{self.name} - SKIPPED")
+            if self.logger:
+                self.logger.log("No architecture names found", 'warning')
+                self.logger.log(f"{self.name} - SKIPPED", 'warning')
             context['phaseXb_complete'] = True
             return context
         
         label_threshold = self.config.get('FIRST_THRESHOLD', 2.0)
         pred_threshold = self.config.get('PREDICTION_THRESHOLD', 0.5)
         
-        print(f"[PhaseXb] Analyzing temporal precision gap for {len(arch_names)} architectures")
-        print(f"[PhaseXb] Label threshold: {label_threshold}, Prediction threshold: {pred_threshold}")
+        # PRIORITY 1 FIX: Validate and Re-derive Dimensions (May 7, 2026)
+        # Check if val_dates and val_y_raw have mismatched lengths
+        # If so, align to ensure proper indexing
+        if val_dates is not None and val_y_raw is not None:
+            if len(val_dates) != len(val_y_raw):
+                if self.logger:
+                    self.logger.log(f"WARNING: Dimension mismatch detected! val_dates: {len(val_dates)}, val_y_raw: {len(val_y_raw)}", 'warning')
+                    # Align to minimum length
+                min_len = min(len(val_dates), len(val_y_raw))
+                val_dates = val_dates[:min_len]
+                val_y_raw = val_y_raw[:min_len]
+                
+                if self.logger:
+                    self.logger.log(f"INFO: Aligned to {min_len} elements", 'info')
+        
+        if self.logger:
+            self.logger.log(f"Analyzing temporal precision gap for {len(arch_names)} architectures", 'info')
+            self.logger.log(f"Label threshold: {label_threshold}, Prediction threshold: {pred_threshold}", 'info')
         
         unique_dates = np.unique(val_dates)
         n_dates = len(unique_dates)
         
-        if n_dates < 3:
-            print(f"[PhaseXb] WARNING: Only {n_dates} unique dates in validation - splitting may be unreliable")
+        if n_dates < 3 and self.logger:
+            self.logger.log(f"WARNING: Only {n_dates} unique dates in validation - splitting may be unreliable", 'warning')
         
         recent_date_cutoff = unique_dates[int(n_dates * 0.67)]
         older_date_cutoff = unique_dates[int(n_dates * 0.33)]
@@ -71,10 +89,10 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         n_recent_fraud_total = int(np.sum(fraud_mask[is_recent]))
         n_older_fraud_total = int(np.sum(fraud_mask[is_older]))
         
-        print(f"[PhaseXb] Date split: {n_dates} unique dates")
-        print(f"[PhaseXb] Recent dates (>={recent_date_cutoff}): {np.sum(is_recent):,} samples, {n_recent_fraud_total:,} fraud cases")
-        print(f"[PhaseXb] Older dates (<={older_date_cutoff}): {np.sum(is_older):,} samples, {n_older_fraud_total:,} fraud cases")
-        print()
+        if self.logger:
+            self.logger.log(f"Date split: {n_dates} unique dates", 'info')
+            self.logger.log(f"Recent dates (>={recent_date_cutoff}): {np.sum(is_recent):,} samples, {n_recent_fraud_total:,} fraud cases", 'info')
+            self.logger.log(f"Older dates (<={older_date_cutoff}): {np.sum(is_older):,} samples, {n_older_fraud_total:,} fraud cases", 'info')
         
         results = []
         for i, (arch_name, preds) in enumerate(zip(arch_names, val_predictions)):
@@ -160,37 +178,40 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         results_df = pd.DataFrame(results)
         results_df = results_df.sort_values('gap', ascending=False)
         
-        print("=" * 100)
-        print(f"{self.name} Report - FULL METRICS")
-        print("=" * 100)
-        print(f"{'Architecture':<12} {'Recent P':>8} {'Recent R':>8} {'Recent AUC':>10} {'Recent F1':>8} {'Older P':>8} {'Older R':>8} {'Older AUC':>10} {'Older F1':>8} {'Gap':>6}")
-        print("-" * 100)
+        status_lines = []
+        status_lines.append(f"{self.name} Report - FULL METRICS")
+        status_lines.append(f"{'Architecture':<12} {'Recent P':>8} {'Recent R':>8} {'Recent AUC':>10} {'Recent F1':>8} {'Older P':>8} {'Older R':>8} {'Older AUC':>10} {'Older F1':>8} {'Gap':>6}")
         
         for _, row in results_df.iterrows():
             gap_str = f"{row['gap']:+.2f}"
-            print(f"{row['architecture']:<12} {row['recent_precision']:>8.4f} {row['recent_recall']:>8.4f} {row['recent_auc']:>10.4f} {row['recent_f1']:>8.4f} {row['older_precision']:>8.4f} {row['older_recall']:>8.4f} {row['older_auc']:>10.4f} {row['older_f1']:>8.4f} {gap_str:>6}")
+            status_lines.append(f"{row['architecture']:<12} {row['recent_precision']:>8.4f} {row['recent_recall']:>8.4f} {row['recent_auc']:>10.4f} {row['recent_f1']:>8.4f} {row['older_precision']:>8.4f} {row['older_recall']:>8.4f} {row['older_auc']:>10.4f} {row['older_f1']:>8.4f} {gap_str:>6}")
         
-        print("=" * 80)
+        if self.logger:
+            for line in status_lines:
+                self.logger.log(line, 'info')
         
         best_arch = results_df.iloc[0]
         worst_arch = results_df.iloc[-1]
         
-        print(f"\n[PhaseXb] BEST for recent fraud: {best_arch['architecture']} (Gap: {best_arch['gap']:+.4f})")
-        print(f"[PhaseXb] WORST for recent fraud: {worst_arch['architecture']} (Gap: {worst_arch['gap']:+.4f})")
+        if self.logger:
+            self.logger.log(f"BEST for recent fraud: {best_arch['architecture']} (Gap: {best_arch['gap']:+.4f})", 'info')
+            self.logger.log(f"WORST for recent fraud: {worst_arch['architecture']} (Gap: {worst_arch['gap']:+.4f})", 'info')
         
         positive_gap_count = int(np.sum(results_df['gap'] > 0.05))
-        print(f"[PhaseXb] {positive_gap_count}/{len(results_df)} architectures show positive temporal precision gap")
+        if self.logger:
+            self.logger.log(f"{positive_gap_count}/{len(results_df)} architectures show positive temporal precision gap", 'info')
         
-        if positive_gap_count == 0:
-            print(f"[PhaseXb] WARNING: No architecture shows meaningful improvement on recent fraud")
-            print(f"[PhaseXb] Consider: stronger temporal weighting or different architectures")
+        if positive_gap_count == 0 and self.logger:
+            self.logger.log(f"WARNING: No architecture shows meaningful improvement on recent fraud", 'warning')
+            self.logger.log(f"Consider: stronger temporal weighting or different architectures", 'warning')
         
         context['temporal_precision_gap'] = results_df.to_dict('records')
         context['best_recency_architecture'] = best_arch['architecture']
         context['worst_recency_architecture'] = worst_arch['architecture']
         context['phaseXb_complete'] = True
         
-        print(f"\n{self.name} - COMPLETE")
+        if self.logger:
+            self.logger.log(f"{self.name} - COMPLETE", 'info')
         
         return context
 

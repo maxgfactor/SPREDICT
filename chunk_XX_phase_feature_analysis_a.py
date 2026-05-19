@@ -15,13 +15,12 @@ import chunk_XX_feature_importance as feature_importance
 class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
     def __init__(self, config: Dict):
         super().__init__(config)
-        self.analyzer = feature_importance.FeatureImportanceAnalyzer(config)
         self.name = "Phase Xa: Raw Feature Importance Analysis"
     
     def execute(self, context: Dict) -> Dict:
-        print("=" * 80)
-        print(f"{self.name} - Starting")
-        print("=" * 80)
+        self.analyzer = feature_importance.FeatureImportanceAnalyzer(self.config, logger=self.logger)
+        if self.logger:
+            self.logger.log(f"{self.name} - Starting", 'info')
         
         X = context.get('X')
         y_raw = context.get('raw_target_values')
@@ -30,7 +29,8 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         feature_names = context.get('feature_names')
         
         if X is None or y_raw is None:
-            print("ERROR: X or y not found in context")
+            if self.logger:
+                self.logger.log("ERROR: X or y not found in context", 'error')
             return context
         
         n_features = X.shape[1]
@@ -38,7 +38,8 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         sample_size = self.config.get('FEATURE_ANALYSIS_SAMPLE_SIZE', 100000)
         
         if n_samples > sample_size:
-            print(f"Subsampling {n_samples} -> {sample_size} for feature analysis")
+            if self.logger:
+                self.logger.log(f"Subsampling {n_samples} -> {sample_size} for feature analysis", 'info')
             rng = np.random.RandomState(42)
             indices = rng.choice(n_samples, sample_size, replace=False)
             X_sub = X[indices]
@@ -50,7 +51,8 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         if feature_names is None:
             feature_names = [f'feature_{i}' for i in range(X_sub.shape[1])]
         
-        print(f"[PhaseXa] Analyzing {n_features} raw features on {X_sub.shape[0]} samples")
+        if self.logger:
+            self.logger.log(f"Analyzing {n_features} raw features on {X_sub.shape[0]} samples", 'info')
         
         trained_dense = None
         
@@ -78,8 +80,9 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         
         context['phaseXa_complete'] = True
         
-        print(f"{self.name} - COMPLETE: {n_features} -> {len(pruned_indices)} raw features ({n_pruned} pruned)")
-        print(f"{self.name} - Dropped: {analysis_results['dropped_names']}")
+        if self.logger:
+            self.logger.log(f"COMPLETE: {n_features} -> {len(pruned_indices)} raw features ({n_pruned} pruned)", 'info')
+            self.logger.log(f"Dropped: {analysis_results['dropped_names']}", 'info')
         
         return context
 

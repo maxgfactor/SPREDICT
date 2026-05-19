@@ -14,14 +14,16 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 class HyperparameterOptimizer:
     """Bayesian hyperparameter optimization using Optuna"""
     
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, logger=None):
         """
         Initialize hyperparameter optimizer
         
         Args:
             config: Configuration dictionary
+            logger: Optional logger instance
         """
         self.config = config
+        self.logger = logger
         self.n_trials = config.get('HYPERPARAM_OPTIMIZATION_TRIALS', 20)
         self.epochs = config.get('HYPERPARAM_OPTIMIZATION_EPOCHS', 3)
         self.search_space = config.get('HYPERPARAM_SEARCH_SPACE', {})
@@ -35,7 +37,8 @@ class HyperparameterOptimizer:
         y_val: np.ndarray,
         model_builder: Callable,
         train_func: Callable,
-        pred_threshold: float = 0.5
+        pred_threshold: float = 0.5,
+        label_threshold: float = 20.0
     ) -> Tuple[Dict[str, Any], Any, float]:
         """
         Run Bayesian optimization to find best hyperparameters
@@ -56,16 +59,19 @@ class HyperparameterOptimizer:
         space = self.search_space.get(arch_name, {})
         
         if not space:
-            print(f"   No search space defined for {arch_name}, using defaults")
+            if self.logger: self.logger.log(f"   No search space defined for {arch_name}, using defaults", 'warning')
             return {}, None, 0.0
         
-        print(f"   Running Bayesian optimization for {arch_name} ({self.n_trials} trials)...")
+        arch_tag = f"[{arch_name.upper()}]"
+        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Running Bayesian optimization ({self.n_trials} trials)...", 'info')
         
         best_model = None
         best_precision = 0.0
         
         class Objective:
-            def __init__(self, space, model_builder, train_func, X_train, y_train, X_val, y_val, epochs, pred_threshold, total_trials, arch_name='Dense'):
+            def __init__(self, config, space, model_builder, train_func, X_train, y_train, X_val, y_val, epochs, pred_threshold, total_trials, arch_name='Dense', logger=None, label_threshold=20.0):
+                self.config = config
+                self.logger = logger
                 self.space = space
                 self.model_builder = model_builder
                 self.train_func = train_func
@@ -77,6 +83,7 @@ class HyperparameterOptimizer:
                 self.pred_threshold = pred_threshold
                 self.total_trials = total_trials
                 self.arch_name = arch_name
+                self.label_threshold = label_threshold
                 self.trial_count = 0
                 self.best_trial_model = None
                 self.best_trial_precision = 0.0
@@ -92,6 +99,7 @@ class HyperparameterOptimizer:
                 # Increment trial counter
                 self.trial_count = getattr(self, 'trial_count', 0) + 1
                 trial_number = self.trial_count
+                arch_tag = f"[{self.arch_name.upper()}]"
                 
                 hyperparams = {}
                 for param_name, param_values in self.space.items():
@@ -124,6 +132,7 @@ class HyperparameterOptimizer:
                     max_pred = float(y_pred.max())
                     mean_pred = float(y_pred.mean())
                     std_pred = float(y_pred.std())
+                    pct_above = float((y_pred >= 0.5).mean() * 100)
                     
                     # Early termination filter: reject trials with MaxPred < 0.5
                     # These trials cannot produce any true positives (no predictions above threshold)
@@ -131,13 +140,13 @@ class HyperparameterOptimizer:
                     # EXCLUSION: Skip this filter for gradient boosting models (LightGBM, XGBoost, CatBoost)
                     # They naturally produce predictions above 0.5 with scale_pos_weight
                     if max_pred < 0.5 and self.arch_name not in ['LightGBM', 'XGBoost', 'CatBoost']:
-                        print(f"   Trial {trial_number}/{self.total_trials}: REJECTED - MaxPred={max_pred:.4f} < 0.5 (no predictions above threshold)", flush=True)
+                        if self.logger: self.logger.log(f"   Trial {trial_number}/{self.total_trials}: REJECTED - MaxPred={max_pred:.4f} < 0.5 (no predictions above threshold)", 'warning')
                         return 0.0
                     
                     # Min TP constraint for RNN: reject trials with very low TP (< 100)
                     # This ensures TP > 0 while maximizing precision (Apr 4, 2026)
                     if self.arch_name == 'RNN' and tp < 100:
-                        print(f"   Trial {trial_number}/{self.total_trials}: REJECTED - TP={tp} < 100 (min TP threshold)", flush=True)
+                        if self.logger: self.logger.log(f"   Trial {trial_number}/{self.total_trials}: REJECTED - TP={tp} < 100 (min TP threshold)", 'warning')
                         return 0.0
                     
                     # TP-balanced objective for Dense: maximize precision * log(TP + 1)
@@ -152,9 +161,34 @@ class HyperparameterOptimizer:
                     else:
                         balanced_score = precision
                     
-                    # Print trial progress in real-time with all metrics
+                    # Print trial progress in real-time with all metrics (16 metrics unified)
                     params_str = ", ".join([f"{k}={v}" for k, v in hyperparams.items()])
-                    print(f"   Trial {trial_number}/{self.total_trials}: {params_str} → Val_P={precision:.4f} Val_R={recall:.4f} Val_AUC={auc:.4f} Val_F1={f1:.4f} Val_TP={tp} Val_FP={fp} Val_TN={tn} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f}", flush=True)
+                    
+                    # Calculate extended metrics for this trial
+                    try:
+                        trial_binary = (y_pred.flatten() >= 0.5).astype(int)
+                        from chunk_12_evaluation_evaluator import Evaluator
+                        evaluator = Evaluator(self.config)
+                        trial_spec = evaluator.calculate_specificity(self.y_val, trial_binary)
+                        trial_fpr = evaluator.calculate_fpr(self.y_val, trial_binary)
+                        trial_f2 = evaluator.calculate_f2_score(self.y_val, trial_binary)
+                        trial_mcc = evaluator.calculate_mcc(self.y_val, trial_binary)
+                        trial_prauc = evaluator.calculate_average_precision(self.y_val, y_pred.flatten())
+                        trial_balacc = evaluator.calculate_balanced_accuracy(self.y_val, trial_binary)
+                        trial_brier = evaluator.calculate_brier_score(self.y_val, y_pred.flatten())
+                        trial_kappa = evaluator.calculate_kappa(self.y_val, trial_binary)
+                        trial_informedness = evaluator.calculate_informedness(self.y_val, trial_binary)
+                        trial_markedness = evaluator.calculate_markedness(self.y_val, trial_binary)
+                        trial_gini = evaluator.calculate_gini(self.y_val, y_pred.flatten())
+                        trial_opt_thresh = evaluator.calculate_optimal_threshold(self.y_val, y_pred.flatten())
+                        
+                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Label_Threshold={self.label_threshold:.1f},", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_Spec={trial_spec:.4f} Val_FPR={trial_fpr:.4f} Val_F2={trial_f2:.4f} Val_MCC={trial_mcc:.4f} Val_PRAUC={trial_prauc:.4f} Val_BalAcc={trial_balacc:.4f} Val_Brier={trial_brier:.4f} Val_Kappa={trial_kappa:.4f} Val_Informedness={trial_informedness:.4f} Val_Markedness={trial_markedness:.4f} Val_Gini={trial_gini:.4f} Val_OptThresh={trial_opt_thresh:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f}", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
+                    except Exception as e:
+                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Label_Threshold={self.label_threshold:.1f},", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f}", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
                     
                     # Track best model - use architecture-specific balanced score (Apr 4, 2026)
                     if self.arch_name == 'Dense':
@@ -203,25 +237,84 @@ class HyperparameterOptimizer:
                     else:
                         return precision
                 except Exception as e:
-                    print(f"      Trial {trial_number} failed: {e}", flush=True)
+                    if self.logger: self.logger.log(f"      Trial {trial_number} failed: {e}", 'warning')
                     return 0.0
         
         objective = Objective(
-            space, model_builder, train_func,
+            self.config, space, model_builder, train_func,
             X_train, y_train, X_val, y_val,
-            self.epochs, pred_threshold, self.n_trials, arch_name
+            self.epochs, pred_threshold, self.n_trials, arch_name,
+            logger=self.logger, label_threshold=label_threshold
         )
         
+        # Custom loop for unlimited trials until target met (May 11, 2026)
+        target_precision = self.config.get('HPO_TARGET_PRECISION', 0.60)
+        continue_until_target = self.config.get('HPO_CONTINUE_UNTIL_TARGET', True)
+        stagnation_threshold = self.config.get('HPO_STAGNATION_THRESHOLD', 30)
+        max_trials = 1000  # Safety cap (raised from 500, May 13, 2026)
+        
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=self.n_trials, show_progress_bar=False)
+        
+        trial_number = 0
+        best_precision_seen = 0.0
+        no_improve_count = 0
+        phase_start_precision = 0.0
+        
+        while True:
+            trial_number += 1
+            
+            # Run one trial
+            study.optimize(objective, n_trials=1, show_progress_bar=False)
+            
+            # Get current best
+            current_precision = objective.best_trial_precision
+            current_tp = objective.best_trial_tp
+            
+            # Check: Target met?
+            if current_precision >= target_precision and current_tp > 0:
+                if self.logger: self.logger.log(f"   TARGET MET at trial {trial_number}: P={current_precision:.4f} >= {target_precision}", 'info')
+                break
+            
+            # Progress logging every 10 trials
+            if trial_number % 10 == 0:
+                if self.logger: self.logger.log(f"   Progress: Trial {trial_number} | Best P={current_precision:.4f} | Target={target_precision}", 'info')
+            
+            # Check: Phase transition (reset stagnation every 30 trials)
+            if trial_number % 30 == 0:
+                # Phase transition - reset stagnation counter
+                if current_precision > phase_start_precision:
+                    phase_start_precision = current_precision
+                no_improve_count = 0
+                if self.logger: self.logger.log(f"   Phase transition at trial {trial_number}: Best P={phase_start_precision:.4f}", 'info')
+            
+            # Check: Stagnation?
+            if current_precision > best_precision_seen:
+                best_precision_seen = current_precision
+                no_improve_count = 0
+            else:
+                no_improve_count += 1
+            
+            # Stop if stagnant
+            if no_improve_count >= stagnation_threshold:
+                if self.logger: self.logger.log(f"   STOPPED: No improvement for {stagnation_threshold} trials (best P={best_precision_seen:.4f})", 'info')
+                break
+            
+            # Continue if enabled and not target met
+            if not continue_until_target and trial_number >= self.n_trials:
+                break
+            
+            # Safety cap
+            if trial_number >= max_trials:
+                if self.logger: self.logger.log(f"   SAFETY STOP: Reached {max_trials} trials (best P={best_precision_seen:.4f})", 'warning')
+                break
         
         best_params = study.best_params
         best_precision = study.best_value  # balanced_score (used by Optuna)
         best_actual_precision = objective.best_trial_precision  # actual precision
         best_model = objective.best_trial_model
         
-        print(f"   {arch_name} - Best hyperparameters: {best_params}", flush=True)
-        print(f"   {arch_name} - Best validation metrics: Val_P={best_actual_precision:.4f} (opt_score={best_precision:.4f}) Val_R={objective.best_trial_recall:.4f} Val_AUC={objective.best_trial_auc:.4f} Val_F1={objective.best_trial_f1:.4f} Val_TP={objective.best_trial_tp} Val_FP={objective.best_trial_fp} Val_TN={objective.best_trial_tn} Val_FN={objective.best_trial_fn}", flush=True)
+        if self.logger: self.logger.log(f"   {arch_name} - Best hyperparameters: {best_params}", 'info')
+        if self.logger: self.logger.log(f"   {arch_name} - Best validation metrics: Val_P={best_actual_precision:.4f} (opt_score={best_precision:.4f}) Val_R={objective.best_trial_recall:.4f} Val_AUC={objective.best_trial_auc:.4f} Val_F1={objective.best_trial_f1:.4f} Val_TP={objective.best_trial_tp} Val_FP={objective.best_trial_fp} Val_TN={objective.best_trial_tn} Val_FN={objective.best_trial_fn}", 'info')
         
         return best_params, best_model, best_precision
     

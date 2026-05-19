@@ -7,7 +7,8 @@ import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, 
-    roc_auc_score, average_precision_score, matthews_corrcoef
+    roc_auc_score, average_precision_score, matthews_corrcoef,
+    brier_score_loss, cohen_kappa_score, roc_curve
 )
 from sklearn.model_selection import cross_val_score
 
@@ -15,14 +16,16 @@ from sklearn.model_selection import cross_val_score
 class Evaluator:
     """Comprehensive model evaluation utility with defensive programming"""
     
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, logger=None):
         """
         Initialize evaluator
         
         Args:
             config: Configuration dictionary
+            logger: Logger instance (optional)
         """
         self.config = config
+        self.logger = logger
     
     def calculate_precision(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """
@@ -38,14 +41,14 @@ class Evaluator:
         try:
             return precision_score(y_true, y_pred, average='binary', zero_division=1.0)
         except Exception as e:
-            print(f"Warning: precision_score failed: {e}")
+            if self.logger: self.logger.log(f"precision_score failed: {e}", 'warning')
             # Fallback to manual calculation
             try:
                 tp = np.sum((y_pred == 1) & (y_true == 1))
                 fp = np.sum((y_pred == 1) & (y_true == 0))
                 return float(tp) / float(tp + fp) if (tp + fp) > 0 else 0.0
             except Exception as e2:
-                print(f"Warning: Manual precision calculation failed: {e2}")
+                if self.logger: self.logger.log(f"Manual precision calculation failed: {e2}", 'warning')
                 return 0.0
     
     def calculate_recall(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -62,7 +65,7 @@ class Evaluator:
         try:
             return recall_score(y_true, y_pred, average='binary', zero_division=1.0)
         except Exception as e:
-            print(f"Warning: recall_score failed: {e}")
+            if self.logger: self.logger.log(f"recall_score failed: {e}", 'warning')
             return 0.0
     
     def calculate_f1(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -79,7 +82,116 @@ class Evaluator:
         try:
             return f1_score(y_true, y_pred, average='binary', zero_division=1.0)
         except Exception as e:
-            print(f"Warning: f1_score failed: {e}")
+            if self.logger: self.logger.log(f"f1_score failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_specificity(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Calculate specificity (True Negative Rate)"""
+        try:
+            tn = np.sum((y_pred == 0) & (y_true == 0))
+            fp = np.sum((y_pred == 1) & (y_true == 0))
+            return tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_specificity failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_fpr(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Calculate False Positive Rate"""
+        try:
+            return 1 - self.calculate_specificity(y_true, y_pred)
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_fpr failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_f2_score(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Calculate F2 score (beta=2)"""
+        try:
+            from sklearn.metrics import fbeta_score
+            return fbeta_score(y_true, y_pred, beta=2.0, zero_division=1.0)
+        except Exception as e:
+            if self.logger: self.logger.log(f"f2_score calculation failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_brier_score(self, y_true: np.ndarray, y_proba: np.ndarray) -> float:
+        """Brier score for probability calibration (lower=better)"""
+        try:
+            return brier_score_loss(y_true, y_proba)
+        except Exception as e:
+            if self.logger: self.logger.log(f"brier_score_loss failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_kappa(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Cohen's kappa inter-rater reliability"""
+        try:
+            return cohen_kappa_score(y_true, y_pred)
+        except Exception as e:
+            if self.logger: self.logger.log(f"cohen_kappa_score failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_informedness(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Informedness = Recall + Specificity - 1"""
+        try:
+            r = self.calculate_recall(y_true, y_pred)
+            spec = self.calculate_specificity(y_true, y_pred)
+            return r + spec - 1.0
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_informedness failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_markedness(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Markedness = Precision + Specificity - 1"""
+        try:
+            p = self.calculate_precision(y_true, y_pred)
+            spec = self.calculate_specificity(y_true, y_pred)
+            return p + spec - 1.0
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_markedness failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_gini(self, y_true: np.ndarray, y_scores: np.ndarray) -> float:
+        """Gini coefficient = 2 * AUC - 1"""
+        try:
+            auc = self.calculate_auc(y_true, y_scores)
+            return max(0, 2 * auc - 1)
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_gini failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_optimal_threshold(self, y_true: np.ndarray, y_scores: np.ndarray) -> float:
+        """Find threshold that maximizes Youden's J"""
+        try:
+            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+            j_scores = tpr - fpr
+            optimal_idx = np.argmax(j_scores)
+            return float(thresholds[optimal_idx]) if len(thresholds) > 0 else 0.5
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_optimal_threshold failed: {e}", 'warning')
+            return 0.5
+    
+    def calculate_mcc(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Matthews Correlation Coefficient"""
+        try:
+            return matthews_corrcoef(y_true, y_pred)
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_mcc failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_average_precision(self, y_true: np.ndarray, y_scores: np.ndarray) -> float:
+        """Precision-Recall AUC (Average Precision)"""
+        try:
+            return average_precision_score(y_true, y_scores)
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_average_precision failed: {e}", 'warning')
+            return 0.0
+    
+    def calculate_balanced_accuracy(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Balanced Accuracy = (Recall + Specificity) / 2"""
+        try:
+            r = self.calculate_recall(y_true, y_pred)
+            spec = self.calculate_specificity(y_true, y_pred)
+            return (r + spec) / 2.0
+        except Exception as e:
+            if self.logger: self.logger.log(f"calculate_balanced_accuracy failed: {e}", 'warning')
             return 0.0
     
     def calculate_auc(self, y_true: np.ndarray, y_scores: np.ndarray) -> float:
@@ -96,7 +208,7 @@ class Evaluator:
         try:
             return float(roc_auc_score(y_true, y_scores))
         except Exception as e:
-            print(f"Warning: roc_auc_score failed: {e}")
+            if self.logger: self.logger.log(f"roc_auc_score failed: {e}", 'warning')
             return 0.0
     
     def calculate_confusion_matrix(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, int]:
@@ -117,7 +229,7 @@ class Evaluator:
             fn = int(np.sum((y_pred == 0) & (y_true == 1)))
             return {'TP': tp, 'TN': tn, 'FP': fp, 'FN': fn}
         except Exception as e:
-            print(f"Warning: confusion matrix calculation failed: {e}")
+            if self.logger: self.logger.log(f"confusion matrix calculation failed: {e}", 'warning')
             return {'TP': 0, 'TN': 0, 'FP': 0, 'FN': 0}
     
     def evaluate_at_threshold(self, y_true: np.ndarray, y_pred_proba: np.ndarray) -> Dict[str, Any]:
@@ -134,10 +246,14 @@ class Evaluator:
         try:
             # SANITY CHECK: Validate inputs
             if not np.all(np.isfinite(y_true)):
-                print(f"Warning: y_true contains NaN/Inf values")
-                return {'P': 0.0, 'R': 0.0, 'F1': 0.0, 'AUC': 0.0, 'TP': 0, 'TN': 0, 'FP': 0, 'FN': 0}
+                if self.logger: self.logger.log(f"y_true contains NaN/Inf values", 'warning')
+                return {
+                    'P': 0.0, 'R': 0.0, 'F1': 0.0, 'AUC': 0.0, 'TP': 0, 'TN': 0, 'FP': 0, 'FN': 0,
+                    'Spec': 0.0, 'FPR': 0.0, 'F2': 0.0, 'MCC': 0.0, 'PRAUC': 0.0, 'BalAcc': 0.0, 'Brier': 0.0, 'Kappa': 0.0,
+                    'Informedness': 0.0, 'Markedness': 0.0, 'Gini': 0.0, 'OptThresh': 0.0, 'MaxPred': 0.0, 'MeanPred': 0.0, 'StdPred': 0.0, 'PctAboveThresh': 0.0
+                }
             if not np.all(np.isfinite(y_pred_proba)):
-                print(f"Warning: y_pred_proba contains NaN/Inf values")
+                if self.logger: self.logger.log(f"y_pred_proba contains NaN/Inf values", 'warning')
                 # Fix NaN/Inf instead of returning zeros
                 y_pred_proba = np.nan_to_num(y_pred_proba, nan=0.0, posinf=1.0, neginf=0.0)
                 y_pred_proba = np.clip(y_pred_proba, 1e-7, 1 - 1e-7)
@@ -145,12 +261,34 @@ class Evaluator:
             # SANITY CHECK: Ensure both classes exist in y_true
             unique_true = np.unique(y_true)
             if len(unique_true) < 2:
-                print(f"Warning: Only one class present in y_true: {unique_true}")
+                if self.logger: self.logger.log(f"Only one class present in y_true: {unique_true}", 'warning')
             
             # Use PREDICTION_THRESHOLD from config (default 0.5) for converting predictions to binary
             pred_threshold = self.config.get('PREDICTION_THRESHOLD', 0.5)
             y_pred_binary = (y_pred_proba >= pred_threshold).astype(int)
+            
+            # Calculate prediction distribution metrics
+            max_pred = float(y_pred_proba.max()) if len(y_pred_proba) > 0 else 0.0
+            mean_pred = float(y_pred_proba.mean()) if len(y_pred_proba) > 0 else 0.0
+            std_pred = float(y_pred_proba.std()) if len(y_pred_proba) > 0 else 0.0
+            pct_above = float(np.mean(y_pred_binary)) * 100.0 if len(y_pred_binary) > 0 else 0.0
+            
+            # Calculate additional metrics (16 metrics - full set)
+            spec = self.calculate_specificity(y_true, y_pred_binary)
+            fpr = self.calculate_fpr(y_true, y_pred_binary)
+            f2 = self.calculate_f2_score(y_true, y_pred_binary)
+            mcc = self.calculate_mcc(y_true, y_pred_binary)
+            prauc = self.calculate_average_precision(y_true, y_pred_proba)
+            balacc = self.calculate_balanced_accuracy(y_true, y_pred_binary)
+            brier = self.calculate_brier_score(y_true, y_pred_proba)
+            kappa = self.calculate_kappa(y_true, y_pred_binary)
+            informedness = self.calculate_informedness(y_true, y_pred_binary)
+            markedness = self.calculate_markedness(y_true, y_pred_binary)
+            gini = self.calculate_gini(y_true, y_pred_proba)
+            opt_thresh = self.calculate_optimal_threshold(y_true, y_pred_proba)
+            
             return {
+                # Core metrics (8)
                 'P': self.calculate_precision(y_true, y_pred_binary),
                 'R': self.calculate_recall(y_true, y_pred_binary),
                 'F1': self.calculate_f1(y_true, y_pred_binary),
@@ -159,10 +297,31 @@ class Evaluator:
                 'TN': int(np.sum((y_pred_binary == 0) & (y_true == 0))),
                 'FP': int(np.sum((y_pred_binary == 1) & (y_true == 0))),
                 'FN': int(np.sum((y_pred_binary == 0) & (y_true == 1))),
+                # Additional metrics (16 - full standard set)
+                'Spec': spec,
+                'FPR': fpr,
+                'F2': f2,
+                'MCC': mcc,
+                'PRAUC': prauc,
+                'BalAcc': balacc,
+                'Brier': brier,
+                'Kappa': kappa,
+                'Informedness': informedness,
+                'Markedness': markedness,
+                'Gini': gini,
+                'OptThresh': opt_thresh,
+                'MaxPred': max_pred,
+                'MeanPred': mean_pred,
+                'StdPred': std_pred,
+                'PctAboveThresh': pct_above,
             }
         except Exception as e:
-            print(f"Warning: evaluate_at_threshold failed: {e}")
-            return {'P': 0.0, 'R': 0.0, 'F1': 0.0, 'AUC': 0.0, 'TP': 0, 'TN': 0, 'FP': 0, 'FN': 0}
+            if self.logger: self.logger.log(f"evaluate_at_threshold failed: {e}", 'warning')
+            return {
+                'P': 0.0, 'R': 0.0, 'F1': 0.0, 'AUC': 0.0, 'TP': 0, 'TN': 0, 'FP': 0, 'FN': 0,
+                'Spec': 0.0, 'FPR': 0.0, 'F2': 0.0, 'MCC': 0.0, 'PRAUC': 0.0, 'BalAcc': 0.0, 'Brier': 0.0, 'Kappa': 0.0,
+                'Informedness': 0.0, 'Markedness': 0.0, 'Gini': 0.0, 'OptThresh': 0.0, 'MaxPred': 0.0, 'MeanPred': 0.0, 'StdPred': 0.0, 'PctAboveThresh': 0.0
+            }
     
     def find_optimal_threshold(self, X_train: np.ndarray, y_train: np.ndarray,
                                X_val: np.ndarray, y_val: np.ndarray,
@@ -208,7 +367,8 @@ class Evaluator:
             train_status = "[OK]" if train_class_1 > 0 else "[WARNING]"
             val_status = "[OK]" if val_class_1 > 0 else "[WARNING]"
             
-            print(f"   {arch_name} t={thresh:.1f} | Train: 0={train_class_0:,},1={train_class_1:,} {train_status} | Val: 0={val_class_0:,},1={val_class_1:,} {val_status}")
+            arch_tag = f"[{arch_name.upper()}]"
+            if self.logger: self.logger.log(f"{arch_tag} Label_Threshold={thresh:.1f} | Train: 0={train_class_0:,},1={train_class_1:,} {train_status} | Val: 0={val_class_0:,},1={val_class_1:,} {val_status}", 'info')
             
             # Use model for inference only (no retraining) - for POST-HPO threshold search
             # Or train model for each threshold - for Section 2 pre-HPO threshold search
@@ -234,7 +394,7 @@ class Evaluator:
                         epochs = 15 if arch_name in ['Dense', 'VAE', 'CNN'] else 3
                         trained, _ = model_trainer.train_model(fresh_model, X_train, y_train_binary, epochs=epochs, verbose=0)
             except Exception as e:
-                print(f"Warning: Training failed for {arch_name} at threshold {thresh}: {e}")
+                if self.logger: self.logger.log(f"Training failed for {arch_name} at threshold {thresh}: {e}", 'warning')
                 continue
             
             # Get predictions
@@ -244,17 +404,17 @@ class Evaluator:
                 
                 # SANITY CHECK: Validate and fix predictions
                 if not np.all(np.isfinite(train_pred)):
-                    print(f"Warning: train_pred contains NaN/Inf for {arch_name} at t={thresh}")
+                    if self.logger: self.logger.log(f"{arch_tag} train_pred contains NaN/Inf at Label_Threshold={thresh}", 'warning')
                     train_pred = np.nan_to_num(train_pred, nan=0.0, posinf=1.0, neginf=0.0)
                 if not np.all(np.isfinite(val_pred)):
-                    print(f"Warning: val_pred contains NaN/Inf for {arch_name} at t={thresh}")
+                    if self.logger: self.logger.log(f"{arch_tag} val_pred contains NaN/Inf at Label_Threshold={thresh}", 'warning')
                     val_pred = np.nan_to_num(val_pred, nan=0.0, posinf=1.0, neginf=0.0)
                 
                 # Additional safety: clip predictions to valid probability range
                 train_pred = np.clip(train_pred, 1e-7, 1 - 1e-7)
                 val_pred = np.clip(val_pred, 1e-7, 1 - 1e-7)
             except Exception as e:
-                print(f"Warning: Prediction failed for {arch_name} at threshold {thresh}: {e}")
+                if self.logger: self.logger.log(f"Prediction failed for {arch_name} at threshold {thresh}: {e}", 'warning')
                 continue
             
             # Calculate all metrics for train (compare binary predictions to binary labels)
@@ -266,22 +426,29 @@ class Evaluator:
             # Reject degenerate solutions: require minimum positive predictions
             # to prevent precision gaming (e.g., predicting almost nothing → artificially high P)
             # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
-            # Architecture-specific HPO thresholds (Apr 4, 2026)
-            hpo_pct_config = self.config.get('HPO_MIN_POSITIVE_PERCENTAGE', {})
-            hpo_abs_config = self.config.get('HPO_MIN_POSITIVE_ABSOLUTE', {})
-            
-            # Use architecture-specific if available, otherwise use defaults
-            min_positive_percentage = hpo_pct_config.get(arch_name, self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005))
-            min_positive_absolute = hpo_abs_config.get(arch_name, self.config.get('MIN_POSITIVE_ABSOLUTE', 50))
+            # Architecture-specific thresholds (May 6, 2026)
+            if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+                sklearn_safeguards = self.config.get('SKLEARN_SAFEGUARDS', {})
+                min_positive_percentage = sklearn_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005))
+                min_positive_absolute = sklearn_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config.get('MIN_POSITIVE_ABSOLUTE', 50))
+            elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
+                neural_safeguards = self.config.get('NEURAL_SAFEGUARDS', {})
+                min_positive_percentage = neural_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005))
+                min_positive_absolute = neural_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config.get('MIN_POSITIVE_ABSOLUTE', 50))
+                patience = neural_safeguards.get('PATIENCE', self.config.get('PATIENCE', 5))
+            else:
+                min_positive_percentage = self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005)
+                min_positive_absolute = self.config.get('MIN_POSITIVE_ABSOLUTE', 50)
+                patience = self.config.get('PATIENCE', 5)
             n_samples = len(y_val_binary)
             min_positive_predictions = max(min_positive_absolute, int(n_samples * min_positive_percentage))
             
             val_total_positive_preds = val_metrics['TP'] + val_metrics['FP']
             if val_total_positive_preds < min_positive_predictions:
-                print(f"   [REJECT] Skipping threshold {thresh:.1f}: only {val_total_positive_preds} positive VALIDATION predictions (min={min_positive_predictions})")
+                if self.logger: self.logger.log(f"[REJECT] Skipping threshold {thresh:.1f}: only {val_total_positive_preds} positive VALIDATION predictions (min={min_positive_predictions})", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
-                    print(f"   {arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)")
+                    if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)", 'info')
                     break
                 continue
             
@@ -290,29 +457,34 @@ class Evaluator:
             max_pos_ratio = self.config.get('MAX_POS_PRED_RATIO', 0.70)
             pos_pred_ratio = val_total_positive_preds / len(y_val_binary)
             if pos_pred_ratio < min_pos_ratio or pos_pred_ratio > max_pos_ratio:
-                print(f"   [REJECT] Skipping t={thresh:.1f}: pos_pred_ratio={pos_pred_ratio:.2%} outside [{min_pos_ratio:.0%}, {max_pos_ratio:.0%}]")
+                if self.logger: self.logger.log(f"{arch_tag} [REJECT] Skipping Label_Threshold={thresh:.1f}: pos_pred_ratio={pos_pred_ratio:.2%} outside [{min_pos_ratio:.0%}, {max_pos_ratio:.0%}]", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
-                    print(f"   {arch_name}: Early stopping at threshold {thresh:.1f}")
+                    if self.logger: self.logger.log(f"{arch_tag} Early stopping at threshold {thresh:.1f}", 'info')
                     break
                 continue
             
             # Safeguard 3: Reject if precision doesn't beat baseline by minimum margin
             # Prevents convergence to degenerate solutions where P ≈ base rate
             baseline_precision = y_val_binary.mean()
-            min_improvement = self.config.get('MIN_PRECISION_OVER_BASELINE', 0.05)
+            # Check for sklearn architecture-specific overrides
+            if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+                sklearn_safeguards = self.config.get('SKLEARN_SAFEGUARDS', {})
+                min_improvement = sklearn_safeguards.get('MIN_PRECISION_OVER_BASELINE', 0.05)
+            else:
+                min_improvement = self.config.get('MIN_PRECISION_OVER_BASELINE', 0.05)
             current_precision = val_metrics['P']
             if current_precision <= baseline_precision + min_improvement:
-                print(f"   [REJECT] Skipping t={thresh:.1f}: P={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}")
+                if self.logger: self.logger.log(f"{arch_tag} [REJECT] Skipping Label_Threshold={thresh:.1f}: P={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
-                    print(f"   {arch_name}: Early stopping at threshold {thresh:.1f}")
+                    if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f}", 'info')
                     break
                 continue
             
             # === PER-THRESHOLD DIAGNOSTICS ===
             val_pos_pct = (val_pred >= 0.5).mean() * 100
-            print(f"   [DIAG] t={thresh:.1f}: pred_mean={val_pred.mean():.4f}, pred_std={val_pred.std():.4f}, pred_min={val_pred.min():.4f}, pred_max={val_pred.max():.4f}, %pos@0.5={val_pos_pct:.2f}%")
+            if self.logger: self.logger.log(f"{arch_tag} [DIAG] Label_Threshold={thresh:.1f}: pred_mean={val_pred.mean():.4f}, pred_std={val_pred.std():.4f}, pred_min={val_pred.min():.4f}, pred_max={val_pred.max():.4f}, %pos@0.5={val_pos_pct:.2f}%", 'info')
             
             result = {
                 'threshold': thresh,
@@ -331,7 +503,7 @@ class Evaluator:
                 no_improve_count += 1
             
             if no_improve_count >= patience:
-                print(f"   {arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)")
+                if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)", 'info')
                 break
         
         return best_thresh, best_precision, results, best_trained_model
@@ -487,7 +659,7 @@ class Evaluator:
                 'folds': cv_folds
             }
         except Exception as e:
-            print(f"Warning: Cross-validation failed: {e}")
+            if self.logger: self.logger.log(f"Cross-validation failed: {e}", 'warning')
             return {
                 'cv_scores': [0.0],
                 'mean_score': 0.0,

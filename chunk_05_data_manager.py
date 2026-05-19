@@ -102,6 +102,15 @@ class DataManager:
             y = raw_target.astype(int)
             self._raw_target_column = df.columns[target_col_idx]
         
+        # Apply log transform if configured (Step 1 - Option C: sign + magnitude)
+        if self.config.get('LOG_TRANSFORM_TARGET', False):
+            sign = np.sign(y)
+            magnitude = np.abs(y)
+            y = sign * np.log1p(magnitude)
+            self._log_transform_applied = True
+        else:
+            self._log_transform_applied = False
+        
         # Store feature column names (excluding date and target)
         self._feature_columns = [df.columns[i] for i in feature_cols]
         
@@ -115,10 +124,90 @@ class DataManager:
         if self.config.get('USE_SAMPLING', False):
             X, y, dates = self._apply_stratified_sampling(X, y, dates)
         
+        # Apply feature engineering (Step 4)
+        X = self._apply_feature_engineering(X)
+        
         # Validate data contract
         self._validate_data_output(X, y, dates, min_samples, self.config)
         
         return X, y, dates
+    
+    def is_log_transform_applied(self) -> bool:
+        """Check if log transform was applied to target variable."""
+        return getattr(self, '_log_transform_applied', False)
+    
+    def _apply_feature_engineering(self, X: np.ndarray) -> np.ndarray:
+        """
+        Apply feature engineering: winsorization, ratio features, log transform.
+        
+        Args:
+            X: Feature matrix
+            
+        Returns:
+            Transformed feature matrix
+        """
+        if X is None or len(X) == 0:
+            return X
+        
+        original_features = X.shape[1]
+        
+        # Step 4a: Winsorize features
+        if self.config.get('WINSORIZE_FEATURES', False):
+            low_pct = self.config.get('WINSORIZE_PERCENTILE_LOW', 1)
+            high_pct = self.config.get('WINSORIZE_PERCENTILE_HIGH', 99)
+            for col in range(X.shape[1]):
+                p_low, p_high = np.percentile(X[:, col], [low_pct, high_pct])
+                X[:, col] = np.clip(X[:, col], p_low, p_high)
+            print(f"   [FEATURE] Winsorized {X.shape[1]} features at {low_pct}/{high_pct} percentiles")
+        
+        # Step 4c: Log-transform highly skewed features
+        if self.config.get('LOG_TRANSFORM_FEATURES', False):
+            skewed_indices = self.config.get('HIGHLY_SKEWED_FEATURES', [])
+            transformed_count = 0
+            for idx in skewed_indices:
+                if idx < X.shape[1]:
+                    X[:, idx] = np.sign(X[:, idx]) * np.log1p(np.abs(X[:, idx]))
+                    transformed_count += 1
+            if transformed_count > 0:
+                print(f"   [FEATURE] Log-transformed {transformed_count} skewed features")
+        
+        # Step 4b: Add ratio features (must be after winsorization and log-transform)
+        if self.config.get('ADD_RATIO_FEATURES', False) and self._feature_columns:
+            new_features = []
+            feature_names = self._feature_columns
+            
+            try:
+                if 'Price' in feature_names and '52W_High' in feature_names:
+                    price_idx = feature_names.index('Price')
+                    high_52w_idx = feature_names.index('52W_High')
+                    ratio_1 = X[:, price_idx] / (X[:, high_52w_idx] + 1e-8)
+                    new_features.append(ratio_1)
+                    self._feature_columns.append('Price_to_52W_High')
+                
+                if 'Volume' in feature_names and 'Avg_Volume' in feature_names:
+                    vol_idx = feature_names.index('Volume')
+                    avg_vol_idx = feature_names.index('Avg_Volume')
+                    ratio_2 = X[:, vol_idx] / (X[:, avg_vol_idx] + 1e-8)
+                    new_features.append(ratio_2)
+                    self._feature_columns.append('Volume_to_Avg_Volume')
+                
+                if 'Price' in feature_names and '52W_Low' in feature_names:
+                    price_idx = feature_names.index('Price')
+                    low_52w_idx = feature_names.index('52W_Low')
+                    ratio_3 = X[:, price_idx] / (X[:, low_52w_idx] + 1e-8)
+                    new_features.append(ratio_3)
+                    self._feature_columns.append('Price_to_52W_Low')
+                
+                if new_features:
+                    X = np.column_stack([X] + new_features)
+                    print(f"   [FEATURE] Added {len(new_features)} ratio features")
+            except Exception as e:
+                print(f"   [FEATURE] Warning: Could not add ratio features: {e}")
+        
+        if X.shape[1] > original_features:
+            print(f"   [FEATURE] Total features: {original_features} -> {X.shape[1]}")
+        
+        return X
     
     def _detect_date_column(self, df: pd.DataFrame) -> int:
         """

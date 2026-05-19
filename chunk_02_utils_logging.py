@@ -23,6 +23,8 @@ from typing import Dict, List, Optional, Any
 class Logger:
     """Logging utility for fraud detection pipeline"""
     
+    log_count = 0
+    
     def __init__(self, config: Dict):
         """
         Initialize logger
@@ -43,6 +45,7 @@ class Logger:
                     Can use custom labels like "PHASE5" or "CONFIG" for grouped output.
         """
         if level == 'error' or self.verbosity >= 1:
+            Logger.log_count += 1
             # Auto-detect source file if not provided
             if source is None:
                 try:
@@ -63,9 +66,9 @@ class Logger:
                 except Exception:
                     source = "logger"
             
-            # Format: [source] [LEVEL] message
+            # Format: [log_count] [source] [LEVEL] message
             level_prefix = {"info": "[INFO]", "warning": "[WARNING]", "error": "[ERROR]"}.get(level, "[INFO]")
-            print(f"[{source}] {level_prefix} {message}", flush=True)
+            print(f"[{Logger.log_count:<5}] [{source}] {level_prefix} {message}", flush=True)
     
     def format_metric(self, value: float, is_percentage: bool = True) -> str:
         """

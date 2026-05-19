@@ -31,7 +31,7 @@ if sys.platform == 'linux':
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
     
     # Suppress TensorFlow CPU optimization warnings
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import numpy as np
 from typing import Dict, List, Type
@@ -72,10 +72,11 @@ class PipelineOrchestrator:
         """
         start_time = time.time()
         
-        print("[RUNNING] Starting Fraud Detection Pipeline...")
-        print(f"   Data path: {self.config['DATA_PATH']}")
-        print(f"   Sample size: {self.config['SAMPLE_SIZE']}")
-        print()
+        self.logger.log("[RUNNING] Starting Fraud Detection Pipeline...", 'info')
+        self.logger.log(f"   Data path: {self.config['DATA_PATH']}", 'info')
+        self.logger.log(f"   Sampling: size={self.config['SAMPLE_SIZE']}, enabled={self.config['USE_SAMPLING']}, forced={self.config['FORCE_SAMPLING']}", 'info')
+        self.logger.log(f"   HPO: trials={self.config['HYPERPARAM_OPTIMIZATION_TRIALS']}, continue_until_target={self.config['HPO_CONTINUE_UNTIL_TARGET']}, epochs_per_trial={self.config['HYPERPARAM_OPTIMIZATION_EPOCHS']}, stagnation_threshold={self.config['HPO_STAGNATION_THRESHOLD']}", 'info')
+        self.logger.log("", 'info')
         
         # Phase execution sequence
         phase_sequence = [
@@ -93,24 +94,23 @@ class PipelineOrchestrator:
         # Execute phases in sequence
         for phase_name, PhaseClass, validator in phase_sequence:
             phase_start = time.time()
-            print(f"\n{'='*60}")
-            print(f"Running {phase_name}")
-            print('='*60)
+            self.logger.log(f"Running {phase_name}", 'info')
             
             try:
                 # Create and execute phase
                 phase = PhaseClass(self.config)
+                phase.logger = self.logger
                 result = phase.execute(context)
                 
                 # Validate phase output
                 try:
                     if validator is not None:
                         validator(result)
-                        print(f"[PASS] {phase_name} validation passed")
+                        self.logger.log(f"[PASS] {phase_name} validation passed", 'info')
                     else:
-                        print(f"[SKIP] {phase_name} validation skipped (no validator)")
+                        self.logger.log(f"[SKIP] {phase_name} validation skipped (no validator)", 'info')
                 except AssertionError as e:
-                    print(f"[WARNING]  {phase_name} validation warning: {e}")
+                    self.logger.log(f"[WARNING]  {phase_name} validation warning: {e}", 'warning')
                 
                 # Update context with phase results
                 context.update(result)
@@ -118,10 +118,10 @@ class PipelineOrchestrator:
                 # Record timing
                 phase_time = time.time() - phase_start
                 self.phase_timings[phase_name] = phase_time
-                print(f"[TIME]  {phase_name} completed in {phase_time:.2f}s")
+                self.logger.log(f"[TIME]  {phase_name} completed in {phase_time:.2f}s", 'info')
                 
             except Exception as e:
-                print(f"[ERROR] {phase_name} failed: {e}")
+                self.logger.log(f"[ERROR] {phase_name} failed: {e}", 'error')
                 import traceback
                 traceback.print_exc()
                 raise RuntimeError(f"Pipeline failed at {phase_name}") from e
@@ -130,13 +130,11 @@ class PipelineOrchestrator:
         total_time = time.time() - start_time
         
         # Log final summary
-        print(f"\n{'='*60}")
-        print("Pipeline Complete!")
-        print('='*60)
-        print(f"[TIME] Total execution time: {total_time:.2f}s")
-        print("\nPhase timings:")
+        self.logger.log("Pipeline Complete!", 'info')
+        self.logger.log(f"[TIME] Total execution time: {total_time:.2f}s", 'info')
+        self.logger.log("Phase timings:", 'info')
         for phase, timing in self.phase_timings.items():
-            print(f"   {phase}: {timing:.2f}s")
+            self.logger.log(f"   {phase}: {timing:.2f}s", 'info')
         
         # Log final metrics
         if 'final_metrics' in context:
@@ -146,18 +144,16 @@ class PipelineOrchestrator:
                 # Use the first (best) architecture's metrics
                 metrics = metrics[0]
             if isinstance(metrics, dict):
-                print(f"\n[STAT] Final Results:")
-                print(f"   Precision: {metrics.get('precision', 0):.4f}")
-                print(f"   Recall: {metrics.get('recall', 0):.4f}")
-                print(f"   F1 Score: {metrics.get('f1', 0):.4f}")
-                print(f"   AUC: {metrics.get('auc', 0):.4f}")
+                self.logger.log(f"[STAT] Final Results:", 'info')
+                self.logger.log(f"   Precision: {metrics.get('precision', 0):.4f}", 'info')
+                self.logger.log(f"   Recall: {metrics.get('recall', 0):.4f}", 'info')
+                self.logger.log(f"   F1 Score: {metrics.get('f1', 0):.4f}", 'info')
+                self.logger.log(f"   AUC: {metrics.get('auc', 0):.4f}", 'info')
         
         # =========================================================================
         # METRICS REVIEW FRAMEWORK
         # =========================================================================
-        print(f"\n{'='*60}")
-        print("METRICS REVIEW REPORT")
-        print('='*60)
+        self.logger.log("METRICS REVIEW REPORT", 'info')
         
         # Get architecture metrics from Phase 4
         arch_metrics = context.get('arch_final_metrics', [])
@@ -166,8 +162,8 @@ class PipelineOrchestrator:
             # Sort by precision (descending)
             sorted_metrics = sorted(arch_metrics, key=lambda x: x.get('P', 0), reverse=True)
             
-            print(f"\n[ARCHITECTURE PERFORMANCE] (sorted by Val Precision)")
-            print("-" * 60)
+            self.logger.log(f"[ARCHITECTURE PERFORMANCE] (sorted by Val Precision)", 'info')
+            self.logger.log("-" * 60, 'info')
             
             ensemble_threshold = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
             
@@ -180,11 +176,11 @@ class PipelineOrchestrator:
                 fp = m.get('FP', 0)
                 
                 status = "✓" if p >= ensemble_threshold else "✗"
-                print(f"{i}. {arch:15s} P={p:.4f} R={r:.4f} AUC={auc:.4f} TP={tp:5d} FP={fp:5d} {status}")
+                self.logger.log(f"{i}. {arch:15s} P={p:.4f} R={r:.4f} AUC={auc:.4f} TP={tp:5d} FP={fp:5d} {status}", 'info')
             
             # Identify issues
-            print(f"\n[ISSUES IDENTIFIED]")
-            print("-" * 60)
+            self.logger.log(f"[ISSUES IDENTIFIED]", 'info')
+            self.logger.log("-" * 60, 'info')
             
             issues = []
             for m in sorted_metrics:
@@ -203,15 +199,15 @@ class PipelineOrchestrator:
             
             if issues:
                 for issue in issues:
-                    print(issue)
+                    self.logger.log(issue, 'info')
             else:
-                print("- No issues found")
+                self.logger.log("- No issues found", 'info')
             
             # =========================================================================
             # STANDARDIZED METRICS TABLE (CSV FORMAT)
             # =========================================================================
-            print(f"\n[STANDARDIZED METRICS TABLE]")
-            print("-" * 60)
+            self.logger.log(f"[STANDARDIZED METRICS TABLE]", 'info')
+            self.logger.log("-" * 60, 'info')
             
             # Get inference metrics from Phase 5
             inference_metrics = context.get('architecture_results', [])
@@ -319,22 +315,22 @@ class PipelineOrchestrator:
                 else:
                     csv_lines.append(f"{arch},Val,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A")
                 
-                # Inference metrics
+                # Inference metrics with Inf_ prefix
                 if inf_m:
                     csv_lines.append(
                         f"{arch},Inference,{loss},N/A,"
-                        f"{inf_m.get('precision', 0):.4f},"
-                        f"{inf_m.get('recall', 0):.4f},"
-                        f"{inf_m.get('auc', 0):.4f},"
-                        f"{inf_m.get('f1', 0):.4f},"
-                        f"{inf_m.get('tp', 0)},"
-                        f"{inf_m.get('fp', 0)},"
-                        f"{inf_m.get('tn', 0)},"
-                        f"{inf_m.get('fn', 0)},"
-                        f"{inf_m.get('max_pred', 0):.4f},"
-                        f"{inf_m.get('mean_pred', 0):.4f},"
-                        f"{inf_m.get('std_pred', 0):.4f},"
-                        f"{inf_m.get('pct_above_thresh', 0):.2f},"
+                        f"{inf_m.get('Inf_P', 0):.4f},"
+                        f"{inf_m.get('Inf_R', 0):.4f},"
+                        f"{inf_m.get('Inf_AUC', 0):.4f},"
+                        f"{inf_m.get('Inf_F1', 0):.4f},"
+                        f"{inf_m.get('Inf_TP', 0)},"
+                        f"{inf_m.get('Inf_FP', 0)},"
+                        f"{inf_m.get('Inf_TN', 0)},"
+                        f"{inf_m.get('Inf_FN', 0)},"
+                        f"{inf_m.get('Inf_MaxPred', 0):.4f},"
+                        f"{inf_m.get('Inf_MeanPred', 0):.4f},"
+                        f"{inf_m.get('Inf_StdPred', 0):.4f},"
+                        f"{inf_m.get('Inf_PctAboveThresh', 0):.2f},"
                         f"N/A,"
                         f"N/A,"
                         f"{inf_m.get('label_threshold', 0):.1f},"
@@ -342,10 +338,12 @@ class PipelineOrchestrator:
                         f"N/A,"
                         f"N/A,"
                         f"N/A,"
-                        f"{inf_m.get('inf_mcc', 0):.4f},"
-                        f"{inf_m.get('inf_prauc', 0):.4f},"
-                        f"{inf_m.get('inf_specificity', 0):.4f},"
-                        f"{inf_m.get('inf_balanced_acc', 0):.4f},"
+                        f"{inf_m.get('Inf_Spec', 0):.4f},"
+                        f"{inf_m.get('Inf_FPR', 0):.4f},"
+                        f"{inf_m.get('Inf_F2', 0):.4f},"
+                        f"{inf_m.get('Inf_MCC', 0):.4f},"
+                        f"{inf_m.get('Inf_PRAUC', 0):.4f},"
+                        f"{inf_m.get('Inf_BalAcc', 0):.4f},"
                         f"{inf_m.get('pred_threshold', 0.5):.2f}"
                     )
                 else:
@@ -353,45 +351,45 @@ class PipelineOrchestrator:
             
             # Print CSV
             for line in csv_lines:
-                print(line)
+                self.logger.log(line, 'info')
             
             # Save to file
             import os
             csv_filename = 'metrics_summary.csv'
             with open(csv_filename, 'w') as f:
                 f.write('\n'.join(csv_lines))
-            print(f"\n[INFO] CSV saved to {csv_filename}")
+            self.logger.log(f"[INFO] CSV saved to {csv_filename}", 'info')
             
             # Generate recommendations
-            print(f"\n[RECOMMENDED ACTIONS]")
-            print("-" * 60)
+            self.logger.log(f"[RECOMMENDED ACTIONS]", 'info')
+            self.logger.log("-" * 60, 'info')
             
             # Check for common issues
             low_precision_archs = [m.get('arch') for m in sorted_metrics if m.get('P', 0) < ensemble_threshold and m.get('P', 0) > 0]
             zero_precision_archs = [m.get('arch') for m in sorted_metrics if m.get('P', 0) == 0]
             
             if zero_precision_archs:
-                print(f"1. For {', '.join(zero_precision_archs)}: Try binary_crossentropy instead of FocalLoss")
+                self.logger.log(f"1. For {', '.join(zero_precision_archs)}: Try binary_crossentropy instead of FocalLoss", 'info')
             
             if low_precision_archs:
-                print(f"2. For {', '.join(low_precision_archs)}: Tune alpha/gamma in FocalLoss or lower prediction threshold")
+                self.logger.log(f"2. For {', '.join(low_precision_archs)}: Tune alpha/gamma in FocalLoss or lower prediction threshold", 'info')
             
             # Best performer
             best_arch = sorted_metrics[0].get('arch', 'Unknown') if sorted_metrics else 'None'
             best_p = sorted_metrics[0].get('P', 0) if sorted_metrics else 0
-            print(f"3. Use {best_arch} as primary (P={best_p:.4f})")
+            self.logger.log(f"3. Use {best_arch} as primary (P={best_p:.4f})", 'info')
             
-            print(f"\n[PARAMETER TUNING PRIORITY]")
-            print("-" * 60)
-            print("Priority 1: Loss Function (BCE vs FocalLoss) - highest impact")
-            print("Priority 2: FocalLoss Gamma - controls selectivity")
-            print("Priority 3: Learning Rate - convergence quality")
-            print("Priority 4: Dropout - capacity vs regularization")
+            self.logger.log(f"[PARAMETER TUNING PRIORITY]", 'info')
+            self.logger.log("-" * 60, 'info')
+            self.logger.log("Priority 1: Loss Function (BCE vs FocalLoss) - highest impact", 'info')
+            self.logger.log("Priority 2: FocalLoss Gamma - controls selectivity", 'info')
+            self.logger.log("Priority 3: Learning Rate - convergence quality", 'info')
+            self.logger.log("Priority 4: Dropout - capacity vs regularization", 'info')
             
             # =========================================================================
             # AUTO-APPLY CONFIG RECOMMENDATIONS
             # =========================================================================
-            print(f"\n[AUTO-APPLY] Analyzing config changes...")
+            self.logger.log(f"[AUTO-APPLY] Analyzing config changes...", 'info')
             
             # Get current config
             config = self.config
@@ -405,7 +403,7 @@ class PipelineOrchestrator:
             config_backup_file = 'config_backup_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.json'
             with open(config_backup_file, 'w') as f:
                 json.dump({k: str(v)[:100] for k, v in config.items()}, f, indent=2)
-            print(f"[BACKUP] Config saved to {config_backup_file}")
+            self.logger.log(f"[BACKUP] Config saved to {config_backup_file}", 'info')
             
             # Auto-apply logic
             hpo_space = config.get('HYPERPARAM_SEARCH_SPACE', {})
@@ -420,7 +418,7 @@ class PipelineOrchestrator:
                 
                 # Skip if precision is already above threshold
                 if p >= ensemble_threshold:
-                    print(f"[SKIP] {arch}: P={p:.4f} >= {ensemble_threshold} (working)")
+                    self.logger.log(f"[SKIP] {arch}: P={p:.4f} >= {ensemble_threshold} (working)", 'info')
                     continue
                 
                 # Get current HPO config for this architecture
@@ -431,7 +429,7 @@ class PipelineOrchestrator:
                 if p == 0:
                     if 'binary_crossentropy' in current_loss and 'focal_loss' in current_loss:
                         # Keep both in HPO, let next run try both
-                        print(f"[AUTO] {arch}: P=0 - Will try both BCE and FocalLoss in next run")
+                        self.logger.log(f"[AUTO] {arch}: P=0 - Will try both BCE and FocalLoss in next run", 'info')
                         changes_applied.append(f"{arch}: P=0 - keeping both loss options")
                     else:
                         # Add binary_crossentropy to options
@@ -442,7 +440,7 @@ class PipelineOrchestrator:
                                 new_loss = ['binary_crossentropy', 'focal_loss']
                             hpo_space[arch]['loss_function'] = new_loss
                             changes_applied.append(f"{arch}: Added BCE to loss options (was: {current_loss})")
-                            print(f"[AUTO] {arch}: Added BCE to loss options")
+                            self.logger.log(f"[AUTO] {arch}: Added BCE to loss options", 'info')
                 
                 # Rule 2: If precision below threshold but > 0, adjust alpha/gamma
                 elif p < ensemble_threshold and p > 0:
@@ -456,7 +454,7 @@ class PipelineOrchestrator:
                             new_alpha = current_alpha + [min(1.5, max_alpha + 0.25)]
                             hpo_space[arch]['alpha'] = new_alpha
                             changes_applied.append(f"{arch}: Expanded alpha to {new_alpha}")
-                            print(f"[AUTO] {arch}: Expanded alpha range to {new_alpha}")
+                            self.logger.log(f"[AUTO] {arch}: Expanded alpha range to {new_alpha}", 'info')
                     
                     # Expand gamma range to include lower values
                     if isinstance(current_gamma, list):
@@ -465,7 +463,7 @@ class PipelineOrchestrator:
                             new_gamma = [max(0.5, min_gamma - 0.5)] + current_gamma
                             hpo_space[arch]['gamma'] = new_gamma
                             changes_applied.append(f"{arch}: Expanded gamma to {new_gamma}")
-                            print(f"[AUTO] {arch}: Expanded gamma range to {new_gamma}")
+                            self.logger.log(f"[AUTO] {arch}: Expanded gamma range to {new_gamma}", 'info')
             
             # Update config with new HPO space
             if changes_applied:
@@ -473,22 +471,22 @@ class PipelineOrchestrator:
                 
                 # Save updated config
                 config_file = 'chunk_01_config.py'
-                print(f"\n[SUCCESS] Applied {len(changes_applied)} config changes:")
+                self.logger.log(f"[SUCCESS] Applied {len(changes_applied)} config changes:", 'info')
                 for change in changes_applied:
-                    print(f"   - {change}")
+                    self.logger.log(f"   - {change}", 'info')
                 
                 # Note: Manual update of chunk_01_config.py required
-                print(f"\n[NOTE] Please manually update {config_file} with:")
-                print("   HPO space has been adjusted based on results")
-                print("   Review the changes above and re-run pipeline")
+                self.logger.log(f"[NOTE] Please manually update {config_file} with:", 'info')
+                self.logger.log("   HPO space has been adjusted based on results", 'info')
+                self.logger.log("   Review the changes above and re-run pipeline", 'info')
             else:
-                print(f"[INFO] No config changes needed (all architectures working)")
+                self.logger.log(f"[INFO] No config changes needed (all architectures working)", 'info')
             
             # =========================================================================
             # ADDITIONAL AUTO-TUNE RULES (PRINTED ONLY)
             # =========================================================================
-            print(f"\n[ADDITIONAL AUTO-TUNE RULES] (printed only)")
-            print("-" * 60)
+            self.logger.log(f"[ADDITIONAL AUTO-TUNE RULES] (printed only)", 'info')
+            self.logger.log("-" * 60, 'info')
             
             additional_rules_triggered = []
             
@@ -506,44 +504,42 @@ class PipelineOrchestrator:
                 # Rule 1: Check epochs trained (patience issue)
                 if epochs_trained > 0 and epochs_trained <= 3:
                     msg = f"Increase patience for {arch} (only {epochs_trained} epochs)"
-                    print(f"[RULE1] {msg}")
+                    self.logger.log(f"[RULE1] {msg}", 'info')
                     additional_rules_triggered.append(msg)
                 
                 # Rule 2: Check train/val precision gap (overfitting)
                 if train_p > 0 and p > 0 and (train_p - p) > 0.1:
                     gap = train_p - p
                     msg = f"Expand dropout range for {arch} (train_P={train_p:.4f} >> val_P={p:.4f}, gap={gap:.4f})"
-                    print(f"[RULE2] {msg}")
+                    self.logger.log(f"[RULE2] {msg}", 'info')
                     additional_rules_triggered.append(msg)
                 
                 # Rule 3: Check recall (minimum coverage)
                 if r > 0 and r < 0.05:
                     msg = f"Expand label_threshold search for {arch} (recall={r:.4f} too low, need >=0.05)"
-                    print(f"[RULE3] {msg}")
+                    self.logger.log(f"[RULE3] {msg}", 'info')
                     additional_rules_triggered.append(msg)
                 
                 # Rule 4: Check AUC (barely better than random)
                 if auc > 0 and auc < 0.55:
                     msg = f"Flag {arch} for feature engineering review (AUC={auc:.4f} barely above random 0.50)"
-                    print(f"[RULE4] {msg}")
+                    self.logger.log(f"[RULE4] {msg}", 'info')
                     additional_rules_triggered.append(msg)
                 
                 # Rule 5: Check positive prediction rate (too few predictions)
                 if pred_total > 0 and pred_total < 50:
                     pct = (pred_total / len(sorted_metrics)) * 100 if len(sorted_metrics) > 0 else 0
                     msg = f"Increase predictions for {arch} (only {pred_total} positive predictions)"
-                    print(f"[RULE5] {msg}")
+                    self.logger.log(f"[RULE5] {msg}", 'info')
                     additional_rules_triggered.append(msg)
             
             if not additional_rules_triggered:
-                print("[INFO] No additional auto-tune rules triggered")
+                self.logger.log("[INFO] No additional auto-tune rules triggered", 'info')
             
         else:
-            print("[WARNING] No architecture metrics found in context")
+            self.logger.log("[WARNING] No architecture metrics found in context", 'warning')
         
-        print(f"\n{'='*60}")
-        print("END OF METRICS REVIEW")
-        print('='*60)
+        self.logger.log("END OF METRICS REVIEW", 'info')
         
         return context
 
@@ -629,9 +625,7 @@ if __name__ == "__main__":
     # Run pipeline with default configuration
     try:
         result = main()
-        print("\n" + "="*60)
         print("Fraud Detection Pipeline completed successfully!")
-        print("="*60)
         
     except FileNotFoundError as e:
         print(f"\n[ERROR] CRITICAL ERROR: Data file not found")

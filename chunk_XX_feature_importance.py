@@ -34,10 +34,22 @@ CONFIG_FEATURE_ANALYSIS = {
 
 
 class FeatureImportanceAnalyzer:
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: Optional[Dict] = None, logger=None):
         self.config = {**CONFIG_FEATURE_ANALYSIS, **(config or {})}
         self.results = {}
         self.timings = {}
+        self.logger = logger
+
+    def _log(self, msg: str, level: str = 'info'):
+        if self.logger:
+            self.logger.log(msg, level)
+        else:
+            print(msg)
+
+    def _log_top_features(self, label: str, df: pd.DataFrame, score_col: str, n: int = 5):
+        top = df.head(n)
+        parts = [f"{row['feature']}={row[score_col]:.6f}" for _, row in top.iterrows()]
+        self._log(f"  Top {n} by {label}: {' | '.join(parts)}")
     
     def run_full_analysis(
         self,
@@ -49,97 +61,142 @@ class FeatureImportanceAnalyzer:
         trained_dense_model: Any = None
     ) -> Dict[str, Any]:
         start_time = time.time()
-        results = {}
+        results_by_threshold = {}  # Dict indexed by threshold
         n_features = X.shape[1]
         
-        y_binary_t2 = (y_raw >= self.config['ABLATON_THRESHOLD']).astype(int)
+        # Get thresholds from config (synchronized with Phase 4)
+        first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
+        last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
+        thresh_step = self.config.get('THRESHOLD_STEP', -2.0)
+        thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         
-        X_train, X_val, y_train_bin, y_val_bin = train_test_split(
-            X, y_binary_t2, test_size=0.2, random_state=42, stratify=y_binary_t2
-        )
+        self._log(f"Starting 6-method feature importance analysis")
+        self._log(f"Features: {n_features}, Samples: {X.shape[0]}")
+        self._log(f"Running at {len(thresholds)} Label_Thresholds: {first_thresh} to {last_thresh}")
         
-        print(f"[FeatureAnalysis] Starting 6-method feature importance analysis")
-        print(f"[FeatureAnalysis] Features: {n_features}, Samples: {X.shape[0]}")
-        print(f"[FeatureAnalysis] Positive rate (t=2.0): {y_binary_t2.mean():.3%}")
+        for thresh in thresholds:
+            y_binary = (y_raw >= thresh).astype(int)
+            self._log(f"Label_Threshold={thresh:.1f}")
+            self._log(f"Positive rate: {y_binary.mean():.3%}")
+            
+            X_train, X_val, y_train_bin, y_val_bin = train_test_split(
+                X, y_binary, test_size=0.2, random_state=42, stratify=y_binary
+            )
+            
+            results = {}  # Results for this threshold
+            
+            # Method 1: Statistical Correlation
+            self._log(f"Method 1/6: Statistical Correlation...")
+            t0 = time.time()
+            results['correlation'] = self._analyze_correlation(X, y_raw, feature_names)
+            results['correlation_timing'] = time.time() - t0
+            self._log(f"  Done in {results['correlation_timing']:.1f}s")
+            self._log_top_features("Correlation", results['correlation'], 'spearman_abs')
+            
+            # Method 2: Tree-Based Importance
+            self._log(f"Method 2/6: Tree-Based Importance...")
+            t0 = time.time()
+            results['tree'] = self._analyze_tree(X, y_binary, feature_names)
+            results['tree_timing'] = time.time() - t0
+            self._log(f"  Done in {results['tree_timing']:.1f}s")
+            self._log_top_features("Tree", results['tree'], 'combined_importance')
+            
+            # Method 3: Permutation Importance
+            self._log(f"Method 3/6: Permutation Importance...")
+            t0 = time.time()
+            results['permutation'] = self._analyze_permutation(
+                X_train, y_train_bin, X_val, y_val_bin, feature_names
+            )
+            results['permutation_timing'] = time.time() - t0
+            self._log(f"  Done in {results['permutation_timing']:.1f}s")
+            self._log_top_features("Permutation", results['permutation'], 'auc_drop')
+            
+            # Method 4: Neural Weight Analysis
+            self._log(f"Method 4/6: Neural Weight Analysis...")
+            t0 = time.time()
+            results['neural'] = self._analyze_neural(X_train, y_train_bin, feature_names, trained_dense_model)
+            results['neural_timing'] = time.time() - t0
+            self._log(f"  Done in {results['neural_timing']:.1f}s")
+            self._log_top_features("Neural", results['neural'], 'mean_abs_weight')
+            
+            # Method 5: SHAP Values
+            self._log(f"Method 5/6: SHAP Values...")
+            t0 = time.time()
+            results['shap'] = self._analyze_shap(X_train, y_train_bin, feature_names, trained_dense_model)
+            results['shap_timing'] = time.time() - t0
+            self._log(f"  Done in {results['shap_timing']:.1f}s")
+            self._log_top_features("SHAP", results['shap'], 'mean_abs_shap')
+            
+            # Method 6: Ablation Study
+            self._log(f"Method 6/6: Ablation Study...")
+            t0 = time.time()
+            results['ablation'] = self._analyze_ablation(X_train, y_train_bin, X_val, y_val_bin, feature_names)
+            results['ablation_timing'] = time.time() - t0
+            self._log(f"  Done in {results['ablation_timing']:.1f}s")
+            self._log_top_features("Ablation", results['ablation'], 'auc')
+            
+            # Compute consolidated ranking for this threshold
+            self._log(f"Computing consolidated ranking...")
+            consolidated = self._compute_consolidated_ranking(results, feature_names)
+            results['consolidated'] = consolidated
+            top10 = consolidated.head(10)
+            parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in top10.iterrows()]
+            self._log(f"  Consolidated Top 10: {' | '.join(parts)}")
+            bottom3 = consolidated.tail(3)
+            parts = [f"{r['feature']}={r['mean_rank']:.2f}" for _, r in bottom3.iterrows()]
+            self._log(f"  Bottom 3: {' | '.join(parts)}")
+            
+            # Determine pruned features for this threshold
+            prune_pct = self.config['FEATURE_PRUNE_PERCENTILE']
+            n_keep = max(1, int(n_features * (100 - prune_pct) / 100))
+            kept_indices = consolidated.head(n_keep)['index'].tolist()
+            dropped_indices = [i for i in range(n_features) if i not in kept_indices]
+            results['dropped_indices'] = dropped_indices
+            results['kept_indices'] = kept_indices
+            
+            results_by_threshold[thresh] = results
+            self._log(f"Done for Label_Threshold={thresh:.1f}: {len(dropped_indices)} pruned")
         
-        # Method 1: Statistical Correlation
-        print(f"\n[FeatureAnalysis] Method 1/6: Statistical Correlation...")
-        t0 = time.time()
-        results['correlation'] = self._analyze_correlation(X, y_raw, feature_names)
-        self.timings['correlation'] = time.time() - t0
-        print(f"[FeatureAnalysis]   Done in {self.timings['correlation']:.1f}s")
+        # Cross-threshold stability summary
+        n_thresh = len(thresholds)
+        drop_counts = {name: sum(1 for t, r in results_by_threshold.items()
+                                 if i in r['dropped_indices'])
+                       for i, name in enumerate(feature_names)}
+        always_pruned = sorted([f for f, c in drop_counts.items() if c == n_thresh])
+        never_pruned = sorted([f for f, c in drop_counts.items() if c == 0])
+        borderline = {f: c for f, c in sorted(drop_counts.items()) if 0 < c < n_thresh}
+        self._log(f"[CROSS-THRESHOLD] Always pruned ({n_thresh}/{n_thresh}): {always_pruned}")
+        self._log(f"[CROSS-THRESHOLD] Never pruned (0/{n_thresh}): {never_pruned}")
+        self._log(f"[CROSS-THRESHOLD] Borderline: {borderline}")
         
-        # Method 2: Tree-Based Importance
-        print(f"[FeatureAnalysis] Method 2/6: Tree-Based Importance...")
-        t0 = time.time()
-        results['tree'] = self._analyze_tree(X, y_binary_t2, feature_names)
-        self.timings['tree'] = time.time() - t0
-        print(f"[FeatureAnalysis]   Done in {self.timings['tree']:.1f}s")
+        # Use results from first threshold for return (unless specified otherwise)
+        # This maintains backward compatibility while storing all thresholds
+        first_thresh = thresholds[0]
+        results = results_by_threshold[first_thresh]
         
-        # Method 3: Permutation Importance
-        print(f"[FeatureAnalysis] Method 3/6: Permutation Importance...")
-        t0 = time.time()
-        results['permutation'] = self._analyze_permutation(
-            X_train, y_train_bin, X_val, y_val_bin, feature_names
-        )
-        self.timings['permutation'] = time.time() - t0
-        print(f"[FeatureAnalysis]   Done in {self.timings['permutation']:.1f}s")
-        
-        # Method 4: Neural Weight Analysis
-        print(f"[FeatureAnalysis] Method 4/6: Neural Weight Analysis...")
-        t0 = time.time()
-        results['neural'] = self._analyze_neural(X_train, y_train_bin, feature_names, trained_dense_model)
-        self.timings['neural'] = time.time() - t0
-        print(f"[FeatureAnalysis]   Done in {self.timings['neural']:.1f}s")
-        
-        # Method 5: SHAP Values
-        print(f"[FeatureAnalysis] Method 5/6: SHAP Values...")
-        t0 = time.time()
-        results['shap'] = self._analyze_shap(X_train, y_train_bin, feature_names, trained_dense_model)
-        self.timings['shap'] = time.time() - t0
-        print(f"[FeatureAnalysis]   Done in {self.timings['shap']:.1f}s")
-        
-        # Method 6: Ablation Study
-        print(f"[FeatureAnalysis] Method 6/6: Ablation Study...")
-        t0 = time.time()
-        results['ablation'] = self._analyze_ablation(X_train, y_train_bin, X_val, y_val_bin, feature_names)
-        self.timings['ablation'] = time.time() - t0
-        print(f"[FeatureAnalysis]   Done in {self.timings['ablation']:.1f}s")
-        
-        # Compute consolidated ranking
-        print(f"\n[FeatureAnalysis] Computing consolidated ranking...")
-        consolidated = self._compute_consolidated_ranking(results, feature_names)
-        results['consolidated'] = consolidated
-        
-        # Determine pruned features
-        prune_pct = self.config['FEATURE_PRUNE_PERCENTILE']
-        n_keep = max(1, int(n_features * (100 - prune_pct) / 100))
-        kept_indices = consolidated.head(n_keep)['index'].tolist()
-        dropped_indices = [i for i in range(n_features) if i not in kept_indices]
-        dropped_names = [feature_names[i] for i in dropped_indices]
-        kept_names = [feature_names[i] for i in kept_indices]
-        
-        # Compute correlation matrix
-        print(f"[FeatureAnalysis] Computing feature correlation matrix...")
+        # Compute correlation matrix (using full data)
+        self._log(f"Computing feature correlation matrix...")
         corr_matrix = np.corrcoef(X.T) if X.shape[1] > 1 else np.array([[1.0]])
         
         total_time = time.time() - start_time
         self.timings['total'] = total_time
         
-        print(f"\n[FeatureAnalysis] TOTAL TIME: {total_time:.1f}s ({total_time/60:.1f} min)")
-        print(f"[FeatureAnalysis] FEATURES: {n_features} total → {n_keep} kept, {len(dropped_indices)} pruned")
-        print(f"[FeatureAnalysis] DROPPED: {dropped_names}")
+        self._log(f"TOTAL TIME: {total_time:.1f}s ({total_time/60:.1f} min)")
+        self._log(f"FEATURES: {n_features} total -> {n_keep} kept, {len(dropped_indices)} pruned")
+        self._log(f"DROPPED: {[feature_names[i] for i in dropped_indices]}")
         
         return {
             'results': results,
-            'kept_indices': kept_indices,
-            'dropped_indices': dropped_indices,
-            'kept_names': kept_names,
-            'dropped_names': dropped_names,
+            'results_by_threshold': results_by_threshold,
+            'kept_indices': results['kept_indices'],
+            'dropped_indices': results['dropped_indices'],
+            'kept_names': [feature_names[i] for i in results['kept_indices']],
+            'dropped_names': [feature_names[i] for i in results['dropped_indices']],
             'corr_matrix': corr_matrix,
             'timings': self.timings,
             'n_features_original': n_features,
             'n_features_pruned': n_keep,
+            'thresholds': thresholds.tolist(),
         }
     
     def _analyze_correlation(
@@ -243,7 +300,7 @@ class FeatureImportanceAnalyzer:
         model.fit(X_train, y_train, epochs=10, batch_size=256, verbose=0)
         
         base_auc = roc_auc_score(y_val, model.predict(X_val, verbose=0).flatten())
-        print(f"[FeatureAnalysis]   Permutation baseline AUC: {base_auc:.4f}")
+        self._log(f"  Permutation baseline AUC: {base_auc:.4f}")
         
         importance_scores = []
         n_repeats = self.config['PERMUTATION_REPEATS']
@@ -302,7 +359,7 @@ class FeatureImportanceAnalyzer:
         tf_logger.setLevel(old_level)
         
         if weights is None:
-            print(f"[FeatureAnalysis]   WARNING: Could not extract input weights, using random")
+            self._log(f"  WARNING: Could not extract input weights, using random", 'warning')
             return pd.DataFrame({
                 'feature': feature_names,
                 'index': range(len(feature_names)),
@@ -329,7 +386,7 @@ class FeatureImportanceAnalyzer:
         try:
             import shap
         except ImportError:
-            print(f"[FeatureAnalysis]   SHAP not available, using fallback")
+            self._log(f"  SHAP not available, using fallback", 'warning')
             return pd.DataFrame({
                 'feature': feature_names,
                 'index': range(len(feature_names)),
@@ -366,7 +423,7 @@ class FeatureImportanceAnalyzer:
             
             mean_abs_shap = np.mean(np.abs(shap_values), axis=0)
         except Exception as e:
-            print(f"[FeatureAnalysis]   SHAP failed: {e}, using fallback")
+            self._log(f"  SHAP failed: {e}, using fallback", 'warning')
             mean_abs_shap = np.random.rand(len(feature_names))
         
         df = pd.DataFrame({
@@ -527,18 +584,18 @@ class FeatureImportanceAnalyzer:
     
     def save_report(self, analysis_results: Dict, output_path: str = './feature_importance_report.txt') -> None:
         report = self.generate_report(analysis_results)
-        print(f"\n{report}")
+        self._log(f"{report}")
         
         with open(output_path, 'w') as f:
             f.write(report)
-        print(f"[FeatureAnalysis] Report saved to {output_path}")
+        self._log(f"Report saved to {output_path}")
         
         results = analysis_results['results']
         consolidated = results.get('consolidated')
         if consolidated is not None:
             csv_path = output_path.replace('.txt', '.csv')
             consolidated.to_csv(csv_path, index=False)
-            print(f"[FeatureAnalysis] Consolidated ranking saved to {csv_path}")
+            self._log(f"Consolidated ranking saved to {csv_path}")
         
         meta_path = output_path.replace('.txt', '_meta.json')
         with open(meta_path, 'w') as f:
@@ -549,7 +606,7 @@ class FeatureImportanceAnalyzer:
                 'kept_names': analysis_results['kept_names'],
                 'timings': analysis_results['timings'],
             }, f, indent=2)
-        print(f"[FeatureAnalysis] Metadata saved to {meta_path}")
+        self._log(f"Metadata saved to {meta_path}")
 
 
 if __name__ == "__main__":

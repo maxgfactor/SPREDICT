@@ -66,11 +66,25 @@ class Phase1_PipelineSetup(BasePhase):
                 # Check for extreme values
                 if np.nanmax(raw_target) > 100:
                     self.logger.log(f"SANITY CHECK: Extreme target values detected (max={np.nanmax(raw_target):.2f})", 'warning')
-                # Count samples above key thresholds
-                for thresh in [5, 10, 20, 25]:
-                    count = int(np.sum(raw_target >= thresh))
-                    pct = count / len(raw_target) * 100
-                    self.logger.log(f"   Samples >= {thresh}: {count:,} ({pct:.2f}%)", 'info')
+                # Class distribution for ENTIRE dataset at all thresholds (full detail)
+                first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
+                last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
+                thresh_step = self.config.get('THRESHOLD_STEP', -2.0)
+                thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
+
+                for thresh in thresholds:
+                    y_binary = (raw_target >= thresh).astype(int)
+                    fraud_count = int(np.sum(y_binary))
+                    normal_count = len(y_binary) - fraud_count
+                    total = len(y_binary)
+                    fraud_rate = fraud_count / total
+                    imbalance_ratio = max(fraud_count, normal_count) / min(fraud_count, normal_count) if min(fraud_count, normal_count) > 0 else float('inf')
+                    
+                    self.logger.log(f"[CLASS] Class Distribution (Label_Threshold={thresh:>4.1f}):", 'info')
+                    self.logger.log(f"  Total samples: {total:,}", 'info')
+                    self.logger.log(f"  Fraud cases: {fraud_count:,} ({fraud_rate:.1%})", 'info')
+                    self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
+                    self.logger.log(f"  Imbalance ratio: {imbalance_ratio:.1f}:1", 'info')
         
         # Calculate data statistics
         stats = {
@@ -80,10 +94,26 @@ class Phase1_PipelineSetup(BasePhase):
             'n_features': X.shape[1]
         }
         
-        # Log data quality - use FIRST_THRESHOLD from config for class distribution
-        first_threshold = self.config.get('FIRST_THRESHOLD', 24.9)
-        y_binary = (y >= first_threshold).astype(int)
-        self.logger.log_class_distribution(y_binary)
+        # Log full class distribution for ALL thresholds (synchronized with Phase 4)
+        first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
+        last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
+        thresh_step = self.config.get('THRESHOLD_STEP', -2.0)
+        thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
+
+        for thresh in thresholds:
+            y_binary = (y >= thresh).astype(int)
+            fraud_count = int(np.sum(y_binary))
+            normal_count = len(y_binary) - fraud_count
+            total = len(y_binary)
+            fraud_rate = fraud_count / total
+            imbalance_ratio = max(fraud_count, normal_count) / min(fraud_count, normal_count) if min(fraud_count, normal_count) > 0 else float('inf')
+            
+            self.logger.log(f"[CLASS] Class Distribution (Label_Threshold={thresh:>4.1f}):", 'info')
+            self.logger.log(f"  Total samples: {total:,}", 'info')
+            self.logger.log(f"  Fraud cases: {fraud_count:,} ({fraud_rate:.1%})", 'info')
+            self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
+            self.logger.log(f"  Imbalance ratio: {imbalance_ratio:.1f}:1", 'info')
+        
         self.logger.log_temporal_coverage(dates)
         self.logger.log_feature_quality_metrics(X)
         
@@ -122,16 +152,72 @@ class Phase1_PipelineSetup(BasePhase):
         self.logger.log(f"  Feature names ({len(feature_names)}): {feature_names}", 'info')
         
         # Update context with Phase 1 results
+        # =========================================================================
+        # DATA SPLIT: Extract inference FIRST, then split remaining into train/val
+        # =========================================================================
+        
+        unique_dates = np.unique(dates)
+        n_dates = len(unique_dates)
+        
+        # Inference: newest date(s) - extracted FIRST
+        inference_date = unique_dates[-1]
+        inference_mask = dates == inference_date
+        
+        # Remaining dates: oldest to second-newest
+        remaining_mask = ~inference_mask
+        remaining_dates = dates[remaining_mask]
+        remaining_unique_dates = np.unique(remaining_dates)
+        
+        # Train/Val split on REMAINING data (70/30)
+        val_pct = self.config.get('VAL_SPLIT_PERCENTAGE', 0.30)
+        n_remaining = len(remaining_unique_dates)
+        n_train_dates = int(n_remaining * (1 - val_pct))
+        
+        train_dates_threshold = remaining_unique_dates[n_train_dates] if n_train_dates > 0 else remaining_unique_dates[0]
+        
+        train_mask = remaining_mask & (dates < train_dates_threshold)
+        val_mask = remaining_mask & (dates >= train_dates_threshold)
+        
+        # Extract data subsets
+        X_train = X[train_mask]
+        y_train_continuous = y[train_mask]
+        dates_train = dates[train_mask]
+        
+        X_val = X[val_mask]
+        y_val_continuous = y[val_mask]
+        dates_val = dates[val_mask]
+        
+        X_inference = X[inference_mask]
+        y_inference_continuous = y[inference_mask]
+        dates_inference = dates[inference_mask]
+        
+        # Log split summary
+        self.logger.log("[DATA SPLIT] Summary:", 'info')
+        self.logger.log(f"  Total: {len(X):,} samples, {n_dates} dates", 'info')
+        self.logger.log(f"  Train: {len(X_train):,} samples ({train_mask.sum() / len(X):.1%}), dates < {train_dates_threshold}", 'info')
+        self.logger.log(f"  Val: {len(X_val):,} samples ({val_mask.sum() / len(X):.1%}), dates >= {train_dates_threshold}", 'info')
+        self.logger.log(f"  Inference: {len(X_inference):,} samples ({inference_mask.sum() / len(X):.1%}), date = {inference_date}", 'info')
+        
         context.update({
             'X': X,
             'y': y,
             'dates': dates,
-            'features': [X],  # Feature engineering outputs (simplified)
+            'features': [X],
             'feature_names': feature_names,
             'data_stats': stats,
             'raw_target_values': raw_target_values if raw_target_values is not None else y,
             'raw_target_column': raw_target_column if raw_target_column is not None else -1,
-            'phase1_complete': True
+            'phase1_complete': True,
+            # Data splits for downstream phases
+            'X_train': X_train,
+            'y_train_continuous': y_train_continuous,
+            'dates_train': dates_train,
+            'X_val': X_val,
+            'y_val_continuous': y_val_continuous,
+            'dates_val': dates_val,
+            'X_inference': X_inference,
+            'y_inference_continuous': y_inference_continuous,
+            'dates_inference': dates_inference,
         })
         
         self.logger.log("Phase 1 completed successfully", 'info')

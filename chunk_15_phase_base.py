@@ -18,6 +18,7 @@ class BasePhase(ABC):
             config: Configuration dictionary
         """
         self.config = config
+        self.logger = None
     
     @abstractmethod
     def execute(self, context: Dict) -> Dict:

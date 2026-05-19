@@ -41,13 +41,14 @@ class ModelTrainer:
             return BinaryFocalCrossentropy(alpha=alpha, gamma=gamma)
         return 'binary_crossentropy'
     
-    def build_architecture(self, arch_name: str, input_dim: int) -> Any:
+    def build_architecture(self, arch_name: str, input_dim: int, y_train: np.ndarray = None) -> Any:
         """
         Build specific neural architecture
         
         Args:
             arch_name: Architecture name
             input_dim: Input dimension
+            y_train: Training labels for dynamic class weight (optional, for sklearn models)
             
         Returns:
             Built model
@@ -66,7 +67,8 @@ class ModelTrainer:
         )
         from chunk_11_models_sklearn import (
             build_isolation_forest_model, build_oneclass_svm_model, build_svm_model,
-            build_lightgbm_model, build_xgboost_model, build_catboost_model
+            build_lightgbm_model, build_xgboost_model, build_catboost_model,
+            calculate_dynamic_class_weight
         )
         
         # Architecture mapping
@@ -101,7 +103,7 @@ class ModelTrainer:
         loss_fn = self.get_loss_function()
         
         if builder is None:
-            print(f"Warning: Unknown architecture '{arch_name}', using fallback")
+            self.logger.log(f"Warning: Unknown architecture '{arch_name}', using fallback", 'warning')
             return build_dense_model(self.config, input_dim, loss_fn)
         
         try:
@@ -109,11 +111,11 @@ class ModelTrainer:
             if arch_name in ['Isolation_Forest', 'OneClass_SVM', 'SVM', 
                            'Bagging_RandomForest', 'ExtraTrees_Ensemble', 'LightGBM',
                            'XGBoost', 'CatBoost']:
-                return builder(self.config, input_dim)
+                return builder(self.config, input_dim, y_train)
             else:
                 return builder(self.config, input_dim, loss_fn)
         except Exception as e:
-            print(f"Warning: Failed to build {arch_name}: {e}, using fallback")
+            self.logger.log(f"Warning: Failed to build {arch_name}: {e}, using fallback", 'warning')
             return build_dense_model(self.config, input_dim, loss_fn)
     
     def build_architecture_with_params(self, arch_name: str, input_dim: int, 
@@ -161,7 +163,7 @@ class ModelTrainer:
         loss_fn = self.get_loss_function()
         
         if builder is None:
-            print(f"Warning: Unknown architecture '{arch_name}', using fallback")
+            self.logger.log(f"Warning: Unknown architecture '{arch_name}', using fallback", 'warning')
             return build_dense_model(self.config, input_dim, loss_fn)
         
         try:
@@ -218,7 +220,7 @@ class ModelTrainer:
             else:
                 return builder(merged_config, input_dim, effective_loss_fn)
         except Exception as e:
-            print(f"Warning: Failed to build {arch_name} with params {hyperparams}: {e}")
+            self.logger.log(f"Warning: Failed to build {arch_name} with params {hyperparams}: {e}", 'warning')
             return build_dense_model(self.config, input_dim, loss_fn)
     
     def train_model(self, model: tf.keras.Model, X: np.ndarray, y: np.ndarray,
@@ -240,6 +242,10 @@ class ModelTrainer:
         Returns:
             Tuple of (trained_model, history)
         """
+        # Check if sklearn model - route to sklearn trainer
+        if hasattr(model, 'sklearn_model'):
+            return self._train_sklearn_model(model, X, y)
+        
         # Create validation split if not provided
         if validation_data is None:
             X_train, X_val, y_train, y_val = train_test_split(

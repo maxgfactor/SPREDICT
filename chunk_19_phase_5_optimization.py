@@ -39,6 +39,7 @@ from chunk_12_evaluation_evaluator import Evaluator
 from chunk_14_models_trainer import ModelTrainer
 from chunk_05_data_manager import DataManager
 from chunk_11_models_sklearn import FocalLoss
+from chunk_04_utils_metrics import inverse_log_transform
 
 
 class Phase5_PredictionOptimization(BasePhase):
@@ -98,68 +99,74 @@ class Phase5_PredictionOptimization(BasePhase):
         self.logger.log(f"Loaded architectures: {list(models.keys())}", 'info')
         
         # =========================================================================
-        # STEP 2: Load preprocessing parameters
+        # STEP 2: Receive data from context (NO CSV loading)
         # =========================================================================
-        self.logger.log("Loading preprocessing parameters...", 'info')
-        preprocess_params = load_preprocessing_params(models_path)
+        self.logger.log("Phase 5: Prediction Optimization", 'info')
+        self.logger.log("Receiving inference data from context (NO CSV loading)...", 'info')
         
-        temporal_weights = preprocess_params.get('temporal_weights', {})
-        feature_names = preprocess_params.get('feature_names', [])
-        all_dates = preprocess_params.get('all_dates', {})
+        # Get data from context
+        X_inference = context.get('X_inference')
+        y_inference_continuous = context.get('y_inference_continuous')
+        dates_inference = context.get('dates_inference', np.array([]))
+        context_feature_names = context.get('feature_names', [])
+        temporal_weights = context.get('temporal_weights', np.ones(len(X_inference)) if X_inference is not None else np.array([]))
         
-        self.logger.log(f"  temporal_weights: {len(temporal_weights)} entries", 'info')
-        self.logger.log(f"  Feature names ({len(feature_names)}): {feature_names}", 'info')
-        self.logger.log(f"  all_dates: {len(all_dates)} dates", 'info')
-        
-        # =========================================================================
-        # STEP 3: Load fresh data and find highest/newest date
-        # =========================================================================
-        self.logger.log(f"Loading data from {data_path}...", 'info')
-        
-        import pandas as pd
-        
-        # Load data
-        df = pd.read_csv(data_path)
-        self.logger.log(f"  Loaded {len(df)} rows", 'info')
-        
-        # Find highest/newest dates in the data
-        unique_dates = sorted(df['date'].unique())
-        inference_date = unique_dates[-2]  # Second highest/newest date (newest is held out)
-        newest_held_out = unique_dates[-1]  # Newest date is held out
-        self.logger.log(f"  Second newest date for inference: {inference_date}", 'info')
-        self.logger.log(f"  Newest date held out: {newest_held_out}", 'info')
-        
-        # Filter for only the inference date (second newest)
-        df_filtered = df[df['date'] == inference_date].copy()
-        self.logger.log(f"  Filtered to {len(df_filtered)} rows for date {inference_date}", 'info')
-        
-        if len(df_filtered) == 0:
-            self.logger.log("ERROR: No data found for inference date!", 'error')
+        # Validate
+        if X_inference is None:
+            self.logger.log("[ERROR] X_inference not found in context!", 'error')
             context.update({'phase5_complete': True})
             return context
         
+        n_inference = len(X_inference)
+        self.logger.log(f"  Inference samples: {n_inference:,}", 'info')
+        self.logger.log(f"  Inference date(s): {np.unique(dates_inference)}", 'info')
+        self.logger.log(f"  Feature count: {X_inference.shape[1]}", 'info')
+        
         # =========================================================================
-        # STEP 4: Prepare features (X) and labels (y) for inference
+        # STEP 3: Prepare inference data (RAW, NO temporal weighting)
         # =========================================================================
-        target_col = self.config.get('TARGET_COLUMN', 'ChangeY')
+        # Use X_inference directly - NO temporal weighting applied
+        X_raw = X_inference
+
+        pruned_indices = context.get('pruned_feature_indices', None)
+        if pruned_indices is not None:
+            n_original = X_raw.shape[1]
+            X_raw = X_raw[:, pruned_indices]
+            self.logger.log(f"  Feature pruning applied: {n_original} -> {X_raw.shape[1]} features", 'info')
+        else:
+            self.logger.log(f"  [WARNING] pruned_feature_indices not in context - using raw features", 'warning')
+        y_val_continuous = y_inference_continuous if y_inference_continuous is not None else np.zeros(n_inference)
         
-        # Extract features and labels
-        X_raw = df_filtered[feature_names].values if feature_names else df_filtered.iloc[:, 1:].values
-        y_raw = df_filtered[target_col].values
+        # Get threshold info from config
+        label_threshold = self.config.get('FIRST_THRESHOLD', 20.0)
         
-        # Keep DataFrame with all columns for fraud row output
-        df_with_all_cols = df_filtered[feature_names + [target_col]].copy()
+        self.logger.log(f"  Label threshold: {label_threshold}", 'info')
+        self.logger.log(f"  Inference data: RAW (no temporal weighting applied)", 'info')
         
-        self.logger.log(f"  X shape: {X_raw.shape}", 'info')
-        self.logger.log(f"  y shape: {y_raw.shape}", 'info')
+        # Feature names from context
+        feature_names = context_feature_names
+        
+        # Keep original data for output
+        import pandas as pd
+        df_with_all_cols = context.get('df_inference', None)
+        if df_with_all_cols is None and X_inference is not None:
+            fn = context.get('feature_names', [])
+            if fn and len(fn) == X_inference.shape[1]:
+                df_with_all_cols = pd.DataFrame(X_inference, columns=fn)
+        
+        self.logger.log(f"  X shape (RAW, no weighting): {X_raw.shape}", 'info')
+        self.logger.log(f"  y shape: {y_val_continuous.shape}", 'info')
         
         # =========================================================================
         # STEP 5: Apply temporal weighting (same as Phase 3/4)
         # =========================================================================
-        # Apply temporal features
-        dates = df_filtered['date'].values
+        # Use dates_inference from context (available since line 110)
+        dates = dates_inference
         
         # Create temporal indices for each date
+        # all_dates maps date -> index (0 = oldest, max = newest)
+        unique_dates = np.unique(dates)
+        all_dates = {str(d): i for i, d in enumerate(unique_dates)}
         temporal_indices = np.array([all_dates.get(str(d), 0) for d in dates])
         
         # Apply temporal weighting (sqrt to avoid over-amplification)
@@ -179,7 +186,6 @@ class Phase5_PredictionOptimization(BasePhase):
         
         self.logger.log("", 'info')
         self.logger.log("Phase 5: Per-Architecture Results on Newest Data", 'info')
-        self.logger.log("=" * 80, 'info')
         
         for arch_name, model in models.items():
             # Get metadata for this architecture
@@ -198,7 +204,11 @@ class Phase5_PredictionOptimization(BasePhase):
             try:
                 predictions = model.predict(X, verbose=0).flatten()
             except Exception as e:
-                self.logger.log(f"   Prediction failed: {e}", 'warning')
+                error_msg = str(e)
+                if 'incompatible' in error_msg.lower() or 'shape' in error_msg.lower():
+                    self.logger.log(f"   [SKIP] Shape mismatch - model expects different input dimensions: {e}", 'warning')
+                else:
+                    self.logger.log(f"   Prediction failed: {e}", 'warning')
                 continue
             
             # Validate predictions are in valid probability range [0,1]
@@ -222,16 +232,21 @@ class Phase5_PredictionOptimization(BasePhase):
                 self.logger.log(f"   [WARNING] Model predicts ALL NEGATIVES!", 'warning')
             
             # Ground truth: use optimal_threshold for y
-            y_binary = (y_raw >= opt_threshold).astype(int)
+            y_val_binarized = (y_val_continuous >= opt_threshold).astype(int)
+            
+            # Apply inverse log transform if configured (convert predictions back to original scale)
+            if self.config.get('LOG_TRANSFORM_TARGET', False):
+                predictions_original = inverse_log_transform(predictions)
+            else:
+                predictions_original = predictions
             
             # Calculate metrics
-            metrics = self.evaluator.calculate_metrics(y_binary, binary_predictions, predictions)
+            metrics = self.evaluator.calculate_metrics(y_val_binarized, binary_predictions, predictions_original)
             
-            # Calculate confusion matrix components
-            tp = int(np.sum((binary_predictions == 1) & (y_binary == 1)))
-            tn = int(np.sum((binary_predictions == 0) & (y_binary == 0)))
-            fp = int(np.sum((binary_predictions == 1) & (y_binary == 0)))
-            fn = int(np.sum((binary_predictions == 0) & (y_binary == 1)))
+            tp = int(np.sum((binary_predictions == 1) & (y_val_binarized == 1)))
+            tn = int(np.sum((binary_predictions == 0) & (y_val_binarized == 0)))
+            fp = int(np.sum((binary_predictions == 1) & (y_val_binarized == 0)))
+            fn = int(np.sum((binary_predictions == 0) & (y_val_binarized == 1)))
             
             # Log metrics (NO confusion matrix)
             self.logger.log(
@@ -244,98 +259,101 @@ class Phase5_PredictionOptimization(BasePhase):
             inf_prauc = metrics.get('average_precision', 0.0)
             inf_specificity = metrics.get('specificity', 0.0)
             inf_balanced_acc = metrics.get('balanced_accuracy', 0.0)
+            inf_fpr = self.evaluator.calculate_fpr(y_val_binarized, binary_predictions)
+            inf_f2 = self.evaluator.calculate_f2_score(y_val_binarized, binary_predictions)
+            inf_std_pred = float(predictions.std()) if len(predictions) > 0 else 0.0
+            inf_pct_above_thresh = (predictions >= 0.5).mean() * 100 if len(predictions) > 0 else 0.0
+            inf_brier = self.evaluator.calculate_brier_score(y_val_binarized, predictions.flatten())
+            inf_kappa = self.evaluator.calculate_kappa(y_val_binarized, binary_predictions)
+            inf_informedness = self.evaluator.calculate_informedness(y_val_binarized, binary_predictions)
+            inf_markedness = self.evaluator.calculate_markedness(y_val_binarized, binary_predictions)
+            inf_gini = self.evaluator.calculate_gini(y_val_binarized, predictions.flatten())
+            inf_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, predictions.flatten())
+            
             self.logger.log(
-                f"  {arch_name} - Inference: MCC={inf_mcc:.4f} PR-AUC={inf_prauc:.4f} Spec={inf_specificity:.4f} BalAcc={inf_balanced_acc:.4f}",
+                f"  {arch_name} - Inference: Inf_P={metrics['precision']:.4f} Inf_TP={tp} Inf_TN={tn} Inf_FP={fp} Inf_FN={fn} Inf_MaxPred={predictions.max():.4f} Inf_MeanPred={predictions.mean():.4f} Inf_R={metrics['recall']:.4f} Inf_F1={metrics['f1']:.4f} Inf_AUC={metrics['auc']:.4f} Inf_Spec={inf_specificity:.4f} Inf_FPR={inf_fpr:.4f} Inf_F2={inf_f2:.4f} Inf_MCC={inf_mcc:.4f} Inf_PRAUC={inf_prauc:.4f} Inf_BalAcc={inf_balanced_acc:.4f} Inf_StdPred={inf_std_pred:.4f} Inf_PctAboveThresh={inf_pct_above_thresh:.2f} Inf_Brier={inf_brier:.4f} Inf_Kappa={inf_kappa:.4f} Inf_Informedness={inf_informedness:.4f} Inf_Markedness={inf_markedness:.4f} Inf_Gini={inf_gini:.4f} Inf_OptThresh={inf_opt_thresh:.4f}",
                 'info'
             )
             
-            # Output fraud-predicted rows (both MODEL PREDICTED and ACTUAL)
-            fraud_output_cols = ['Market_Cap', '52W_Low', '52W_High', 'Change', 'ChangeY', 'Ticker_id']
-            available_cols = [c for c in fraud_output_cols if c in df_with_all_cols.columns]
-            
-            # 1. Output MODEL PREDICTED fraud rows (probability >= 0.5)
-            pred_fraud_indices = np.where(binary_predictions == 1)[0]
-            if len(pred_fraud_indices) > 0:
-                pred_fraud_rows = df_with_all_cols.iloc[pred_fraud_indices]
-                fraud_rows_filtered = pred_fraud_rows[available_cols]
-                
-                self.logger.log("", 'info')
-                self.logger.log(f"==== {arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows) ====", 'info')
-                self.logger.log(f"Architecture: {arch_name} | Precision: {metrics['precision']:.4f} | Prediction_Binary_Split: {pred_threshold} | Predicted: {len(pred_fraud_indices)}", 'info')
-                self.logger.log("=" * 80, 'info')
-                self.logger.log("Row," + ",".join(available_cols), 'info')
-                
-                for idx, (_, row) in enumerate(fraud_rows_filtered.iterrows(), 1):
-                    row_str = f"{idx}," + ",".join(str(v) for v in row.values)
-                    self.logger.log(row_str, 'info')
-                self.logger.log("=" * 80, 'info')
+            if df_with_all_cols is not None:
+                fraud_output_cols = ['Market_Cap', '52W_Low', '52W_High', 'Change', 'ChangeY', 'Ticker_id']
+                available_cols = [c for c in fraud_output_cols if c in df_with_all_cols.columns]
 
+                pred_fraud_indices = np.where(binary_predictions == 1)[0]
+                if len(pred_fraud_indices) > 0:
+                    pred_fraud_rows = df_with_all_cols.iloc[pred_fraud_indices]
+                    fraud_rows_filtered = pred_fraud_rows[available_cols]
 
-            
-            # Store results
+                    self.logger.log("", 'info')
+                    self.logger.log(f"{arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows)", 'info')
+                    self.logger.log(f"Architecture: {arch_name} | Precision: {metrics['precision']:.4f} | Prediction_Binary_Split: {pred_threshold} | Predicted: {len(pred_fraud_indices)}", 'info')
+                    self.logger.log("Row," + ",".join(available_cols), 'info')
+
+                    for idx, (_, row) in enumerate(fraud_rows_filtered.iterrows(), 1):
+                        row_str = f"{idx}," + ",".join(str(v) for v in row.values)
+                        self.logger.log(row_str, 'info')
+
+            # Store results with Inf_ prefix (16 metrics + 2 extras)
             architecture_results.append({
                 'architecture': arch_name,
                 'label_threshold': opt_threshold,
                 'pred_threshold': pred_threshold,
                 'hyperparams': best_hyperparams,
                 'val_precision': best_val_prec,
-                'precision': metrics['precision'],
-                'recall': metrics['recall'],
-                'f1': metrics['f1'],
-                'auc': metrics['auc'],
-                'tp': tp,
-                'tn': tn,
-                'fp': fp,
-                'fn': fn,
-                # NEW: Prediction distribution
-                'mean_pred': float(predictions.mean()),
-                'std_pred': float(predictions.std()),
-                'max_pred': float(predictions.max()),
-                'pct_above_thresh': float((predictions >= pred_threshold).mean() * 100),
-                # NEW: Enhanced metrics
-                'inf_mcc': inf_mcc,
-                'inf_prauc': inf_prauc,
-                'inf_specificity': inf_specificity,
-                'inf_balanced_acc': inf_balanced_acc,
+                # Core metrics with Inf_ prefix
+                'Inf_P': metrics['precision'],
+                'Inf_R': metrics['recall'],
+                'Inf_F1': metrics['f1'],
+                'Inf_AUC': metrics['auc'],
+                'Inf_TP': tp,
+                'Inf_TN': tn,
+                'Inf_FP': fp,
+                'Inf_FN': fn,
+                # Prediction distribution
+                'Inf_MaxPred': float(predictions.max()),
+                'Inf_MeanPred': float(predictions.mean()),
+                'Inf_StdPred': float(predictions.std()),
+                'Inf_PctAboveThresh': float((predictions >= pred_threshold).mean() * 100),
+                # Extended metrics with Inf_ prefix
+                'Inf_Spec': inf_specificity,
+                'Inf_FPR': inf_fpr,
+                'Inf_F2': inf_f2,
+                'Inf_MCC': inf_mcc,
+                'Inf_PRAUC': inf_prauc,
+                'Inf_BalAcc': inf_balanced_acc,
             })
         
         # =========================================================================
         # STEP 7: Summary Table (NO confusion matrix)
         # =========================================================================
+        sorted_results = []
         if architecture_results:
-            # Sort by precision descending
-            sorted_results = sorted(architecture_results, key=lambda x: x['precision'], reverse=True)
+            sorted_results = sorted(architecture_results, key=lambda x: x['Inf_P'], reverse=True)
             
             self.logger.log("", 'info')
-            self.logger.log("=" * 80, 'info')
             self.logger.log("FINAL PREDICTION RESULTS (sorted by Precision)", 'info')
-            self.logger.log("=" * 80, 'info')
             self.logger.log(
                 f"{'Rank':>4} | {'Architecture':<8} | {'Label_Threshold':>15} | {'Prediction_Binary_Split':>22} | "
                 f"{'Precision':>10} | {'Recall':>7} | {'AUC':>7} | {'F1':>6} | "
                 f"{'FN':>4} | {'TN':>5} | {'TP':>4} | {'FP':>4}",
                 'info'
             )
-            self.logger.log("-" * 80, 'info')
             
             for rank, r in enumerate(sorted_results, 1):
                 self.logger.log(
                     f"{rank:>4} | {r['architecture']:<8} | {r['label_threshold']:>15.1f} | {r['pred_threshold']:>22.2f} | "
-                    f"{r['precision']:>10.4f} | {r['recall']:>7.4f} | {r['auc']:>7.4f} | "
-                    f"{r['f1']:>6.4f} | {r['fn']:>4} | {r['tn']:>5} | "
-                    f"{r['tp']:>4} | {r['fp']:>4}",
+                    f"{r['Inf_P']:>10.4f} | {r['Inf_R']:>7.4f} | {r['Inf_AUC']:>7.4f} | "
+                    f"{r['Inf_F1']:>6.4f} | {r['Inf_FN']:>4} | {r['Inf_TN']:>5} | "
+                    f"{r['Inf_TP']:>4} | {r['Inf_FP']:>4}",
                     'info'
                 )
-            
-            self.logger.log("=" * 80, 'info')
             
             # Best architecture
             best = sorted_results[0]
             phase5_time = time.time() - phase5_start_time
-            self.logger.log(f"Best Architecture: {best['architecture']} (Precision: {best['precision']:.4f})", 'info')
+            self.logger.log(f"Best Architecture: {best['architecture']} (Precision: {best['Inf_P']:.4f})", 'info')
             self.logger.log(f"Phase 5 Total Time: {phase5_time:.1f}s", 'info')
-            self.logger.log(f"Data Points Evaluated: {len(df_filtered)} (date={inference_date})", 'info')
-            self.logger.log("=" * 80, 'info')
+            self.logger.log(f"Data Points Evaluated: {n_inference} (date={dates_inference[0]})", 'info')
         
         self.logger.log("", 'info')
         self.logger.log("Phase 5 completed successfully", 'info')

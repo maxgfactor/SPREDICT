@@ -7,6 +7,7 @@ import tensorflow as tf
 import os
 import json
 from typing import Dict, Optional, Tuple, Any
+from chunk_02_utils_logging import Logger
 
 
 def load_model(arch_name: str, models_path: str = './saved_models') -> tf.keras.Model:
@@ -88,7 +89,7 @@ def load_model_metadata(arch_name: str, models_path: str = './saved_models') -> 
     return None
 
 
-def load_models_with_metadata(models_path: str = './saved_models') -> Tuple[Dict[str, tf.keras.Model], Dict[str, Dict]]:
+def load_models_with_metadata(models_path: str = './saved_models', logger=None) -> Tuple[Dict[str, tf.keras.Model], Dict[str, Dict]]:
     """
     Load all saved models along with their metadata.
     
@@ -102,27 +103,45 @@ def load_models_with_metadata(models_path: str = './saved_models') -> Tuple[Dict
     """
     models = {}
     metadata = {}
-    
+    sklearn_archs = {'CatBoost', 'LightGBM', 'XGBoost'}
+    if logger is None:
+        from chunk_02_utils_logging import Logger
+        logger = Logger({'LOG_VERBOSITY': 1})
+
     if os.path.exists(models_path):
         for filename in os.listdir(models_path):
             if filename.endswith('_model.keras'):
                 arch_name = filename.replace('_model.keras', '')
-                try:
-                    models[arch_name] = load_model(arch_name, models_path)
-                    print(f"Loaded {arch_name} model")
-                except Exception as e:
-                    print(f"Failed to load {arch_name} model: {e}")
-                
+                filepath = os.path.join(models_path, filename)
+
+                if arch_name in sklearn_archs:
+                    try:
+                        import joblib
+                        from chunk_11_models_sklearn import SklearnModelWrapper
+                        sklearn_model = joblib.load(filepath)
+                        wrapped = SklearnModelWrapper(sklearn_model)
+                        wrapped._is_fitted = True
+                        models[arch_name] = wrapped
+                        logger.log(f"Loaded {arch_name} model (sklearn)", 'info')
+                    except Exception as e:
+                        logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
+                else:
+                    try:
+                        models[arch_name] = load_model(arch_name, models_path)
+                        logger.log(f"Loaded {arch_name} model", 'info')
+                    except Exception as e:
+                        logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
+
                 # Load metadata for this architecture
                 meta = load_model_metadata(arch_name, models_path)
                 if meta:
                     metadata[arch_name] = meta
-                    print(f"Loaded {arch_name} metadata: threshold={meta.get('optimal_threshold')}")
+                    logger.log(f"Loaded {arch_name} metadata: Label_Threshold={meta.get('optimal_threshold')}", 'info')
     
     return models, metadata
 
 
-def load_all_models(models_path: str = './saved_models') -> dict:
+def load_all_models(models_path: str = './saved_models', logger=None) -> dict:
     """
     Load all available trained models from disk.
     
@@ -133,15 +152,18 @@ def load_all_models(models_path: str = './saved_models') -> dict:
         Dictionary of {arch_name: model}
     """
     models = {}
+    if logger is None:
+        from chunk_02_utils_logging import Logger
+        logger = Logger({'LOG_VERBOSITY': 1})
     if os.path.exists(models_path):
         for filename in os.listdir(models_path):
             if filename.endswith('_model.keras'):
                 arch_name = filename.replace('_model.keras', '')
                 try:
                     models[arch_name] = load_model(arch_name, models_path)
-                    print(f"Loaded {arch_name} model")
+                    logger.log(f"Loaded {arch_name} model", 'info')
                 except Exception as e:
-                    print(f"Failed to load {arch_name} model: {e}")
+                    logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
     
     return models
 

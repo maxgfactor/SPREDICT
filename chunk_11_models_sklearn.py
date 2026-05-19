@@ -10,6 +10,30 @@ from sklearn.svm import OneClassSVM, SVC
 import keras
 
 
+def calculate_dynamic_class_weight(y: np.ndarray, config: Dict) -> float:
+    """
+    Calculate scale_pos_weight from actual class distribution.
+    
+    Args:
+        y: Binary labels (0 or 1)
+        config: Configuration dictionary
+        
+    Returns:
+        scale_pos_weight value
+    """
+    if not config.get('DYNAMIC_CLASS_WEIGHTS', False):
+        return config.get('scale_pos_weight', 259)
+    
+    pos_count = np.sum(y == 1)
+    neg_count = np.sum(y == 0)
+    
+    if pos_count == 0:
+        return 259.0
+    
+    weight = neg_count / pos_count
+    return float(weight)
+
+
 class SklearnModelWrapper:
     """Wrapper to make sklearn models compatible with TensorFlow interface"""
     
@@ -42,19 +66,31 @@ class SklearnModelWrapper:
         self._is_fitted = True
         return self
     
-    def predict(self, X):
+    def predict(self, X, **kwargs):
         """
-        Predict class labels
+        Predict probabilities (for compatibility with TensorFlow interface)
         
         Args:
             X: Features
+            **kwargs: Extra arguments (ignored for sklearn compatibility)
             
         Returns:
-            Predictions
+            Probability array (n_samples, 1)
         """
         if not self._is_fitted:
             raise RuntimeError("Model not fitted yet")
-        return self.sklearn_model.predict(X)
+        
+        # Use predict_proba for probability predictions if available
+        if hasattr(self.sklearn_model, 'predict_proba'):
+            proba = self.sklearn_model.predict_proba(X)
+            # Return probability of positive class (column 1)
+            if proba.ndim == 2 and proba.shape[1] == 2:
+                return proba[:, 1:2]  # Shape (n_samples, 1)
+            return proba
+        else:
+            # Fallback: convert class labels to probabilities
+            preds = self.sklearn_model.predict(X)
+            return preds.astype(np.float32).reshape(-1, 1)
     
     def predict_proba(self, X):
         """
@@ -103,6 +139,29 @@ class SklearnModelWrapper:
         """
         proba = self.predict_proba(X)
         return proba[:, 1]  # Return probability of positive class
+    
+    def save(self, filepath):
+        """Save sklearn model to file using joblib
+        
+        Args:
+            filepath: Path to save the model (with .joblib extension)
+        """
+        import joblib
+        joblib.dump(self.sklearn_model, filepath)
+    
+    @staticmethod
+    def load(filepath):
+        """Load sklearn model from file using joblib
+        
+        Args:
+            filepath: Path to the saved model file
+            
+        Returns:
+            SklearnModelWrapper: Wrapped sklearn model
+        """
+        import joblib
+        model = joblib.load(filepath)
+        return SklearnModelWrapper(model)
     
     def decision_function(self, X):
         """
@@ -183,13 +242,14 @@ def build_svm_model(config: Dict):
     return SklearnModelWrapper(svm)
 
 
-def build_lightgbm_model(config: Dict, input_dim: int):
+def build_lightgbm_model(config: Dict, input_dim: int, y_train: np.ndarray = None):
     """
     Build LightGBM classifier
     
     Args:
         config: Configuration dictionary
         input_dim: Input dimension (unused but kept for API consistency)
+        y_train: Training labels for dynamic class weight calculation (optional)
         
     Returns:
         SklearnModelWrapper wrapping LGBMClassifier
@@ -199,18 +259,25 @@ def build_lightgbm_model(config: Dict, input_dim: int):
     except ImportError:
         raise ImportError("LightGBM not installed. Install with: pip install lightgbm")
     
-    scale_pos_weight = config.get('scale_pos_weight', 259)
+    # Calculate dynamic weight if enabled and y_train provided
+    if y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
+        scale_pos_weight = calculate_dynamic_class_weight(y_train, config)
+    else:
+        scale_pos_weight = config.get('scale_pos_weight', 400)
     
     model = lgb.LGBMClassifier(
         objective='binary',
         boosting_type='gbdt',
-        n_estimators=config.get('n_estimators', 500),
-        num_leaves=config.get('num_leaves', 31),
-        learning_rate=config.get('learning_rate', 0.05),
+        n_estimators=config.get('n_estimators', 1000),  # Increased from 500
+        num_leaves=config.get('num_leaves', 127),  # Increased from 63
+        learning_rate=config.get('learning_rate', 0.05),  # Decreased from 0.1
         scale_pos_weight=scale_pos_weight,
-        min_child_samples=config.get('min_child_samples', 100),
+        min_child_samples=config.get('min_child_samples', 100),  # Decreased from 200
         subsample=config.get('subsample', 0.8),
         colsample_bytree=0.8,
+        reg_alpha=config.get('reg_alpha', 0.1),
+        reg_lambda=config.get('reg_lambda', 1.0),
+        max_depth=config.get('max_depth', 8),  # Increased from 5
         random_state=42,
         verbose=-1,
         n_jobs=-1,
@@ -219,13 +286,14 @@ def build_lightgbm_model(config: Dict, input_dim: int):
     return SklearnModelWrapper(model)
 
 
-def build_xgboost_model(config: Dict, input_dim: int):
+def build_xgboost_model(config: Dict, input_dim: int, y_train: np.ndarray = None):
     """
     Build XGBoost classifier
     
     Args:
         config: Configuration dictionary
         input_dim: Input dimension (unused but kept for API consistency)
+        y_train: Training labels for dynamic class weight calculation (optional)
         
     Returns:
         SklearnModelWrapper wrapping XGBClassifier
@@ -235,13 +303,17 @@ def build_xgboost_model(config: Dict, input_dim: int):
     except ImportError:
         raise ImportError("XGBoost not installed. Install with: pip install xgboost")
     
-    scale_pos_weight = config.get('scale_pos_weight', 259)
+    # Calculate dynamic weight if enabled and y_train provided
+    if y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
+        scale_pos_weight = calculate_dynamic_class_weight(y_train, config)
+    else:
+        scale_pos_weight = config.get('scale_pos_weight', 259)
     
     model = xgb.XGBClassifier(
         objective='binary:logistic',
-        n_estimators=config.get('n_estimators', 500),
-        max_depth=config.get('max_depth', 5),
-        learning_rate=config.get('learning_rate', 0.05),
+        n_estimators=config.get('n_estimators', 1000),  # Increased from 500
+        max_depth=config.get('max_depth', 8),  # Increased from 5
+        learning_rate=config.get('learning_rate', 0.03),  # Decreased from 0.05
         scale_pos_weight=scale_pos_weight,
         min_child_weight=config.get('min_child_weight', 1),
         subsample=config.get('subsample', 0.8),
@@ -255,13 +327,14 @@ def build_xgboost_model(config: Dict, input_dim: int):
     return SklearnModelWrapper(model)
 
 
-def build_catboost_model(config: Dict, input_dim: int):
+def build_catboost_model(config: Dict, input_dim: int, y_train: np.ndarray = None):
     """
     Build CatBoost classifier
     
     Args:
         config: Configuration dictionary
         input_dim: Input dimension (unused but kept for API consistency)
+        y_train: Training labels for dynamic class weight calculation (optional)
         
     Returns:
         SklearnModelWrapper wrapping CatBoostClassifier
@@ -271,10 +344,20 @@ def build_catboost_model(config: Dict, input_dim: int):
     except ImportError:
         raise ImportError("CatBoost not installed. Install with: pip install catboost")
     
+    # Calculate dynamic weight if enabled and y_train provided
+    # CatBoost uses scale_pos_weight (not available in all versions) or auto_class_weights
+    if y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
+        scale_pos_weight = calculate_dynamic_class_weight(y_train, config)
+        # For CatBoost, use calculated weight if supported, else fallback to Balanced
+        auto_weights = 'Scaled' if hasattr(CatBoostClassifier, 'scale_pos_weight') else 'Balanced'
+    else:
+        scale_pos_weight = config.get('scale_pos_weight', 259)
+        auto_weights = config.get('auto_class_weights', 'Balanced')
+    
     model = CatBoostClassifier(
-        iterations=config.get('iterations', 500),
-        depth=config.get('depth', 6),
-        learning_rate=config.get('learning_rate', 0.05),
+        iterations=config.get('iterations', 1000),  # Increased from 500
+        depth=config.get('depth', 8),  # Increased from 6
+        learning_rate=config.get('learning_rate', 0.03),  # Decreased from 0.05
         auto_class_weights=config.get('auto_class_weights', 'Balanced'),
         l2_leaf_reg=config.get('l2_leaf_reg', 3),
         random_state=42,

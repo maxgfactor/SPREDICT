@@ -6,20 +6,54 @@ Defines CONFIG dictionary and validation
 import os
 from typing import Dict, Any
 
+# Suppress TensorFlow/CUDA warnings for CPU-only execution
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
+
 
 # Configuration - Production Environment Only
 CONFIG = {
     'DATA_PATH': 'for_train_x_2025_10_24_clean.csv',
-    'USE_SAMPLING': False,  # Use entire dataset
-    'SAMPLE_SIZE': 99999999,  # Use all samples (large number exceeds dataset size)
-    'FORCE_SAMPLING': False,
+    'USE_SAMPLING': True,          # Enable sampling for faster testing (May 5, 2026)
+    'SAMPLE_SIZE': 184408,        # ~25 dates worth (~2.7% of dataset) - most recent dates (halved May 18, 2026)
+    'FORCE_SAMPLING': True,       # Force this sample size
     'MIN_SAMPLES': 30,  # Reduced from 100 for clean dataset
     'TARGET_TYPE': 'continuous',  # Continuous targets (price changes) for fraud detection
+    'LOG_TRANSFORM_TARGET': False,  # Disabled (May 5, 2026) - use raw ChangeY values, restore April 8 behavior
     'DATE_COLUMN_INDEX': -1,  # Auto-detect date column
     'TARGET_COLUMN_INDEX': -1,  # Auto-detect target column
     'TEMPORAL_MULTIPLIER': 9.0,
     'LOG_VERBOSITY': 2,
     'AUGMENTATION_MAX_SAMPLES': 50000,
+    
+    # ============================================================================
+    # IMBALANCE HANDLING CONFIGURATION - Step 3
+    # ============================================================================
+    'DYNAMIC_CLASS_WEIGHTS': True,  # Calculate scale_pos_weight from actual class ratio
+    'PREDICTION_THRESHOLD_SEARCH': False,  # Disabled - use fixed 0.5 for consistency
+    'PREDICTION_THRESHOLD_MIN': 0.1,  # Start of prediction threshold search
+    'PREDICTION_THRESHOLD_MAX': 0.5,  # End of prediction threshold search
+    'PREDICTION_THRESHOLD_STEP': 0.05,  # Step size for prediction threshold search
+    'CALIBRATE_PREDICTIONS': False,  # Apply isotonic calibration
+    
+    # ============================================================================
+    # FEATURE ENGINEERING CONFIGURATION - Step 4
+    # ============================================================================
+    'WINSORIZE_FEATURES': True,  # Clip features at percentiles
+    'WINSORIZE_PERCENTILE_LOW': 1,  # Lower percentile for winsorization
+    'WINSORIZE_PERCENTILE_HIGH': 99,  # Upper percentile for winsorization
+    'ADD_RATIO_FEATURES': True,  # Create ratio features
+    'LOG_TRANSFORM_FEATURES': True,  # Apply log1p to skewed features
+    'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # Feature indices with high skew (from pipeline log)
+    
+    # ============================================================================
+    # DIAGNOSTICS AND VALIDATION - New Features (Items 1, 2, 4)
+    # ============================================================================
+    'FEATURE_STABILITY_ANALYSIS': True,  # Track feature ranking consistency across temporal folds
+    'TRACK_INFERENCE_LATENCY': True,  # Track prediction time per sample
+    'SLIDING_WINDOW_VALIDATION': True,  # Enable sliding window temporal validation
+    'PERMUTATION_IMPORTANCE': True,  # Run permutation importance on all models
+    'MIN_DATES_THRESHOLD': 30,  # Minimum unique dates required for diagnostics (raises ValueError if below)
+    'INFERENCE_LATENCY_SAMPLE_SIZE': 10000,  # Number of samples to measure for latency
     
     # ============================================================================
     # THRESHOLD CONFIGURATION - CRITICAL FOR UNDERSTANDING PIPELINE
@@ -58,7 +92,12 @@ CONFIG = {
     # Hyperparameter Optimization Configuration
     'ENABLE_HYPERPARAM_OPTIMIZATION': True,  # Enable by default
     'HYPERPARAM_OPTIMIZATION_EPOCHS': 20,
-    'HYPERPARAM_OPTIMIZATION_TRIALS': 20,  # Increased for dual loss function testing
+    'HYPERPARAM_OPTIMIZATION_TRIALS': 30,  # Hard cap — each arch gets exactly 30 trials (May 18, 2026)
+    
+    # HPO Target and Continuation (May 11, 2026 / Updated May 13, 2026)
+    'HPO_TARGET_PRECISION': 0.60,  # Stop HPO when precision >= this
+    'HPO_CONTINUE_UNTIL_TARGET': False,  # Hard cap at HYPERPARAM_OPTIMIZATION_TRIALS trials (May 18, 2026)
+    'HPO_STAGNATION_THRESHOLD': 50,  # Stop if no improvement for N trials (was 30, raised May 13, 2026)
     
     # Threshold Safeguard: minimum positive predictions required to accept a threshold
     # Prevents precision gaming (predicting almost nothing → artificially high P)
@@ -90,7 +129,23 @@ CONFIG = {
         'VAE': 2,               # 10% of 20
         'CNN': 1,               # 10% of 10
         'LSTM': 2,              # 10% of 20
-        'Transformer': 2,      # 10% of 20
+        'Transformer': 2,        # 10% of 20
+    },
+    
+    # Sklearn-specific safeguard overrides (May 6, 2026)
+    # Lower thresholds for gradient boosting models that struggle with rare positive class
+    'SKLEARN_SAFEGUARDS': {
+        'MIN_PRECISION_OVER_BASELINE': 0.01,  # 1% instead of 5%
+        'MIN_POSITIVE_PERCENTAGE': 0.001,  # 0.1% instead of 0.5%
+        'MIN_POSITIVE_ABSOLUTE': 10,  # 10 instead of 50
+    },
+    
+    # Neural architecture-specific safeguard overrides (May 6, 2026)
+    # Lower thresholds for neural models that produce low prediction ranges
+    'NEURAL_SAFEGUARDS': {
+        'MIN_POSITIVE_PERCENTAGE': 0,  # Disable percentage-based, use only absolute
+        'MIN_POSITIVE_ABSOLUTE': 5,  # 5 instead of 50
+        'PATIENCE': 10,  # Higher patience for neural models
     },
     
     # Post-HPO Threshold Search (Apr 5, 2026)
@@ -131,88 +186,115 @@ CONFIG = {
     'FEATURE_PRUNE_PERCENTILE': 20,  # Drop bottom N% features by importance
     'FEATURE_ANALYSIS_REPORT_PATH': './feature_importance_report.txt',  # Output path
     
-    # Per-architecture hyperparameter search spaces (REVISED - March 2026)
+    # Per-architecture hyperparameter search spaces (GIS RECONFIGURED - May 13, 2026)
+    # Root cause: all 6 NNs had MaxPred << 0.5 (CNN:0.004, LSTM:0.032, RNN:0.066, VAE:0.092, Transformer:0.044)
+    # Trees stagnated due to small spaces + missing key params (colsample, gamma)
     'HYPERPARAM_SEARCH_SPACE': {
-        'Dense': {
-            'units': [32, 64, 128, 256, 512],  # EXPANDED: wider range (Apr 4, 2026)
-            'layers': [1, 2, 3],  # EXPANDED: deeper networks (Apr 4, 2026)
-            'dropout': [0.05, 0.1, 0.2, 0.3],  # EXPANDED: add lower dropout (Apr 4, 2026)
-            'learning_rate': [0.0001, 0.0005, 0.001],  # EXPANDED: finer granularity (Apr 4, 2026)
-            'epochs': [8, 10, 12, 15, 20],  # EXPANDED: more flexibility (Apr 4, 2026)
-            'alpha': [0.5, 0.75, 1.0, 1.25],  # EXPANDED: remove 0.25 (causes TP=0), add 1.25 (Apr 4, 2026)
-            'gamma': [1.0, 2.0, 2.5, 3.0, 3.5],  # EXPANDED: higher range for TP focus (Apr 4, 2026)
-        },
-        'VAE': {
-            'loss_function': ['binary_crossentropy', 'focal_loss'],  # NEW: dual loss
-            'latent_dim': [64, 96, 128],  # NARROWED: 64-128 optimal based on HPO analysis (Apr 4, 2026)
-            'learning_rate': [0.0005, 0.001, 0.0015],  # NARROWED: lower range based on HPO trials (Apr 4, 2026)
-            'dropout': [0.03, 0.05, 0.07],  # NARROWED: 0.05 dominant in TP>0 trials (Apr 4, 2026)
-            'alpha': [0.75, 1.0, 1.25],  # KEPT: 0.75 and 1.0 both in top performers
-            'gamma': [2.0, 2.5, 3.0],  # KEPT: all work
-        },
-        'CNN': {
-            'loss_function': ['binary_crossentropy', 'focal_loss'],  # ADDED: focal_loss (Apr 8, 2026)
-            'filters': [32, 64, 128, 256],  # EXPANDED: wider range (Apr 8, 2026)
-            'kernel_size': [3, 5, 7],  # Keep same
-            'dropout': [0.05, 0.1, 0.2],  # EXPANDED: higher dropout (Apr 8, 2026)
-            'learning_rate': [0.001, 0.002, 0.005],  # EXPANDED: higher LR (Apr 8, 2026)
-            'epochs': [20, 30, 40, 50],  # EXPANDED: more training (Apr 8, 2026)
-            'alpha': [0.75, 1.0],  # Keep same
-            'gamma': [2.0, 2.5, 3.0],  # Keep same
-        },
-        'RNN': {
-            'loss_function': ['binary_crossentropy', 'focal_loss'],  # ADDED: focal_loss (Apr 8, 2026)
-            'units': [32, 64, 128],  # EXPANDED: wider range (Apr 8, 2026)
-            'dropout': [0.05, 0.1, 0.15],  # EXPANDED: slightly higher (Apr 8, 2026)
-            'learning_rate': [0.001, 0.002, 0.005],  # EXPANDED: higher LR (Apr 8, 2026)
-            'epochs': [10, 15, 20, 30],  # EXPANDED: more training (Apr 8, 2026)
-            'alpha': [0.75, 1.0, 1.25],  # Keep same
-            'gamma': [2.0, 2.5, 3.0, 3.5],  # Keep same
-        },
-        'LSTM': {
-            'loss_function': ['binary_crossentropy'],  # REMOVED: focal_loss - too aggressive
-            'lstm_units': [8, 16, 32],  # REDUCED: smaller units for sharper output
-            'dropout': [0.02, 0.03, 0.05, 0.1],  # EXPANDED: lower dropout for higher predictions (Apr 4, 2026)
-            'learning_rate': [0.0005, 0.001, 0.002],  # EXPANDED: higher LR for prediction range (Apr 4, 2026)
-            'epochs': [12, 15, 20, 25],  # EXPANDED: more training time (Apr 4, 2026)
-            'alpha': [0.75, 1.0],  # TUNED: for focal_loss
-            'gamma': [2.0, 2.5, 3.0],  # TUNED: higher for selectivity
-        },
-        'Transformer': {
-            'loss_function': ['binary_crossentropy'],  # REMOVED: focal_loss - too aggressive
-            'dim': [32, 64],  # NARROWED: removed 128 due to NaN failures (Apr 4, 2026)
-            'heads': [1, 2],  # KEEP: single head works
-            'dropout': [0.02, 0.03, 0.05, 0.1, 0.2],  # EXPANDED: lower dropout for higher predictions (Apr 4, 2026)
-            'learning_rate': [0.0001, 0.0002, 0.0005],  # EXPANDED: lower LR to prevent NaN (Apr 4, 2026)
-            'alpha': [0.75, 1.0, 1.25],  # EXPANDED: higher alpha for precision (Apr 4, 2026)
-            'gamma': [1.5, 2.0, 2.5, 3.0],  # EXPANDED: add lower gamma values (Apr 4, 2026)
-        },
-        'XGBoost': {
-            'n_estimators': [100, 200, 500],
-            'max_depth': [3, 5, 7],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'scale_pos_weight': [100, 200, 259],
-            'min_child_weight': [1, 5, 10],
-            'subsample': [0.7, 0.8, 0.9],
-        },
+        # Iteration 1: Maximize phase (CatBoost already at 0.5381)
         'CatBoost': {
-            'iterations': [100, 200, 500],
-            'depth': [4, 6, 8],
-            'learning_rate': [0.01, 0.05, 0.1],
+            'iterations': [300, 400, 500],       # was [100, 200]
+            'depth': [4, 5, 6],                  # was [6, 8] — shallower to reduce overfit
+            'learning_rate': [0.03, 0.05, 0.08, 0.1],  # finer granularity, lower start
             'auto_class_weights': ['Balanced', 'SqrtBalanced'],
-            'l2_leaf_reg': [1, 3, 5],
+            'l2_leaf_reg': [1, 3, 5, 7],         # was [3, 5, 10] — lower reg option
         },
+        # Iteration 1: LightGBM
         'LightGBM': {
-            'n_estimators': [100, 200, 500],
-            'num_leaves': [15, 31, 63],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'scale_pos_weight': [100, 200, 259],
-            'min_child_samples': [50, 100, 200],
-            'subsample': [0.7, 0.8, 0.9],
+            'n_estimators': [300, 500, 800],     # was [200, 500]
+            'num_leaves': [31, 63, 127],          # was [31, 63]
+            'learning_rate': [0.03, 0.05, 0.08],  # added lower LR
+            'scale_pos_weight': [300, 400, 500, 700],  # was [400, 500]
+            'min_child_samples': [50, 100, 200],  # was [100, 200]
+            'reg_alpha': [0.01, 0.1, 0.5, 1.0],  # was [0.1, 0.5]
+            'reg_lambda': [0.5, 1.0, 5.0, 10.0],  # was [1.0, 5.0]
+            'subsample': [0.6, 0.7, 0.8, 0.9],   # was [0.7, 0.8]
+            'colsample_bytree': [0.6, 0.8, 1.0],  # NEW — feature subsampling
+            'min_split_gain': [0.0, 0.01, 0.1],  # NEW — min gain to make split
         },
-        'Boosting_Adaptive': {
-            'n_estimators': [50, 100, 200],
-            'learning_rate': [0.01, 0.1, 0.2],
+        # Iteration 1: XGBoost (severe overfit — Train AUC 0.88, Val AUC 0.00)
+        'XGBoost': {
+            'n_estimators': [100, 200, 300, 500],  # was [200, 500] — add smaller to reduce overfit
+            'max_depth': [3, 5, 7],             # was [5, 7] — added shallower depth
+            'learning_rate': [0.01, 0.03, 0.05, 0.1],  # lower start, finer grid
+            'scale_pos_weight': [200, 400, 500],  # lower min to reduce over-prediction
+            'min_child_weight': [10, 50, 100, 200],  # was [50, 100, 200]
+            'reg_alpha': [0.0, 0.1, 0.5, 1.0],  # wider L1
+            'reg_lambda': [1.0, 5.0, 10.0],     # higher L2 for overfit control
+            'subsample': [0.6, 0.7, 0.8],       # keep
+            'colsample_bytree': [0.5, 0.7, 1.0],  # NEW — feature subsampling
+            'gamma': [0, 0.1, 0.5],             # NEW — min split loss reduction
+        },
+        # Iteration 2: Dense (MaxPred max 1.0 but all thresholds rejected)
+        'Dense': {
+            'units': [64, 128, 256, 512, 1024],  # was [32, 64, 128, 256, 512]
+            'layers': [2, 3, 4],                  # was [1, 2, 3] — deeper networks
+            'dropout': [0.1, 0.2, 0.3, 0.4],     # was [0.05, 0.1, 0.2, 0.3]
+            'learning_rate': [0.0001, 0.0003, 0.0005, 0.001],  # finer granularity
+            'epochs': [15, 20, 30, 40],          # was [8, 10, 12, 15, 20]
+            'alpha': [1.0, 1.25, 1.5],           # was [0.5, 0.75, 1.0, 1.25]
+            'gamma': [2.0, 2.5, 3.0, 4.0],      # was [1.0, 2.0, 2.5, 3.0, 3.5]
+            'batch_size': [32, 64, 128, 256],    # NEW
+            'activation': ['relu', 'leaky_relu', 'selu'],  # NEW
+        },
+        # Iteration 2: CNN (MaxPred max 0.0042 — completely broken)
+        'CNN': {
+            'loss_function': ['binary_crossentropy', 'focal_loss'],
+            'filters': [64, 128, 256, 512],     # was [32, 64, 128, 256]
+            'kernel_size': [3, 5, 7, 11],        # was [3, 5, 7] — larger receptive field
+            'dropout': [0.0, 0.05, 0.1, 0.2],   # allow no dropout
+            'learning_rate': [0.0005, 0.001, 0.002, 0.005, 0.01],  # wider range
+            'epochs': [30, 50, 80, 100],         # much more training
+            'alpha': [0.75, 1.0],
+            'gamma': [2.0, 2.5, 3.0],
+            'layers': [1, 2, 3],                # NEW — number of conv layers
+            'pooling': ['max', 'avg', 'none'],   # NEW — pooling type
+        },
+        # Iteration 3: RNN (MaxPred max 0.0661)
+        'RNN': {
+            'loss_function': ['binary_crossentropy', 'focal_loss'],
+            'units': [64, 128, 256],             # was [32, 64, 128]
+            'dropout': [0.0, 0.05, 0.1],        # allow no dropout
+            'learning_rate': [0.0005, 0.001, 0.002, 0.005],
+            'epochs': [20, 30, 50],             # was [10, 15, 20, 30]
+            'alpha': [0.75, 1.0, 1.25],
+            'gamma': [2.0, 2.5, 3.0, 3.5],
+            'layers': [1, 2],                    # NEW — number of RNN layers
+        },
+        # Iteration 3: LSTM (MaxPred max 0.0316 — completely broken)
+        'LSTM': {
+            'lstm_units': [32, 64, 128, 256],    # MAJOR expansion from [8, 16, 32]
+            'dropout': [0.0, 0.05, 0.1, 0.2],  # allow no dropout
+            'learning_rate': [0.0005, 0.001, 0.002, 0.005],
+            'epochs': [20, 30, 50],             # was [12, 15, 20, 25]
+            'alpha': [0.75, 1.0],
+            'gamma': [2.0, 2.5, 3.0],
+            'layers': [1, 2],                    # NEW — number of LSTM layers
+            'bidirectional': [True, False],      # NEW
+        },
+        # Iteration 4: VAE (MaxPred max 0.0919 — completely broken)
+        'VAE': {
+            'loss_function': ['binary_crossentropy', 'focal_loss'],
+            'latent_dim': [32, 64, 128, 256],   # added smaller dimension
+            'learning_rate': [0.0005, 0.001, 0.002, 0.005],  # higher LR options
+            'dropout': [0.0, 0.02, 0.05, 0.1],  # allow no dropout
+            'epochs': [30, 50, 80],             # NEW — training epochs
+            'alpha': [0.75, 1.0, 1.25],
+            'gamma': [2.0, 2.5, 3.0],
+            'encoder_layers': [1, 2, 3],         # NEW — encoder depth
+            'decoder_layers': [1, 2, 3],         # NEW — decoder depth
+        },
+        # Iteration 4: Transformer (MaxPred max 0.0443 — very narrow)
+        'Transformer': {
+            'loss_function': ['binary_crossentropy'],  # keep (focal removed)
+            'dim': [64, 128, 256],             # was [32, 64] — 128 restored with lower LR
+            'heads': [2, 4, 8],                 # was [1, 2]
+            'dropout': [0.0, 0.05, 0.1, 0.2],  # allow no dropout
+            'learning_rate': [0.00005, 0.0001, 0.0002],  # even lower for stability
+            'epochs': [20, 30, 50],             # NEW — training epochs
+            'alpha': [0.75, 1.0, 1.25],
+            'gamma': [1.5, 2.0, 2.5, 3.0],
+            'ff_dim': [64, 128, 256],           # NEW — feed-forward dimension
+            'layers': [1, 2, 4],                 # NEW — transformer layers
         },
     },
 
@@ -226,15 +308,26 @@ CONFIG = {
 # Required configuration keys for validation
 REQUIRED_CONFIG_KEYS = [
     'DATA_PATH', 'USE_SAMPLING', 'SAMPLE_SIZE', 'MIN_SAMPLES',
-    'TARGET_TYPE', 'DATE_COLUMN_INDEX',
+    'TARGET_TYPE', 'LOG_TRANSFORM_TARGET', 'DATE_COLUMN_INDEX',
     'TARGET_COLUMN_INDEX', 'INPUT_DIM', 'AUGMENTATION_MAX_SAMPLES',
     'latent_dim', 'filters', 'units', 'dropout',
     'FIRST_THRESHOLD', 'LAST_THRESHOLD', 'THRESHOLD_STEP', 'PREDICTION_THRESHOLD',
     'ENABLE_HYPERPARAM_OPTIMIZATION', 'HYPERPARAM_OPTIMIZATION_EPOCHS', 'HYPERPARAM_OPTIMIZATION_TRIALS',
+    'HPO_TARGET_PRECISION', 'HPO_CONTINUE_UNTIL_TARGET', 'HPO_STAGNATION_THRESHOLD',
     'MIN_POSITIVE_PREDICTIONS',
     # Ensemble configuration
     'ENSEMBLE_MIN_PRECISION', 'ENSEMBLE_WEIGHTING', 'FALLBACK_ARCHITECTURE',
     'MIN_POSITIVE_PERCENTAGE', 'MIN_POSITIVE_ABSOLUTE', 'FOCAL_LOSS_CONFIG',
+    # Imbalance handling (Step 3)
+    'DYNAMIC_CLASS_WEIGHTS', 'PREDICTION_THRESHOLD_SEARCH',
+    'PREDICTION_THRESHOLD_MIN', 'PREDICTION_THRESHOLD_MAX', 'PREDICTION_THRESHOLD_STEP',
+    'CALIBRATE_PREDICTIONS',
+    # Feature engineering (Step 4)
+    'WINSORIZE_FEATURES', 'WINSORIZE_PERCENTILE_LOW', 'WINSORIZE_PERCENTILE_HIGH',
+    'ADD_RATIO_FEATURES', 'LOG_TRANSFORM_FEATURES', 'HIGHLY_SKEWED_FEATURES',
+    # Diagnostics and validation (Items 1, 2, 4)
+    'FEATURE_STABILITY_ANALYSIS', 'TRACK_INFERENCE_LATENCY', 'SLIDING_WINDOW_VALIDATION',
+    'PERMUTATION_IMPORTANCE', 'MIN_DATES_THRESHOLD', 'INFERENCE_LATENCY_SAMPLE_SIZE',
 ]
 
 # Configuration key types for validation
@@ -245,11 +338,33 @@ CONFIG_TYPES = {
     'FORCE_SAMPLING': bool,
     'MIN_SAMPLES': int,
     'TARGET_TYPE': str,
+    'LOG_TRANSFORM_TARGET': bool,
     'DATE_COLUMN_INDEX': int,
     'TARGET_COLUMN_INDEX': int,
     'TEMPORAL_MULTIPLIER': (int, float),
     'LOG_VERBOSITY': int,
     'AUGMENTATION_MAX_SAMPLES': int,
+    # Imbalance handling (Step 3)
+    'DYNAMIC_CLASS_WEIGHTS': bool,
+    'PREDICTION_THRESHOLD_SEARCH': bool,
+    'PREDICTION_THRESHOLD_MIN': (int, float),
+    'PREDICTION_THRESHOLD_MAX': (int, float),
+    'PREDICTION_THRESHOLD_STEP': (int, float),
+    'CALIBRATE_PREDICTIONS': bool,
+    # Feature engineering (Step 4)
+    'WINSORIZE_FEATURES': bool,
+    'WINSORIZE_PERCENTILE_LOW': (int, float),
+    'WINSORIZE_PERCENTILE_HIGH': (int, float),
+    'ADD_RATIO_FEATURES': bool,
+    'LOG_TRANSFORM_FEATURES': bool,
+    'HIGHLY_SKEWED_FEATURES': list,
+    # Diagnostics and validation (Items 1, 2, 4)
+    'FEATURE_STABILITY_ANALYSIS': bool,
+    'TRACK_INFERENCE_LATENCY': bool,
+    'SLIDING_WINDOW_VALIDATION': bool,
+    'PERMUTATION_IMPORTANCE': bool,
+    'MIN_DATES_THRESHOLD': int,
+    'INFERENCE_LATENCY_SAMPLE_SIZE': int,
     'latent_dim': int,
     'filters': list,
     'kernel_sizes': list,
@@ -272,6 +387,9 @@ CONFIG_TYPES = {
     'ENABLE_HYPERPARAM_OPTIMIZATION': bool,
     'HYPERPARAM_OPTIMIZATION_EPOCHS': int,
     'HYPERPARAM_OPTIMIZATION_TRIALS': int,
+    'HPO_TARGET_PRECISION': (int, float),
+    'HPO_CONTINUE_UNTIL_TARGET': bool,
+    'HPO_STAGNATION_THRESHOLD': int,
     'MIN_POSITIVE_PREDICTIONS': int,
     'USE_FOCAL_LOSS': bool,
     'FOCAL_LOSS_ALPHA': (int, float),
