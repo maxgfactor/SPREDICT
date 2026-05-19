@@ -327,25 +327,24 @@ class Evaluator:
                                X_val: np.ndarray, y_val: np.ndarray,
                                model, model_trainer, arch_name: str,
                                thresholds: np.ndarray, patience: int = 5,
-                               retrain_model: bool = True) -> Tuple[float, float, List[Dict], Any]:
+                               retrain_model: bool = True,
+                               threshold_feature_indices: Dict = None) -> Tuple[float, float, List[Dict], Any]:
         """
         Train and evaluate model at multiple thresholds
         
         Args:
-            X_train, y_train: Training data
-            X_val, y_val: Validation data
+            X_train, y_train: Training data (all features)
+            X_val, y_val: Validation data (all features)
             model: Pre-trained model (or None for fresh training)
             model_trainer: ModelTrainer instance
             arch_name: Name of architecture
             thresholds: Array of thresholds to test (decreasing order)
             patience: Early stopping patience
             retrain_model: If True, retrain model for each threshold. If False, use model for inference only (for POST-HPO).
+            threshold_feature_indices: Dict mapping threshold -> kept feature indices for per-threshold pruning
         
         Returns:
             (optimal_threshold, best_precision, all_results, best_model)
-            
-        Returns:
-            (optimal_threshold, best_precision, all_results)
         """
         best_thresh = thresholds[0]
         best_precision = 0.0
@@ -354,6 +353,20 @@ class Evaluator:
         no_improve_count = 0
         
         for thresh in thresholds:
+            # Select features for this threshold
+            if threshold_feature_indices is not None:
+                thresh_key = round(float(thresh), 1)
+                feat_idx = threshold_feature_indices.get(thresh_key)
+                if feat_idx is not None:
+                    X_train_t = X_train[:, feat_idx]
+                    X_val_t = X_val[:, feat_idx]
+                else:
+                    X_train_t = X_train
+                    X_val_t = X_val
+            else:
+                X_train_t = X_train
+                X_val_t = X_val
+            
             # Convert labels using threshold (labels >= threshold are positive)
             y_train_binary = (y_train >= thresh).astype(int)
             y_val_binary = (y_val >= thresh).astype(int)
@@ -380,27 +393,27 @@ class Evaluator:
                     # Section 2: Use provided model but retrain with new labels
                     # Just train with the new labels
                     if hasattr(model, 'sklearn_model'):
-                        trained, _ = model_trainer._train_sklearn_model(model, X_train, y_train_binary)
+                        trained, _ = model_trainer._train_sklearn_model(model, X_train_t, y_train_binary)
                     else:
                         epochs = 15 if arch_name in ['Dense', 'VAE', 'CNN'] else 3
-                        trained, _ = model_trainer.train_model(model, X_train, y_train_binary, epochs=epochs, verbose=0)
+                        trained, _ = model_trainer.train_model(model, X_train_t, y_train_binary, epochs=epochs, verbose=0)
                 else:
                     # No model provided - build fresh model (original behavior)
-                    fresh_model = model_trainer.build_architecture(arch_name, X_train.shape[1])
+                    fresh_model = model_trainer.build_architecture(arch_name, X_train_t.shape[1])
                     if hasattr(fresh_model, 'sklearn_model'):
-                        trained, _ = model_trainer._train_sklearn_model(fresh_model, X_train, y_train_binary)
+                        trained, _ = model_trainer._train_sklearn_model(fresh_model, X_train_t, y_train_binary)
                     else:
                         # Dense, VAE, and CNN need more epochs to learn effectively
                         epochs = 15 if arch_name in ['Dense', 'VAE', 'CNN'] else 3
-                        trained, _ = model_trainer.train_model(fresh_model, X_train, y_train_binary, epochs=epochs, verbose=0)
+                        trained, _ = model_trainer.train_model(fresh_model, X_train_t, y_train_binary, epochs=epochs, verbose=0)
             except Exception as e:
                 if self.logger: self.logger.log(f"Training failed for {arch_name} at threshold {thresh}: {e}", 'warning')
                 continue
             
             # Get predictions
             try:
-                train_pred = trained.predict(X_train, verbose=0).flatten()
-                val_pred = trained.predict(X_val, verbose=0).flatten()
+                train_pred = trained.predict(X_train_t, verbose=0).flatten()
+                val_pred = trained.predict(X_val_t, verbose=0).flatten()
                 
                 # SANITY CHECK: Validate and fix predictions
                 if not np.all(np.isfinite(train_pred)):

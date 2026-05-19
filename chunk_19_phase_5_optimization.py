@@ -128,13 +128,8 @@ class Phase5_PredictionOptimization(BasePhase):
         # Use X_inference directly - NO temporal weighting applied
         X_raw = X_inference
 
-        pruned_indices = context.get('pruned_feature_indices', None)
-        if pruned_indices is not None:
-            n_original = X_raw.shape[1]
-            X_raw = X_raw[:, pruned_indices]
-            self.logger.log(f"  Feature pruning applied: {n_original} -> {X_raw.shape[1]} features", 'info')
-        else:
-            self.logger.log(f"  [WARNING] pruned_feature_indices not in context - using raw features", 'warning')
+        # Per-architecture feature selection happens in STEP 6 using metadata['kept_feature_indices']
+        self.logger.log(f"  Features will be selected per-architecture from {X_raw.shape[1]} total", 'info')
         y_val_continuous = y_inference_continuous if y_inference_continuous is not None else np.zeros(n_inference)
         
         # Get threshold info from config
@@ -194,6 +189,15 @@ class Phase5_PredictionOptimization(BasePhase):
             best_hyperparams = arch_metadata.get('best_hyperparams', {})
             best_val_prec = arch_metadata.get('best_val_precision', 0.0)
             pred_threshold = self.config.get('PREDICTION_THRESHOLD', 0.5)
+            kept_idx = arch_metadata.get('kept_feature_indices')
+            
+            # Select features for this architecture's optimal threshold
+            if kept_idx:
+                X_arch = X[:, kept_idx]
+                self.logger.log(f"  {arch_name}: using {len(kept_idx)} features (optimal threshold's pruning)", 'info')
+            else:
+                self.logger.log(f"  [WARNING] {arch_name}: kept_feature_indices not in metadata - skipping", 'warning')
+                continue
             
             self.logger.log(
                 f"{arch_name} (Label_Threshold={opt_threshold:.1f}, Prediction_Binary_Split={pred_threshold:.2f}, hyperparams={best_hyperparams}, Val Precision={best_val_prec:.4f}):",
@@ -202,7 +206,7 @@ class Phase5_PredictionOptimization(BasePhase):
             
             # Run inference
             try:
-                predictions = model.predict(X, verbose=0).flatten()
+                predictions = model.predict(X_arch, verbose=0).flatten()
             except Exception as e:
                 error_msg = str(e)
                 if 'incompatible' in error_msg.lower() or 'shape' in error_msg.lower():
@@ -367,7 +371,13 @@ class Phase5_PredictionOptimization(BasePhase):
             # Get predictions from best architecture
             best_arch = sorted_results[0]['architecture']
             if best_arch in models:
-                final_predictions = models[best_arch].predict(X, verbose=0).flatten()
+                best_meta = metadata.get(best_arch, {})
+                best_kept = best_meta.get('kept_feature_indices')
+                if best_kept:
+                    X_best = X[:, best_kept]
+                else:
+                    X_best = X
+                final_predictions = models[best_arch].predict(X_best, verbose=0).flatten()
         
         context.update({
             'architecture_results': architecture_results,

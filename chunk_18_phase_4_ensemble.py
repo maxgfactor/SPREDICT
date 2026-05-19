@@ -133,10 +133,13 @@ class Phase4_NeuralEnsemble(BasePhase):
         # Get metadata for reporting
         target_col = context.get('raw_target_column', 'unknown')
         feature_names = context.get('feature_names', [f'feature_{i}' for i in range(X.shape[1])])
+        threshold_kept_indices = context.get('threshold_kept_indices', {})
         
         # Log metadata
         self.logger.log(f"Target column: {target_col}", 'info')
         self.logger.log(f"Features ({len(feature_names)}): {feature_names}", 'info')
+        if threshold_kept_indices:
+            self.logger.log(f"Per-threshold feature pruning loaded for {len(threshold_kept_indices)} thresholds", 'info')
         
         self.logger.log(f"Training ensemble on {len(X)} samples", 'info')
         
@@ -240,6 +243,13 @@ class Phase4_NeuralEnsemble(BasePhase):
         thresholds = np.arange(first_threshold, last_threshold + threshold_step, threshold_step)
         self.logger.log(f"[SECTION 1] [BASELINE] Testing {len(thresholds)} thresholds per architecture ({first_threshold} to {last_threshold}, step {threshold_step})", 'info')
         
+        # Get first threshold's kept features for baseline diagnostic
+        first_thr_key = round(float(thresholds[0]), 1)
+        first_kept = threshold_kept_indices.get(first_thr_key)
+        if first_kept is None:
+            first_kept = list(range(X.shape[1]))
+        first_kept = list(first_kept)
+        
         # ============================================================================
         # SECTION 2: Threshold Optimization Loop
         # ============================================================================
@@ -258,6 +268,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         arch_names = []  # Track architecture names
         best_hyperparams_list = []  # Track best hyperparams per architecture
         best_val_precision_list = []  # Track best validation precision per architecture
+        arch_kept_indices = []  # Track kept feature indices per architecture (for Phase 5)
         
         # Track timing and metrics for summary
         arch_training_times = []  # Time per architecture
@@ -269,24 +280,26 @@ class Phase4_NeuralEnsemble(BasePhase):
             try:
                 arch_tag = f"[{arch_name.upper()}]"
                 arch_start_time = time.time()
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Training with threshold optimization...", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Training with threshold optimization...", 'info')
                 
                 # === BASELINE DIAGNOSTICS: Get prediction stats before any threshold optimization ===
                 baseline_y_train = (y_train_continuous >= thresholds[0]).astype(int)  # Use first threshold
-                baseline_model = self.model_trainer.build_architecture(arch_name, X_train.shape[1], y_train_continuous)
-                baseline_model, _ = self.model_trainer.train_model(baseline_model, X_train, baseline_y_train, epochs=1, verbose=0)
+                X_train_bl = X_train[:, first_kept]
+                X_val_bl = X_val[:, first_kept]
+                baseline_model = self.model_trainer.build_architecture(arch_name, X_train_bl.shape[1], y_train_continuous)
+                baseline_model, _ = self.model_trainer.train_model(baseline_model, X_train_bl, baseline_y_train, epochs=1, verbose=0)
                 if baseline_model is None:
                     raise ValueError(f"[FATAL] {arch_name} baseline_model is None after training")
-                baseline_pred = baseline_model.predict(X_val, verbose=0).flatten()
+                baseline_pred = baseline_model.predict(X_val_bl, verbose=0).flatten()
                 
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Before threshold optimization:", 'info')
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Predictions: mean={baseline_pred.mean():.4f}, std={baseline_pred.std():.4f}, min={baseline_pred.min():.4f}, max={baseline_pred.max():.4f}", 'info')
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} " + format_diagnostic_string(baseline_pred, ""), 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Before threshold optimization:", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Predictions: mean={baseline_pred.mean():.4f}, std={baseline_pred.std():.4f}, min={baseline_pred.min():.4f}, max={baseline_pred.max():.4f}", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] " + format_diagnostic_string(baseline_pred, ""), 'info')
                 hist = get_prediction_histogram(baseline_pred, 20)
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Histogram bins: {hist['counts'][:5]} ... {hist['counts'][-5:]}", 'info')
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} % positive predictions (Prediction_Threshold=0.5): {((baseline_pred >= 0.5).mean() * 100):.2f}%", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Histogram bins: {hist['counts'][:5]} ... {hist['counts'][-5:]}", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] % positive predictions (Prediction_Threshold=0.5): {((baseline_pred >= 0.5).mean() * 100):.2f}%", 'info')
                 if ((baseline_pred >= 0.5).sum() == 0):
-                    self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} [WARNING] No predictions >= 0.5!", 'warning')
+                    self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] [WARNING] No predictions >= 0.5!", 'warning')
                 
                 # Calculate baseline precision for HPO comparison
                 # NOTE: This calculates ACCURACY (predictions == labels), NOT precision
@@ -350,20 +363,21 @@ class Phase4_NeuralEnsemble(BasePhase):
                 baseline_gini = self.evaluator.calculate_gini(y_val_binarized, baseline_pred.flatten())
                 baseline_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, baseline_pred.flatten())
                 
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Label_Threshold={thresholds[0]:.1f},", 'info')
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Val_P={baseline_precision:.4f} Val_TP={baseline_cm['TP']} Val_TN={baseline_cm['TN']} Val_FP={baseline_cm['FP']} Val_FN={baseline_cm['FN']} "
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Label_Threshold={thresholds[0]:.1f},", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Val_P={baseline_precision:.4f} Val_TP={baseline_cm['TP']} Val_TN={baseline_cm['TN']} Val_FP={baseline_cm['FP']} Val_FN={baseline_cm['FN']} "
                              f"Val_MaxPred={baseline_pred.max():.4f} Val_MeanPred={baseline_pred.mean():.4f} "
                              f"Val_R={baseline_recall:.4f} Val_F1={baseline_f1:.4f} Val_AUC={baseline_auc:.4f} "
                              f"Val_Spec={baseline_spec:.4f} Val_FPR={baseline_fpr:.4f} Val_F2={baseline_f2:.4f} Val_MCC={baseline_mcc:.4f} Val_PRAUC={baseline_prauc:.4f} Val_BalAcc={baseline_balacc:.4f} "
                              f"Val_Brier={baseline_brier:.4f} Val_Kappa={baseline_kappa:.4f} Val_Informedness={baseline_informedness:.4f} Val_Markedness={baseline_markedness:.4f} Val_Gini={baseline_gini:.4f} Val_OptThresh={baseline_opt_thresh:.4f} "
                              f"Val_StdPred={baseline_pred.std():.4f} Val_PctAboveThresh={(baseline_pred >= 0.5).mean() * 100:.2f}", 'info')
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Prediction_Binary_Split=0.5 {hpo_str}", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [BASELINE] Prediction_Binary_Split=0.5 {hpo_str}", 'info')
                 
                 # Run threshold optimization
                 optimal_threshold, best_prec, all_results, threshold_opt_model = self.evaluator.find_optimal_threshold(
                     X_train, y_train_continuous, X_val, y_val_continuous,
                     None, self.model_trainer, arch_name,
-                    thresholds, patience=5
+                    thresholds, patience=5,
+                    threshold_feature_indices=threshold_kept_indices
                 )
                 if threshold_opt_model is None:
                     raise ValueError(f"[FATAL] {arch_name} threshold_opt_model is None after find_optimal_threshold")
@@ -374,19 +388,33 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Track optimal threshold for ensemble evaluation
                 optimal_thresholds.append(optimal_threshold)
                 
+                # Slice X to optimal threshold's feature set for remaining sections (HPO, POST-HPO, Final)
+                opt_thr_key = round(float(optimal_threshold), 1)
+                opt_kept = threshold_kept_indices.get(opt_thr_key, list(range(X_train.shape[1])))
+                opt_kept = list(opt_kept)
+                X_train_opt = X_train[:, opt_kept]
+                X_val_opt = X_val[:, opt_kept]
+                arch_kept_indices.append(opt_kept)
+                
                 # Log ALL results for each threshold - 4-line blocks per threshold
                 for r in all_results:
                     t = r['threshold']
                     tr = r['train']
                     v = r['val']
-                    self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Label_Threshold={t:.1f},", 'info')
-                    self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Train_P={tr['P']:.4f} Train_TP={tr['TP']} Train_TN={tr['TN']} Train_FP={tr['FP']} Train_FN={tr['FN']} Train_MaxPred={tr['MaxPred']:.4f} Train_MeanPred={tr['MeanPred']:.4f} Train_R={tr['R']:.4f} Train_F1={tr['F1']:.4f} Train_AUC={tr['AUC']:.4f} Train_Spec={tr['Spec']:.4f} Train_FPR={tr['FPR']:.4f} Train_F2={tr['F2']:.4f} Train_MCC={tr['MCC']:.4f} Train_PRAUC={tr['PRAUC']:.4f} Train_BalAcc={tr['BalAcc']:.4f} Train_Brier={tr['Brier']:.4f} Train_Kappa={tr['Kappa']:.4f} Train_Informedness={tr['Informedness']:.4f} Train_Markedness={tr['Markedness']:.4f} Train_Gini={tr['Gini']:.4f} Train_OptThresh={tr['OptThresh']:.4f} Train_StdPred={tr['StdPred']:.4f} Train_PctAboveThresh={tr['PctAboveThresh']:.2f}", 'info')
-                    self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Val_P={v['P']:.4f} Val_TP={v['TP']} Val_TN={v['TN']} Val_FP={v['FP']} Val_FN={v['FN']} Val_MaxPred={v['MaxPred']:.4f} Val_MeanPred={v['MeanPred']:.4f} Val_R={v['R']:.4f} Val_F1={v['F1']:.4f} Val_AUC={v['AUC']:.4f} Val_Spec={v['Spec']:.4f} Val_FPR={v['FPR']:.4f} Val_F2={v['F2']:.4f} Val_MCC={v['MCC']:.4f} Val_PRAUC={v['PRAUC']:.4f} Val_BalAcc={v['BalAcc']:.4f} Val_Brier={v['Brier']:.4f} Val_Kappa={v['Kappa']:.4f} Val_Informedness={v['Informedness']:.4f} Val_Markedness={v['Markedness']:.4f} Val_Gini={v['Gini']:.4f} Val_OptThresh={v['OptThresh']:.4f} Val_StdPred={v['StdPred']:.4f} Val_PctAboveThresh={v['PctAboveThresh']:.2f}", 'info')
-                    self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} Prediction_Binary_Split=0.5", 'info')
+                    self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold SEARCH] Label_Threshold={t:.1f},", 'info')
+                    self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold SEARCH] Train_P={tr['P']:.4f} Train_TP={tr['TP']} Train_TN={tr['TN']} Train_FP={tr['FP']} Train_FN={tr['FN']} Train_MaxPred={tr['MaxPred']:.4f} Train_MeanPred={tr['MeanPred']:.4f} Train_R={tr['R']:.4f} Train_F1={tr['F1']:.4f} Train_AUC={tr['AUC']:.4f} Train_Spec={tr['Spec']:.4f} Train_FPR={tr['FPR']:.4f} Train_F2={tr['F2']:.4f} Train_MCC={tr['MCC']:.4f} Train_PRAUC={tr['PRAUC']:.4f} Train_BalAcc={tr['BalAcc']:.4f} Train_Brier={tr['Brier']:.4f} Train_Kappa={tr['Kappa']:.4f} Train_Informedness={tr['Informedness']:.4f} Train_Markedness={tr['Markedness']:.4f} Train_Gini={tr['Gini']:.4f} Train_OptThresh={tr['OptThresh']:.4f} Train_StdPred={tr['StdPred']:.4f} Train_PctAboveThresh={tr['PctAboveThresh']:.2f}", 'info')
+                    self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold SEARCH] Val_P={v['P']:.4f} Val_TP={v['TP']} Val_TN={v['TN']} Val_FP={v['FP']} Val_FN={v['FN']} Val_MaxPred={v['MaxPred']:.4f} Val_MeanPred={v['MeanPred']:.4f} Val_R={v['R']:.4f} Val_F1={v['F1']:.4f} Val_AUC={v['AUC']:.4f} Val_Spec={v['Spec']:.4f} Val_FPR={v['FPR']:.4f} Val_F2={v['F2']:.4f} Val_MCC={v['MCC']:.4f} Val_PRAUC={v['PRAUC']:.4f} Val_BalAcc={v['BalAcc']:.4f} Val_Brier={v['Brier']:.4f} Val_Kappa={v['Kappa']:.4f} Val_Informedness={v['Informedness']:.4f} Val_Markedness={v['Markedness']:.4f} Val_Gini={v['Gini']:.4f} Val_OptThresh={v['OptThresh']:.4f} Val_StdPred={v['StdPred']:.4f} Val_PctAboveThresh={v['PctAboveThresh']:.2f}", 'info')
+                    self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold SEARCH] Prediction_Binary_Split=0.5", 'info')
                 
-                # Log optimal threshold (2-line [OPTIMAL] block)
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} [OPTIMAL] label_threshold={optimal_threshold:.1f}", 'info')
-                self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} [OPTIMAL] Val P={best_prec:.4f}", 'info')
+                # Log optimal threshold (4-line [OPTIMAL] block matching per-threshold format)
+                optimal_result = next((r for r in all_results if r['threshold'] == optimal_threshold), None)
+                optimal_train = optimal_result['train'] if optimal_result else {}
+                optimal_val = optimal_result['val'] if optimal_result else {}
+                tr, v = optimal_train, optimal_val
+                self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold OPTIMAL] Label_Threshold={optimal_threshold:.1f}", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold OPTIMAL] Train_P={tr['P']:.4f} Train_TP={tr['TP']} Train_TN={tr['TN']} Train_FP={tr['FP']} Train_FN={tr['FN']} Train_MaxPred={tr['MaxPred']:.4f} Train_MeanPred={tr['MeanPred']:.4f} Train_R={tr['R']:.4f} Train_F1={tr['F1']:.4f} Train_AUC={tr['AUC']:.4f} Train_Spec={tr['Spec']:.4f} Train_FPR={tr['FPR']:.4f} Train_F2={tr['F2']:.4f} Train_MCC={tr['MCC']:.4f} Train_PRAUC={tr['PRAUC']:.4f} Train_BalAcc={tr['BalAcc']:.4f} Train_Brier={tr['Brier']:.4f} Train_Kappa={tr['Kappa']:.4f} Train_Informedness={tr['Informedness']:.4f} Train_Markedness={tr['Markedness']:.4f} Train_Gini={tr['Gini']:.4f} Train_OptThresh={tr['OptThresh']:.4f} Train_StdPred={tr['StdPred']:.4f} Train_PctAboveThresh={tr['PctAboveThresh']:.2f}", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold OPTIMAL] Val_P={v['P']:.4f} Val_TP={v['TP']} Val_TN={v['TN']} Val_FP={v['FP']} Val_FN={v['FN']} Val_MaxPred={v['MaxPred']:.4f} Val_MeanPred={v['MeanPred']:.4f} Val_R={v['R']:.4f} Val_F1={v['F1']:.4f} Val_AUC={v['AUC']:.4f} Val_Spec={v['Spec']:.4f} Val_FPR={v['FPR']:.4f} Val_F2={v['F2']:.4f} Val_MCC={v['MCC']:.4f} Val_PRAUC={v['PRAUC']:.4f} Val_BalAcc={v['BalAcc']:.4f} Val_Brier={v['Brier']:.4f} Val_Kappa={v['Kappa']:.4f} Val_Informedness={v['Informedness']:.4f} Val_Markedness={v['Markedness']:.4f} Val_Gini={v['Gini']:.4f} Val_OptThresh={v['OptThresh']:.4f} Val_StdPred={v['StdPred']:.4f} Val_PctAboveThresh={v['PctAboveThresh']:.2f}", 'info')
+                self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold OPTIMAL] Prediction_Binary_Split=0.5", 'info')
                 
                 # Store pre-HPO precision for comparison
                 pre_hpo_val_precision = best_prec
@@ -408,11 +436,11 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 # Get predictions from threshold_opt_model for MaxPred/MeanPred
                 if threshold_opt_model is not None:
-                    section2_pred = threshold_opt_model.predict(X_val, verbose=0).flatten()
+                    section2_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
                     section2_max_pred = section2_pred.max()
                     section2_mean_pred = section2_pred.mean()
                     if self.config.get('LOG_VERBOSITY', 0) >= 2:
-                        self.logger.log(f"[SECTION 1] [BASELINE] {arch_tag} " + format_diagnostic_string(section2_pred, ""), 'info')
+                        self.logger.log(f"[SECTION 1] {arch_tag} [Label_Threshold OPTIMAL] " + format_diagnostic_string(section2_pred, ""), 'info')
                 else:
                     section2_max_pred = 0.0
                     section2_mean_pred = 0.0
@@ -429,33 +457,6 @@ class Phase4_NeuralEnsemble(BasePhase):
                     section2_FN = baseline_cm['FN']
                     section2_max_pred = baseline_pred.max()
                     section2_mean_pred = baseline_pred.mean()
-                
-                section2_pred = threshold_opt_model.predict(X_val, verbose=0).flatten()
-                section2_binary = (section2_pred >= 0.5).astype(int)
-                section2_spec = self.evaluator.calculate_specificity(y_val_binarized, section2_binary)
-                section2_fpr = self.evaluator.calculate_fpr(y_val_binarized, section2_binary)
-                section2_f2 = self.evaluator.calculate_f2_score(y_val_binarized, section2_binary)
-                section2_mcc = self.evaluator.calculate_mcc(y_val_binarized, section2_binary)
-                section2_prauc = self.evaluator.calculate_average_precision(y_val_binarized, section2_pred)
-                section2_balacc = self.evaluator.calculate_balanced_accuracy(y_val_binarized, section2_binary)
-                section2_brier = self.evaluator.calculate_brier_score(y_val_binarized, section2_pred)
-                section2_kappa = self.evaluator.calculate_kappa(y_val_binarized, section2_binary)
-                section2_informedness = self.evaluator.calculate_informedness(y_val_binarized, section2_binary)
-                section2_markedness = self.evaluator.calculate_markedness(y_val_binarized, section2_binary)
-                section2_gini = self.evaluator.calculate_gini(y_val_binarized, section2_pred)
-                section2_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, section2_pred)
-                
-                arch_tag = f"[{arch_name.upper()}]"
-                section2_std_pred = float(section2_pred.std()) if len(section2_pred) > 0 else 0.0
-                section2_pct_above = (section2_pred >= 0.5).mean() * 100 if len(section2_pred) > 0 else 0.0
-                self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Label_Threshold={optimal_threshold:.1f},", 'info')
-                self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Val_P={section2_P:.4f} Val_TP={section2_TP} Val_TN={section2_TN} Val_FP={section2_FP} Val_FN={section2_FN} "
-                             f"Val_MaxPred={section2_max_pred:.4f} Val_MeanPred={section2_mean_pred:.4f} "
-                             f"Val_R={section2_R:.4f} Val_F1={section2_F1:.4f} Val_AUC={section2_AUC:.4f} "
-                             f"Val_Spec={section2_spec:.4f} Val_FPR={section2_fpr:.4f} Val_F2={section2_f2:.4f} Val_MCC={section2_mcc:.4f} Val_PRAUC={section2_prauc:.4f} Val_BalAcc={section2_balacc:.4f} "
-                             f"Val_Brier={section2_brier:.4f} Val_Kappa={section2_kappa:.4f} Val_Informedness={section2_informedness:.4f} Val_Markedness={section2_markedness:.4f} Val_Gini={section2_gini:.4f} Val_OptThresh={section2_opt_thresh:.4f} "
-                             f"Val_StdPred={section2_std_pred:.4f} Val_PctAboveThresh={section2_pct_above:.2f}", 'info')
-                self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Prediction_Binary_Split=0.5 (default hyperparams)", 'info')
                 
                 # Define binary labels BEFORE hyperparameter optimization
                 y_train_optimal = (y_train_continuous >= optimal_threshold).astype(int)
@@ -497,23 +498,23 @@ class Phase4_NeuralEnsemble(BasePhase):
                 hpo_TN = 0
                 hpo_FN = 0
                 # Default HPO prediction array (used when HPO disabled or sklearn models)
-                hpo_val_pred = np.zeros(len(X_val))  # Empty predictions default
+                hpo_val_pred = np.zeros(len(X_val_opt))  # Empty predictions default
                 
                 if enable_hyperparam:
                     self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Running hyperparameter optimization...", 'info')
                     sys.stdout.flush()
                     
-                    # Create model builder with custom hyperparams
+                    # Create model builder with custom hyperparams (using optimal threshold's features)
                     def model_builder_with_params(hyperparams):
                         return self.model_trainer.build_architecture_with_params(
-                            arch_name, X_train.shape[1], hyperparams
+                            arch_name, X_train_opt.shape[1], hyperparams
                         )
                     
                     best_hyperparams, hpo_best_model, hpo_best_precision = self.hyperparam_optimizer.optimize(
                         arch_name=arch_name,
-                        X_train=X_train,
+                        X_train=X_train_opt,
                         y_train=y_train_optimal,
-                        X_val=X_val,
+                        X_val=X_val_opt,
                         y_val=y_val_binarized,
                         model_builder=model_builder_with_params,
                         train_func=self.model_trainer.train_model,
@@ -533,7 +534,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     # Evaluate HPO model using prediction threshold from config
                     hpo_post_precision = 0.0  # Default
                     if hpo_best_model is not None:
-                        hpo_val_pred = hpo_best_model.predict(X_val, verbose=0).flatten()
+                        hpo_val_pred = hpo_best_model.predict(X_val_opt, verbose=0).flatten()
                         if self.config.get('LOG_VERBOSITY', 0) >= 2:
                             self.logger.log(f"   [DIAG-HPO] " + format_diagnostic_string(hpo_val_pred, ""), 'info')
                         
@@ -562,8 +563,6 @@ class Phase4_NeuralEnsemble(BasePhase):
                         hpo_val_binary = (hpo_val_pred >= 0.5).astype(int)
                         hpo_val_precision = self.evaluator.calculate_precision(y_val_binarized, hpo_val_binary)
                         hpo_post_precision = hpo_val_precision
-                        self.logger.log(f"   HPO model evaluation: Val P={hpo_val_precision:.4f}", 'info')
-                        
                         # Compare HPO vs pre-HPO precision at optimal_threshold
                         if hpo_val_precision > pre_hpo_val_precision:
                             hpo_improved = True
@@ -582,7 +581,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Get predictions and metrics from appropriate model
                 if not hpo_improved and threshold_opt_model is not None:
                     # HPO didn't improve - use pre-HPO model (threshold_opt_model) predictions
-                    section3_pred = threshold_opt_model.predict(X_val, verbose=0).flatten()
+                    section3_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
                     section3_binary = (section3_pred >= 0.5).astype(int)
                     section3_cm = self.evaluator.calculate_confusion_matrix(y_val_binarized, section3_binary)
                     section3_R = self.evaluator.calculate_recall(y_val_binarized, section3_binary)
@@ -598,7 +597,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     section3_precision = pre_hpo_val_precision
                 elif hpo_best_model is not None:
                     # HPO improved - use HPO model predictions
-                    section3_pred = hpo_best_model.predict(X_val, verbose=0).flatten()
+                    section3_pred = hpo_best_model.predict(X_val_opt, verbose=0).flatten()
                     section3_binary = (section3_pred >= 0.5).astype(int)
                     section3_cm = self.evaluator.calculate_confusion_matrix(y_val_binarized, section3_binary)
                     section3_R = self.evaluator.calculate_recall(y_val_binarized, section3_binary)
@@ -679,7 +678,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                         self.evaluator.find_optimal_threshold(
                             X_train, y_train_continuous, X_val, y_val_continuous,
                             model_for_post_hpo, self.model_trainer, arch_name,
-                            thresholds, patience=999, retrain_model=False
+                            thresholds, patience=999, retrain_model=False,
+                            threshold_feature_indices=threshold_kept_indices
                         )
                     
                     # Compare pre-HPO (optimal_threshold) vs post-HPO threshold precision
@@ -716,7 +716,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 # Get MaxPred/MeanPred from model
                 if model_for_post_hpo is not None:
-                    s4_pred = model_for_post_hpo.predict(X_val, verbose=0).flatten()
+                    s4_pred = model_for_post_hpo.predict(X_val_opt, verbose=0).flatten()
                     if self.config.get('LOG_VERBOSITY', 0) >= 2:
                         self.logger.log(f"   [DIAG-S4] " + format_diagnostic_string(s4_pred, ""), 'info')
                     s4_max_pred = s4_pred.max()
@@ -800,29 +800,29 @@ class Phase4_NeuralEnsemble(BasePhase):
                         self.logger.log(f"   Using threshold-optimized model (HPO did not improve)", 'info')
                     elif best_hyperparams:
                         model = self.model_trainer.build_architecture_with_params(
-                            arch_name, X_train.shape[1], best_hyperparams
+                            arch_name, X_train_opt.shape[1], best_hyperparams
                         )
                         self.logger.log(f"   Using optimized hyperparameters: {best_hyperparams}", 'info')
                         # Use architecture-specific epochs if specified
                         train_epochs = best_hyperparams.get('epochs', 3)
                         if hasattr(model, 'sklearn_model'):
-                            trained_model, _ = self.model_trainer._train_sklearn_model(model, X_train, y_train_optimal)
+                            trained_model, _ = self.model_trainer._train_sklearn_model(model, X_train_opt, y_train_optimal)
                             training_history = {}
                         else:
                             trained_model, training_history = self.model_trainer.train_model(
-                                model, X_train, y_train_optimal, epochs=train_epochs, verbose=0
+                                model, X_train_opt, y_train_optimal, epochs=train_epochs, verbose=0
                             )
                     else:
-                        model = self.model_trainer.build_architecture(arch_name, X_train.shape[1], y_train_continuous)
+                        model = self.model_trainer.build_architecture(arch_name, X_train_opt.shape[1], y_train_continuous)
                         # Use architecture-specific epochs (increased for failing architectures)
                         arch_epochs = {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20}
                         train_epochs = arch_epochs.get(arch_name, 3)
                         if hasattr(model, 'sklearn_model'):
-                            trained_model, _ = self.model_trainer._train_sklearn_model(model, X_train, y_train_optimal)
+                            trained_model, _ = self.model_trainer._train_sklearn_model(model, X_train_opt, y_train_optimal)
                             training_history = {}
                         else:
                             trained_model, training_history = self.model_trainer.train_model(
-                                model, X_train, y_train_optimal, epochs=train_epochs, verbose=0
+                                model, X_train_opt, y_train_optimal, epochs=train_epochs, verbose=0
                             )
                 
                 # Get predictions and final metrics
@@ -831,8 +831,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                 if trained_model is None:
                     raise ValueError(f"[FATAL] {arch_name} training failed: trained_model is None")
                 
-                train_pred = trained_model.predict(X_train, verbose=0).flatten()
-                val_pred = trained_model.predict(X_val, verbose=0).flatten()
+                train_pred = trained_model.predict(X_train_opt, verbose=0).flatten()
+                val_pred = trained_model.predict(X_val_opt, verbose=0).flatten()
                 
                 # Validate predictions are in valid probability range [0,1]
                 if np.any(np.isnan(train_pred)) or np.any(np.isnan(val_pred)):
@@ -913,8 +913,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                     val_cm = {'TP': hpo_TP, 'FP': hpo_FP, 'TN': hpo_TN, 'FN': hpo_FN}
                     # Also use pre-HPO predictions when HPO didn't improve
                     if not hpo_improved and threshold_opt_model is not None:
-                        val_pred = threshold_opt_model.predict(X_val, verbose=0).flatten()
-                        train_pred = threshold_opt_model.predict(X_train, verbose=0).flatten()
+                        val_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
+                        train_pred = threshold_opt_model.predict(X_train_opt, verbose=0).flatten()
                         # Calculate train metrics from pre-HPO predictions
                         train_binary = (train_pred >= 0.5).astype(int)
                         train_cm = self.evaluator.calculate_confusion_matrix(y_train_optimal, train_binary)
@@ -1656,7 +1656,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                         metadata = {
                             'optimal_threshold': float(optimal_thresholds[i]),
                             'best_hyperparams': best_hyperparams_list[i] if best_hyperparams_list[i] else {},
-                            'best_val_precision': float(best_val_precision_list[i]) if i < len(best_val_precision_list) else 0.0
+                            'best_val_precision': float(best_val_precision_list[i]) if i < len(best_val_precision_list) else 0.0,
+                            'kept_feature_indices': list(arch_kept_indices[i]) if i < len(arch_kept_indices) else []
                         }
                         metadata_path = os.path.join(models_path, f'{arch_name}_metadata.json')
                         with open(metadata_path, 'w') as f:

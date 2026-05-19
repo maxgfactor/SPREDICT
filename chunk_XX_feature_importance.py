@@ -46,10 +46,10 @@ class FeatureImportanceAnalyzer:
         else:
             print(msg)
 
-    def _log_top_features(self, label: str, df: pd.DataFrame, score_col: str, n: int = 5):
-        top = df.head(n)
-        parts = [f"{row['feature']}={row[score_col]:.6f}" for _, row in top.iterrows()]
-        self._log(f"  Top {n} by {label}: {' | '.join(parts)}")
+    def _log_all_features(self, method_prefix: str, df: pd.DataFrame, score_col: str, dropped_indices: List[int], timing: float, label_threshold: float, pos_rate: float, extra: str = ""):
+        kept_df = df[~df['index'].isin(dropped_indices)].sort_values(score_col, ascending=False)
+        parts = [f"{row['feature']}={row[score_col]:.6f}" for _, row in kept_df.iterrows()]
+        self._log(f"  {method_prefix} (Label_Threshold={label_threshold:.1f}, +{pos_rate:.3%}{extra}, kept {len(kept_df)}/{len(df)}) Done in {timing:.1f}s: {' | '.join(parts)}")
     
     def run_full_analysis(
         self,
@@ -76,9 +76,6 @@ class FeatureImportanceAnalyzer:
         
         for thresh in thresholds:
             y_binary = (y_raw >= thresh).astype(int)
-            self._log(f"Label_Threshold={thresh:.1f}")
-            self._log(f"Positive rate: {y_binary.mean():.3%}")
-            
             X_train, X_val, y_train_bin, y_val_bin = train_test_split(
                 X, y_binary, test_size=0.2, random_state=42, stratify=y_binary
             )
@@ -86,67 +83,42 @@ class FeatureImportanceAnalyzer:
             results = {}  # Results for this threshold
             
             # Method 1: Statistical Correlation
-            self._log(f"Method 1/6: Statistical Correlation...")
             t0 = time.time()
             results['correlation'] = self._analyze_correlation(X, y_raw, feature_names)
             results['correlation_timing'] = time.time() - t0
-            self._log(f"  Done in {results['correlation_timing']:.1f}s")
-            self._log_top_features("Correlation", results['correlation'], 'spearman_abs')
             
             # Method 2: Tree-Based Importance
-            self._log(f"Method 2/6: Tree-Based Importance...")
             t0 = time.time()
             results['tree'] = self._analyze_tree(X, y_binary, feature_names)
             results['tree_timing'] = time.time() - t0
-            self._log(f"  Done in {results['tree_timing']:.1f}s")
-            self._log_top_features("Tree", results['tree'], 'combined_importance')
             
             # Method 3: Permutation Importance
-            self._log(f"Method 3/6: Permutation Importance...")
             t0 = time.time()
-            results['permutation'] = self._analyze_permutation(
+            results['permutation'], results['permutation_baseline_auc'] = self._analyze_permutation(
                 X_train, y_train_bin, X_val, y_val_bin, feature_names
             )
             results['permutation_timing'] = time.time() - t0
-            self._log(f"  Done in {results['permutation_timing']:.1f}s")
-            self._log_top_features("Permutation", results['permutation'], 'auc_drop')
             
             # Method 4: Neural Weight Analysis
-            self._log(f"Method 4/6: Neural Weight Analysis...")
             t0 = time.time()
             results['neural'] = self._analyze_neural(X_train, y_train_bin, feature_names, trained_dense_model)
             results['neural_timing'] = time.time() - t0
-            self._log(f"  Done in {results['neural_timing']:.1f}s")
-            self._log_top_features("Neural", results['neural'], 'mean_abs_weight')
             
             # Method 5: SHAP Values
-            self._log(f"Method 5/6: SHAP Values...")
             t0 = time.time()
             results['shap'] = self._analyze_shap(X_train, y_train_bin, feature_names, trained_dense_model)
             results['shap_timing'] = time.time() - t0
-            self._log(f"  Done in {results['shap_timing']:.1f}s")
-            self._log_top_features("SHAP", results['shap'], 'mean_abs_shap')
             
             # Method 6: Ablation Study
-            self._log(f"Method 6/6: Ablation Study...")
             t0 = time.time()
             results['ablation'] = self._analyze_ablation(X_train, y_train_bin, X_val, y_val_bin, feature_names)
             results['ablation_timing'] = time.time() - t0
-            self._log(f"  Done in {results['ablation_timing']:.1f}s")
-            self._log_top_features("Ablation", results['ablation'], 'auc')
             
-            # Compute consolidated ranking for this threshold
-            self._log(f"Computing consolidated ranking...")
+            # Compute consolidated ranking
             consolidated = self._compute_consolidated_ranking(results, feature_names)
             results['consolidated'] = consolidated
-            top10 = consolidated.head(10)
-            parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in top10.iterrows()]
-            self._log(f"  Consolidated Top 10: {' | '.join(parts)}")
-            bottom3 = consolidated.tail(3)
-            parts = [f"{r['feature']}={r['mean_rank']:.2f}" for _, r in bottom3.iterrows()]
-            self._log(f"  Bottom 3: {' | '.join(parts)}")
             
-            # Determine pruned features for this threshold
+            # Determine pruned features
             prune_pct = self.config['FEATURE_PRUNE_PERCENTILE']
             n_keep = max(1, int(n_features * (100 - prune_pct) / 100))
             kept_indices = consolidated.head(n_keep)['index'].tolist()
@@ -154,8 +126,24 @@ class FeatureImportanceAnalyzer:
             results['dropped_indices'] = dropped_indices
             results['kept_indices'] = kept_indices
             
+            # Per-method all-feature logs (excluding pruned)
+            pos_rate = y_binary.mean()
+            self._log_all_features("Method 1/6: Statistical Correlation", results['correlation'], 'spearman_abs', dropped_indices, results['correlation_timing'], thresh, pos_rate)
+            self._log_all_features("Method 2/6: Tree-Based Importance", results['tree'], 'combined_importance', dropped_indices, results['tree_timing'], thresh, pos_rate)
+            self._log_all_features("Method 3/6: Permutation Importance", results['permutation'], 'auc_drop', dropped_indices, results['permutation_timing'], thresh, pos_rate, extra=f", baseline AUC={results['permutation_baseline_auc']:.4f}")
+            self._log_all_features("Method 4/6: Neural Weight Analysis", results['neural'], 'mean_abs_weight', dropped_indices, results['neural_timing'], thresh, pos_rate)
+            self._log_all_features("Method 5/6: SHAP Values", results['shap'], 'mean_abs_shap', dropped_indices, results['shap_timing'], thresh, pos_rate)
+            self._log_all_features("Method 6/6: Ablation Study", results['ablation'], 'auc', dropped_indices, results['ablation_timing'], thresh, pos_rate)
+            
+            # Consolidated ranking of all kept features
+            kept_df = consolidated[~consolidated['index'].isin(dropped_indices)]
+            parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in kept_df.iterrows()]
+            self._log(f"  Consolidated ranking (Label_Threshold={thresh:.1f}, +{pos_rate:.3%}, kept {len(kept_df)}/{len(feature_names)}): {' | '.join(parts)}")
+            
             results_by_threshold[thresh] = results
-            self._log(f"Done for Label_Threshold={thresh:.1f}: {len(dropped_indices)} pruned")
+            pruned_df = consolidated[consolidated['index'].isin(dropped_indices)]
+            parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in pruned_df.iterrows()]
+            self._log(f"  Consolidated pruning (Label_Threshold={thresh:.1f}, +{pos_rate:.3%}, pruned {len(dropped_indices)}/{n_features}): {' | '.join(parts)}")
         
         # Cross-threshold stability summary
         n_thresh = len(thresholds)
@@ -182,8 +170,8 @@ class FeatureImportanceAnalyzer:
         self.timings['total'] = total_time
         
         self._log(f"TOTAL TIME: {total_time:.1f}s ({total_time/60:.1f} min)")
-        self._log(f"FEATURES: {n_features} total -> {n_keep} kept, {len(dropped_indices)} pruned")
-        self._log(f"DROPPED: {[feature_names[i] for i in dropped_indices]}")
+        self._log(f"FEATURES: {n_features} total -> {len(results['kept_indices'])} kept, {len(results['dropped_indices'])} pruned")
+        self._log(f"DROPPED: {[feature_names[i] for i in results['dropped_indices']]}")
         
         return {
             'results': results,
@@ -290,7 +278,7 @@ class FeatureImportanceAnalyzer:
         X_val: np.ndarray,
         y_val: np.ndarray,
         feature_names: List[str]
-    ) -> pd.DataFrame:
+    ) -> Tuple[pd.DataFrame, float]:
         import logging
         tf_logger = logging.getLogger('tensorflow')
         old_level = tf_logger.level
@@ -300,7 +288,6 @@ class FeatureImportanceAnalyzer:
         model.fit(X_train, y_train, epochs=10, batch_size=256, verbose=0)
         
         base_auc = roc_auc_score(y_val, model.predict(X_val, verbose=0).flatten())
-        self._log(f"  Permutation baseline AUC: {base_auc:.4f}")
         
         importance_scores = []
         n_repeats = self.config['PERMUTATION_REPEATS']
@@ -328,7 +315,7 @@ class FeatureImportanceAnalyzer:
         df = pd.DataFrame(importance_scores)
         df['rank'] = df['auc_drop'].rank(ascending=False)
         del model
-        return df.sort_values('rank')
+        return df.sort_values('rank'), base_auc
     
     def _analyze_neural(
         self,

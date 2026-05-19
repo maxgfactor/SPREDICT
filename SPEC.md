@@ -1,7 +1,7 @@
 # Software Specification Requirements (SSR) - Fraud Detection Ensemble
 
-**Version**: 3.4  
-**Date**: 2026-05-18  
+**Version**: 3.5  
+**Date**: 2026-05-19  
 **Status**: Living Document - Update After Each Run  
 
 ---
@@ -79,26 +79,17 @@ Logged before threshold optimization:
 
 **Source File**: chunk_14_models_trainer.py, chunk_18_phase_4_ensemble.py
 
-Example:
+Example (current format with tag reorder):
 ```
-[BASELINE] Before threshold optimization:
-[BASELINE] Predictions: mean=0.0023, std=0.0156, min=0.0001, max=0.4523
-[BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.12%
+[ARCH_NAME] [BASELINE] Before threshold optimization:
+[ARCH_NAME] [BASELINE] Predictions: mean=0.0023, std=0.0156, min=0.0001, max=0.4523
+[ARCH_NAME] [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.12%
 ```
 
-### ACTUAL RESULTS - Run #2026-05-11
+### ACTUAL RESULTS - Run #2026-05-19
 
 | Architecture | mean | std | min | max | % Positive | Notes |
 |--------------|-----|-----|-----|-----|------------|-------|
-| CatBoost | 0.3960 | 0.3439 | 0.0000 | 0.9999 | — | Train: 85.7% pos |
-| LightGBM | 0.0005 | 0.0046 | 0.0000 | 0.0570 | 0.00% | MaxPred 0.057 < 0.5 — all thresholds rejected |
-| XGBoost | 0.3846 | 0.4033 | 0.0000 | 0.9979 | 37.93% | Train-val gap: AUC 0.88→0.00, TP=0 on val |
-| Dense | 0.0039 | 0.0055 | 0.0000 | 1.0000 | 0.00% | MaxPred=1.0 but all thresholds rejected (min positive pred < 5) |
-| CNN | 0.0012 | 0.0010 | 0.0000 | 0.0042 | 0.00% | MaxPred=0.0042 — **CRITICAL** |
-| RNN | 0.0043 | 0.0079 | 0.0002 | 0.0661 | 0.00% | MaxPred=0.0661 — **CRITICAL** |
-| LSTM | 0.0044 | 0.0044 | 0.0013 | 0.0316 | 0.00% | MaxPred=0.0316 — **CRITICAL** |
-| VAE | 0.0135 | 0.0074 | 0.0000 | 0.0919 | 0.00% | MaxPred=0.0919 — **CRITICAL** |
-| Transformer | 0.0378 | 0.0003 | 0.0260 | 0.0443 | 0.00% | MaxPred=0.0443 — **CRITICAL** |
 
 | Architecture | Optimal Threshold | Val_Precision | Val_Recall | Val_AUC | Val_TP | Val_FP | Notes |
 |--------------|-------------------|---------------|-----------|---------|--------|--------|-------|
@@ -547,7 +538,7 @@ The following features were removed during preprocessing:
 | Phase 1 | Data loading, preprocessing, split (train/val/inference) | X_train, X_val, X_inference in context | → See Section 1.1 |
 | Phase 2 | Threshold optimization | ❌ Removed - merged into Phase 4 | N/A |
 | Phase 3 | Temporal weighting generation | temporal_weights in context | → See Section 1.1 |
-| Phase Xa | Feature importance (11 thresholds, aggregate pruning) | Pruned X, feature_names | → Feature analysis |
+| Phase Xa | Feature importance (11 thresholds, per-threshold pruning) | threshold_kept_indices dict, all 24 features kept in context['X'] | → Feature analysis |
 | Phase 4a | Threshold optimization | optimal_threshold per architecture | → See Section 1.1.2, Section 1.3 |
 | Phase 4b | Hyperparameter optimization (Optuna) | best_hyperparams per architecture | → See Section 1.1.3, Section 1.3 |
 | Phase 4c | Ensemble creation | Combined predictions | → See Section 1.1.4, Section 1.3 |
@@ -900,6 +891,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.1 | 2026-05-11 | Updated precision target to 0.60, discovery sequence execution order | Mission-focused optimization |
 | 3.3 | 2026-05-13 | GIS hyperparameter reconfiguration — all 9 search spaces expanded, HPO thresholds raised (stagnation 30→50, trials 30→60, cap 500→1000), Phase 4 results logged (CatBoost 0.5381 best, 6 NNs broken), Phase 5 crash documented in Section 4.7, fixes A-D applied | Phase 4: CatBoost 0.5381, LightGBM 0.2970, XGBoost 0.2527; 6 NNs all MaxPred<<0.5; Phase 5 crashed line 272 — df_with_all_cols None guard fix |
 | 3.4 | 2026-05-18 | GIS SUCCESS — CatBoost achieved 0.7204 inference precision (>0.60 target), Phase 5 fixes (KeyError: 'precision' → 'Inf_P', shape mismatch handling, df_filtered→n_inference, inference_date→dates_inference[0]), sample size reduced 368816→184408 | CatBoost: 0.7204 Inf_P; LightGBM: 0.2722; XGBoost: 0.2751; 5 NNs skipped (shape mismatch); sample reduced for faster runs |
+| 3.5 | 2026-05-19 | Logging standardization (tag reorder, terminology), per-threshold feature pruning architecture, feature importance logging overhaul, HPO logging improvements (best trial tracking, [BEST TRIAL] format, [OPTIMAL] expanded), Section 2 redundant logs removed with stale y_val_binarized fix | Tag reorder: [BASELINE] {arch_tag}→{arch_tag} [BASELINE]; Phase Xa stores threshold_kept_indices dict; Phase 4+5 per-threshold feature slicing; _log_top_features()→_log_all_features(); 13 redundant log lines removed; stale-variable bug identified (dropped_indices on lines 187-188) |
 
 ---
 

@@ -94,6 +94,23 @@ class HyperparameterOptimizer:
                 self.best_trial_fp = 0
                 self.best_trial_tn = 0
                 self.best_trial_fn = 0
+                self.best_trial_max_pred = 0.0
+                self.best_trial_mean_pred = 0.0
+                self.best_trial_std_pred = 0.0
+                self.best_trial_pct_above = 0.0
+                self.best_trial_spec = 0.0
+                self.best_trial_fpr = 0.0
+                self.best_trial_f2 = 0.0
+                self.best_trial_mcc = 0.0
+                self.best_trial_prauc = 0.0
+                self.best_trial_balacc = 0.0
+                self.best_trial_brier = 0.0
+                self.best_trial_kappa = 0.0
+                self.best_trial_informedness = 0.0
+                self.best_trial_markedness = 0.0
+                self.best_trial_gini = 0.0
+                self.best_trial_opt_thresh = 0.0
+                self.best_trial_params = {}
             
             def __call__(self, trial):
                 # Increment trial counter
@@ -165,6 +182,10 @@ class HyperparameterOptimizer:
                     params_str = ", ".join([f"{k}={v}" for k, v in hyperparams.items()])
                     
                     # Calculate extended metrics for this trial
+                    trial_spec = trial_fpr = trial_f2 = trial_mcc = 0.0
+                    trial_prauc = trial_balacc = trial_brier = 0.0
+                    trial_kappa = trial_informedness = trial_markedness = 0.0
+                    trial_gini = trial_opt_thresh = 0.0
                     try:
                         trial_binary = (y_pred.flatten() >= 0.5).astype(int)
                         from chunk_12_evaluation_evaluator import Evaluator
@@ -202,6 +223,23 @@ class HyperparameterOptimizer:
                             self.best_trial_fp = fp
                             self.best_trial_tn = tn
                             self.best_trial_fn = fn
+                            self.best_trial_max_pred = max_pred
+                            self.best_trial_mean_pred = mean_pred
+                            self.best_trial_std_pred = std_pred
+                            self.best_trial_pct_above = pct_above
+                            self.best_trial_spec = trial_spec
+                            self.best_trial_fpr = trial_fpr
+                            self.best_trial_f2 = trial_f2
+                            self.best_trial_mcc = trial_mcc
+                            self.best_trial_prauc = trial_prauc
+                            self.best_trial_balacc = trial_balacc
+                            self.best_trial_brier = trial_brier
+                            self.best_trial_kappa = trial_kappa
+                            self.best_trial_informedness = trial_informedness
+                            self.best_trial_markedness = trial_markedness
+                            self.best_trial_gini = trial_gini
+                            self.best_trial_opt_thresh = trial_opt_thresh
+                            self.best_trial_params = hyperparams
                             self.best_trial_model = trained
                     elif self.arch_name in ['CNN', 'LSTM', 'Transformer']:
                         # For CNN/LSTM/Transformer: track by precision * MaxPred
@@ -215,6 +253,23 @@ class HyperparameterOptimizer:
                             self.best_trial_fp = fp
                             self.best_trial_tn = tn
                             self.best_trial_fn = fn
+                            self.best_trial_max_pred = max_pred
+                            self.best_trial_mean_pred = mean_pred
+                            self.best_trial_std_pred = std_pred
+                            self.best_trial_pct_above = pct_above
+                            self.best_trial_spec = trial_spec
+                            self.best_trial_fpr = trial_fpr
+                            self.best_trial_f2 = trial_f2
+                            self.best_trial_mcc = trial_mcc
+                            self.best_trial_prauc = trial_prauc
+                            self.best_trial_balacc = trial_balacc
+                            self.best_trial_brier = trial_brier
+                            self.best_trial_kappa = trial_kappa
+                            self.best_trial_informedness = trial_informedness
+                            self.best_trial_markedness = trial_markedness
+                            self.best_trial_gini = trial_gini
+                            self.best_trial_opt_thresh = trial_opt_thresh
+                            self.best_trial_params = hyperparams
                             self.best_trial_model = trained
                     else:
                         if precision > self.best_trial_precision:
@@ -226,6 +281,23 @@ class HyperparameterOptimizer:
                             self.best_trial_fp = fp
                             self.best_trial_tn = tn
                             self.best_trial_fn = fn
+                            self.best_trial_max_pred = max_pred
+                            self.best_trial_mean_pred = mean_pred
+                            self.best_trial_std_pred = std_pred
+                            self.best_trial_pct_above = pct_above
+                            self.best_trial_spec = trial_spec
+                            self.best_trial_fpr = trial_fpr
+                            self.best_trial_f2 = trial_f2
+                            self.best_trial_mcc = trial_mcc
+                            self.best_trial_prauc = trial_prauc
+                            self.best_trial_balacc = trial_balacc
+                            self.best_trial_brier = trial_brier
+                            self.best_trial_kappa = trial_kappa
+                            self.best_trial_informedness = trial_informedness
+                            self.best_trial_markedness = trial_markedness
+                            self.best_trial_gini = trial_gini
+                            self.best_trial_opt_thresh = trial_opt_thresh
+                            self.best_trial_params = hyperparams
                             self.best_trial_model = trained
                     
                     # Return architecture-specific score (Apr 4, 2026)
@@ -257,6 +329,7 @@ class HyperparameterOptimizer:
         
         trial_number = 0
         best_precision_seen = 0.0
+        best_trial_number = 0
         no_improve_count = 0
         phase_start_precision = 0.0
         
@@ -277,7 +350,7 @@ class HyperparameterOptimizer:
             
             # Progress logging every 10 trials
             if trial_number % 10 == 0:
-                if self.logger: self.logger.log(f"   Progress: Trial {trial_number} | Best P={current_precision:.4f} | Target={target_precision}", 'info')
+                if self.logger: self.logger.log(f"   Progress: Trial {trial_number} | Best P={current_precision:.4f} (trial {best_trial_number}) | Target={target_precision}", 'info')
             
             # Check: Phase transition (reset stagnation every 30 trials)
             if trial_number % 30 == 0:
@@ -285,11 +358,11 @@ class HyperparameterOptimizer:
                 if current_precision > phase_start_precision:
                     phase_start_precision = current_precision
                 no_improve_count = 0
-                if self.logger: self.logger.log(f"   Phase transition at trial {trial_number}: Best P={phase_start_precision:.4f}", 'info')
             
             # Check: Stagnation?
             if current_precision > best_precision_seen:
                 best_precision_seen = current_precision
+                best_trial_number = trial_number
                 no_improve_count = 0
             else:
                 no_improve_count += 1
@@ -310,11 +383,15 @@ class HyperparameterOptimizer:
         
         best_params = study.best_params
         best_precision = study.best_value  # balanced_score (used by Optuna)
-        best_actual_precision = objective.best_trial_precision  # actual precision
         best_model = objective.best_trial_model
-        
-        if self.logger: self.logger.log(f"   {arch_name} - Best hyperparameters: {best_params}", 'info')
-        if self.logger: self.logger.log(f"   {arch_name} - Best validation metrics: Val_P={best_actual_precision:.4f} (opt_score={best_precision:.4f}) Val_R={objective.best_trial_recall:.4f} Val_AUC={objective.best_trial_auc:.4f} Val_F1={objective.best_trial_f1:.4f} Val_TP={objective.best_trial_tp} Val_FP={objective.best_trial_fp} Val_TN={objective.best_trial_tn} Val_FN={objective.best_trial_fn}", 'info')
+
+        arch_tag = f"[{arch_name.upper()}]"
+        lt = objective.label_threshold
+        o = objective
+        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [BEST TRIAL] Label_Threshold={lt:.1f}", 'info')
+        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [BEST TRIAL] Val_P={o.best_trial_precision:.4f} Val_TP={o.best_trial_tp} Val_TN={o.best_trial_tn} Val_FP={o.best_trial_fp} Val_FN={o.best_trial_fn} Val_MaxPred={o.best_trial_max_pred:.4f} Val_MeanPred={o.best_trial_mean_pred:.4f} Val_R={o.best_trial_recall:.4f} Val_F1={o.best_trial_f1:.4f} Val_AUC={o.best_trial_auc:.4f} Val_Spec={o.best_trial_spec:.4f} Val_FPR={o.best_trial_fpr:.4f} Val_F2={o.best_trial_f2:.4f} Val_MCC={o.best_trial_mcc:.4f} Val_PRAUC={o.best_trial_prauc:.4f} Val_BalAcc={o.best_trial_balacc:.4f} Val_Brier={o.best_trial_brier:.4f} Val_Kappa={o.best_trial_kappa:.4f} Val_Informedness={o.best_trial_informedness:.4f} Val_Markedness={o.best_trial_markedness:.4f} Val_Gini={o.best_trial_gini:.4f} Val_OptThresh={o.best_trial_opt_thresh:.4f} Val_StdPred={o.best_trial_std_pred:.4f} Val_PctAboveThresh={o.best_trial_pct_above:.2f}", 'info')
+        params_str = ", ".join([f"{k}={v}" for k, v in o.best_trial_params.items()])
+        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [BEST TRIAL] {params_str}", 'info')
         
         return best_params, best_model, best_precision
     

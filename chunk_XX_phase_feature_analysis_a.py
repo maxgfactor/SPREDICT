@@ -68,21 +68,29 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         report_path = self.config.get('FEATURE_ANALYSIS_REPORT_PATH', './feature_importance_report.txt')
         self.analyzer.save_report(analysis_results, report_path)
         
-        pruned_indices = analysis_results['kept_indices']
-        n_pruned = n_features - len(pruned_indices)
+        # Store per-threshold pruning results (each Label_Threshold gets its own feature subset)
+        results_by_threshold = analysis_results.get('results_by_threshold', {})
+        threshold_kept = {round(float(t), 1): r['kept_indices'] for t, r in results_by_threshold.items()}
+        threshold_dropped = {round(float(t), 1): r['dropped_indices'] for t, r in results_by_threshold.items()}
         
-        context['X'] = X[:, pruned_indices]
-        context['feature_names'] = analysis_results['kept_names']
+        context['X'] = X
+        context['feature_names'] = feature_names
         context['feature_importance_results'] = analysis_results
+        context['threshold_kept_indices'] = threshold_kept
+        context['threshold_dropped_indices'] = threshold_dropped
+        # Backward compat: first threshold's pruning
+        pruned_indices = analysis_results['kept_indices']
         context['pruned_feature_indices'] = pruned_indices
         context['dropped_feature_indices'] = analysis_results['dropped_indices']
         context['dropped_feature_names'] = analysis_results['dropped_names']
         
         context['phaseXa_complete'] = True
         
+        n_pruned = n_features - len(pruned_indices)
         if self.logger:
-            self.logger.log(f"COMPLETE: {n_features} -> {len(pruned_indices)} raw features ({n_pruned} pruned)", 'info')
-            self.logger.log(f"Dropped: {analysis_results['dropped_names']}", 'info')
+            self.logger.log(f"COMPLETE: {n_features} raw features (per-threshold pruning stored)", 'info')
+            first_thr = next(iter(threshold_kept.keys()))
+            self.logger.log(f"  First threshold ({first_thr}): {len(pruned_indices)} kept", 'info')
         
         return context
 
