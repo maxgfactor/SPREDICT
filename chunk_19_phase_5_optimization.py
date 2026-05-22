@@ -475,7 +475,7 @@ if __name__ == "__main__":
     
     models = [MockModel(), MockModel()]
     arch_names = ['RNN', 'LSTM']
-    optimal_thresholds = [23.3, 23.7]
+    final_thresholds = [23.3, 23.7]
     best_hyperparams_list = [{'lstm_units': 32}, {'lstm_units': 16}]
     best_val_precision_list = [0.7017, 0.7562]
     
@@ -487,7 +487,7 @@ if __name__ == "__main__":
         'temporal_features': {'weights': np.ones(n_samples)},
         'models': models,
         'arch_names': arch_names,
-        'optimal_thresholds': optimal_thresholds,
+        'optimal_thresholds': final_thresholds,
         'best_hyperparams_list': best_hyperparams_list,
         'best_val_precision_list': best_val_precision_list,
         'phase1_complete': True,

@@ -1,6 +1,10 @@
-# CI/CD Chunked Pipeline
+# Fraud Detection Ensemble Pipeline
 
-This directory contains the decomposed fraud detection pipeline broken into 21 individually testable chunks.
+**Vision**: Build the most precise fraud detection system that minimizes false positives while maximizing true positives, enabling confident fraud detection without disrupting legitimate transactions.
+
+**Mission**: Orchestrate an automated ML pipeline that loads financial transaction data, engineers temporal features, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), ensembles 9 architectures (CatBoost, LightGBM, XGBoost + 6 neural networks), and evaluates final predictions with comprehensive metrics.
+
+This directory contains the decomposed pipeline broken into 21 individually testable chunks.
 
 ## Directory Structure
 
@@ -273,19 +277,29 @@ The original `study9011_enhanced_final.py` (6,402 lines) has been decomposed int
 - Validation functions are provided for each phase boundary
 - The original file is preserved for reference
 
+## Documentation Map
+
+| File | Purpose | When to Read |
+|------|---------|-------------|
+| **README.md** | Technical overview, directory structure, usage | First visit, new contributors |
+| **SPEC.md** | Full specification: results, configs, history, failures | Before making code changes |
+| **shortmemory.txt** | Current project state, key nuances, bug fixes | Every session start |
+| **longmemory.txt** | Principles, SOPs, bug patterns, best practices | When designing new features |
+| **cloudnativetransformationplan.txt** | Aspirational future roadmap (CI/CD, testing, containerization) | Long-term planning |
+
 ## Project Continuity
 
 ### Rules for Maintaining Context Across Sessions
 
 1. **Before Closing**
-   - Update memory.txt with any significant decisions or in-progress tasks
+   - Update shortmemory.txt with any significant decisions or in-progress tasks
    - Note any pending next steps or open questions
 
 2. **When Reopening**
-   - Review memory.txt for conversation history and key findings
+   - Review shortmemory.txt for conversation history and key findings
    - Review README.md for current project structure and state
 
 3. **For Maximum Continuity**
-   - Keep memory.txt updated with decisions, not just conversations
+   - Keep shortmemory.txt updated with decisions, not just conversations
    - Note file state changes if any occurred since last session
    - Document any in-progress tasks or planned work

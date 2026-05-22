@@ -208,13 +208,6 @@ class ModelTrainer:
                 
                 effective_loss_fn = 'binary_crossentropy'
             
-            # Force BCE for architectures where HPO failed (all 20 trials P=0)
-            if arch_name in ['CNN', 'LSTM', 'Transformer']:
-                if 'FOCAL_LOSS_CONFIG' not in merged_config:
-                    merged_config['FOCAL_LOSS_CONFIG'] = {}
-                merged_config['FOCAL_LOSS_CONFIG'][arch_name] = {'enabled': False}
-                effective_loss_fn = 'binary_crossentropy'
-            
             if arch_name in ['Boosting_Adaptive']:
                 return builder(merged_config, input_dim)
             else:
@@ -255,6 +248,12 @@ class ModelTrainer:
             X_train, y_train = X, y
             X_val, y_val = validation_data
         
+        # Compute class weights for balanced training. Prevents (~99% negative) class bias.
+        from sklearn.utils.class_weight import compute_class_weight
+        classes = np.unique(y_train)
+        cw = compute_class_weight('balanced', classes=classes, y=y_train)
+        class_weight_dict = dict(zip(classes, cw))
+        
         # Handle models that expect 3D input
         if len(model.input_shape) == 3:
             X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
@@ -266,6 +265,7 @@ class ModelTrainer:
             validation_data=(X_val, y_val),
             epochs=epochs,
             batch_size=batch_size,
+            class_weight=class_weight_dict,
             verbose=verbose,
             callbacks=[
                 tf.keras.callbacks.TerminateOnNaN(),

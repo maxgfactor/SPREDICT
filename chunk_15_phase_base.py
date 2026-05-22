@@ -11,12 +11,6 @@ class BasePhase(ABC):
     """Abstract base class for pipeline phases"""
     
     def __init__(self, config: Dict):
-        """
-        Initialize phase
-        
-        Args:
-            config: Configuration dictionary
-        """
         self.config = config
         self.logger = None
     

@@ -11,6 +11,7 @@ from sklearn.metrics import (
     brier_score_loss, cohen_kappa_score, roc_curve
 )
 from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler  # NN-only normalization (trees are scale-invariant)
 
 
 class Evaluator:
@@ -366,6 +367,13 @@ class Evaluator:
             else:
                 X_train_t = X_train
                 X_val_t = X_val
+            
+            # Normalize features for NNs only (trees scale-invariant). Applied at caller level,
+            # NOT inside train_model(), to keep fit() and predict() data consistent.
+            if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+                scaler = StandardScaler()
+                X_train_t = scaler.fit_transform(X_train_t)
+                X_val_t = scaler.transform(X_val_t)
             
             # Convert labels using threshold (labels >= threshold are positive)
             y_train_binary = (y_train >= thresh).astype(int)

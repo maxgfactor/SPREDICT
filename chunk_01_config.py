@@ -62,8 +62,9 @@ CONFIG = {
     # - Target column "ChangeY" contains continuous values (0 to 32,500+)
     # - Phase 4 searches for optimal threshold that maximizes precision
     # - Labels created: y_binary = (y >= threshold).astype(int)
-    'FIRST_THRESHOLD': 20.0,  # Start of threshold search range (for binary labels)
-    'LAST_THRESHOLD': 0.0,    # End of threshold search range
+    # LABEL thresholds for binarizing y (NOT prediction thresholds). y_binary = (y >= thresh).
+    'FIRST_THRESHOLD': 20.0,
+    'LAST_THRESHOLD': 0.0,
     'THRESHOLD_STEP': -2.0,  # Step size (11 steps: 20.0, 18.0, ..., 0.0)
     
     # PREDICTION THRESHOLD (used to convert model outputs to binary):

@@ -64,6 +64,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
                 min_len = min(len(val_dates), len(val_y_raw))
                 val_dates = val_dates[:min_len]
                 val_y_raw = val_y_raw[:min_len]
+                val_predictions = [p[:min_len] for p in val_predictions]
                 
                 if self.logger:
                     self.logger.log(f"INFO: Aligned to {min_len} elements", 'info')

@@ -63,7 +63,7 @@ class HyperparameterOptimizer:
             return {}, None, 0.0
         
         arch_tag = f"[{arch_name.upper()}]"
-        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Running Bayesian optimization ({self.n_trials} trials)...", 'info')
+        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Running Bayesian optimization ({self.n_trials} trials)...", 'info')
         
         best_model = None
         best_precision = 0.0
@@ -151,17 +151,8 @@ class HyperparameterOptimizer:
                     std_pred = float(y_pred.std())
                     pct_above = float((y_pred >= 0.5).mean() * 100)
                     
-                    # Early termination filter: reject trials with MaxPred < 0.5
-                    # These trials cannot produce any true positives (no predictions above threshold)
-                    # Added based on VAE HPO analysis - reduces wasted trials (Apr 4, 2026)
-                    # EXCLUSION: Skip this filter for gradient boosting models (LightGBM, XGBoost, CatBoost)
-                    # They naturally produce predictions above 0.5 with scale_pos_weight
-                    if max_pred < 0.5 and self.arch_name not in ['LightGBM', 'XGBoost', 'CatBoost']:
-                        if self.logger: self.logger.log(f"   Trial {trial_number}/{self.total_trials}: REJECTED - MaxPred={max_pred:.4f} < 0.5 (no predictions above threshold)", 'warning')
-                        return 0.0
-                    
-                    # Min TP constraint for RNN: reject trials with very low TP (< 100)
-                    # This ensures TP > 0 while maximizing precision (Apr 4, 2026)
+                    # Min TP constraint for RNN: reject trials with very low TP (< 100).
+                    # TP=100 ensures statistically meaningful positive rate (~0.06% of val set).
                     if self.arch_name == 'RNN' and tp < 100:
                         if self.logger: self.logger.log(f"   Trial {trial_number}/{self.total_trials}: REJECTED - TP={tp} < 100 (min TP threshold)", 'warning')
                         return 0.0
@@ -203,13 +194,11 @@ class HyperparameterOptimizer:
                         trial_gini = evaluator.calculate_gini(self.y_val, y_pred.flatten())
                         trial_opt_thresh = evaluator.calculate_optimal_threshold(self.y_val, y_pred.flatten())
                         
-                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Label_Threshold={self.label_threshold:.1f},", 'info')
-                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_Spec={trial_spec:.4f} Val_FPR={trial_fpr:.4f} Val_F2={trial_f2:.4f} Val_MCC={trial_mcc:.4f} Val_PRAUC={trial_prauc:.4f} Val_BalAcc={trial_balacc:.4f} Val_Brier={trial_brier:.4f} Val_Kappa={trial_kappa:.4f} Val_Informedness={trial_informedness:.4f} Val_Markedness={trial_markedness:.4f} Val_Gini={trial_gini:.4f} Val_OptThresh={trial_opt_thresh:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f}", 'info')
-                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_Spec={trial_spec:.4f} Val_FPR={trial_fpr:.4f} Val_F2={trial_f2:.4f} Val_MCC={trial_mcc:.4f} Val_PRAUC={trial_prauc:.4f} Val_BalAcc={trial_balacc:.4f} Val_Brier={trial_brier:.4f} Val_Kappa={trial_kappa:.4f} Val_Informedness={trial_informedness:.4f} Val_Markedness={trial_markedness:.4f} Val_Gini={trial_gini:.4f} Val_OptThresh={trial_opt_thresh:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f} (Label_Threshold={self.label_threshold:.1f})", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
                     except Exception as e:
-                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Label_Threshold={self.label_threshold:.1f},", 'info')
-                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f}", 'info')
-                        if self.logger: self.logger.log(f"[SECTION 2] [BASELINE] {arch_tag} Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f} (Label_Threshold={self.label_threshold:.1f})", 'info')
+                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
                     
                     # Track best model - use architecture-specific balanced score (Apr 4, 2026)
                     if self.arch_name == 'Dense':

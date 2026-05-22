@@ -54,7 +54,7 @@ class Phase1_PipelineSetup(BasePhase):
         # SANITY CHECK: Sample size validation
         expected_samples = self.config.get('SAMPLE_SIZE', 0)
         if expected_samples > 0 and len(X) != expected_samples:
-            self.logger.log(f"SANITY CHECK: Requested {expected_samples} samples, got {len(X)}", 'warning')
+            self.logger.log(f"SANITY CHECK: SAMPLE_SIZE={expected_samples}, got {len(X)} samples", 'warning')
         
         # SANITY CHECK: Target value distribution (for continuous targets)
         if self.config.get('TARGET_TYPE') == 'continuous':

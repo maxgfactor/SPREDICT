@@ -8,29 +8,9 @@ import sys
 import time
 import warnings
 
-# CPU Mode Configuration - Disabled GPU (2026-02-28)
+# CPU Mode - GPU paths removed, forced CPU (2026-02-28)
 if sys.platform == 'linux':
-    # GPU/CUDA paths commented out - CPU mode
-    # cuda_paths = [
-    #     '/usr/lib/wsl/lib',
-    #     '/usr/local/cuda-13.0/lib64',
-    #     '/usr/local/cuda-12.5/lib64',
-    #     '/lib/x86_64-linux-gnu',
-    # ]
-    # existing_path = os.environ.get('LD_LIBRARY_PATH', '')
-    # cuda_path_str = ':'.join([p for p in cuda_paths if os.path.exists(p)])
-    # os.environ['LD_LIBRARY_PATH'] = cuda_path_str + ':' + existing_path if existing_path else cuda_path_str
-    
-    # Set CUDA home (prefer CUDA 12.5 for better compatibility)
-    # if os.path.exists('/usr/local/cuda-12.5'):
-    #     os.environ['CUDA_HOME'] = '/usr/local/cuda-12.5'
-    # elif os.path.exists('/usr/local/cuda-13.0'):
-    #     os.environ['CUDA_HOME'] = '/usr/local/cuda-13.0'
-    
-    # Force CPU mode
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
-    
-    # Suppress TensorFlow CPU optimization warnings
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import numpy as np
@@ -601,8 +581,7 @@ def main(config: Dict = None) -> Dict:
     if config is None:
         config = CONFIG
     
-    # Configure TensorFlow - CPU mode (GPU disabled)
-    # GPU detection commented out - forcing CPU
+    # CPU mode (GPU disabled)
     try:
         import tensorflow as tf
         # Force CPU mode - CUDA_VISIBLE_DEVICES already set to ''

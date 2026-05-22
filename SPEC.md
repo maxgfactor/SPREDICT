@@ -39,6 +39,18 @@ SPEC.md is a living document for the Fraud Detection Ensemble Pipeline. It recor
 
 ---
 
+## Table of Contents
+
+| Section | Description |
+|---------|-------------|
+| [SECTION 1: Logging, Reporting, and Metrics](#section-1-logging-reporting-and-metrics) | Run results, metrics, runtime logs |
+| [SECTION 2: Functionality](#section-2-functionality) | Static specs, architecture, configuration |
+| [SECTION 3: Documentation](#section-3-documentation) | Version history, file inventory, cross-references |
+| [SECTION 4: Failed Strategies & Approaches](#section-4-failed-strategies--approaches) | Permanent record of failed attempts |
+| [IMPLEMENTATION SUMMARY](#implementation-summary---all-improvements-applied) | All improvements applied |
+
+---
+
 # SECTION 1: Logging, Reporting, and Metrics
 
 This section contains actual results populated AFTER each code run. Copy values from pipeline_cpu.log into the templates below.
@@ -640,7 +652,7 @@ The following features were removed during preprocessing:
 
 ---
 
-## 2.8 Hyperparameter Search Spaces (GIS Reconfiguration - May 13, 2026)
+## 2.8 Hyperparameter Search Spaces (GIS (Global Iteration Strategy) Reconfiguration - May 13, 2026)
 
 Root cause diagnosis: All 6 NNs produced **MaxPred << 0.5** (CNN: 0.0042, LSTM: 0.0316, RNN: 0.0661, VAE: 0.0919, Transformer: 0.0443) — search space too conservative. Trees stagnated due to small search space and missing key parameters (colsample, gamma). GIS Iteration 1 started with CatBoost 0.5381 → Maximize phase.
 
@@ -890,7 +902,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.0 | 2026-04-15 | Living document updates - added actual value templates | Converted to dynamic document for post-run updates |
 | 3.1 | 2026-05-11 | Updated precision target to 0.60, discovery sequence execution order | Mission-focused optimization |
 | 3.3 | 2026-05-13 | GIS hyperparameter reconfiguration — all 9 search spaces expanded, HPO thresholds raised (stagnation 30→50, trials 30→60, cap 500→1000), Phase 4 results logged (CatBoost 0.5381 best, 6 NNs broken), Phase 5 crash documented in Section 4.7, fixes A-D applied | Phase 4: CatBoost 0.5381, LightGBM 0.2970, XGBoost 0.2527; 6 NNs all MaxPred<<0.5; Phase 5 crashed line 272 — df_with_all_cols None guard fix |
-| 3.4 | 2026-05-18 | GIS SUCCESS — CatBoost achieved 0.7204 inference precision (>0.60 target), Phase 5 fixes (KeyError: 'precision' → 'Inf_P', shape mismatch handling, df_filtered→n_inference, inference_date→dates_inference[0]), sample size reduced 368816→184408 | CatBoost: 0.7204 Inf_P; LightGBM: 0.2722; XGBoost: 0.2751; 5 NNs skipped (shape mismatch); sample reduced for faster runs |
+| 3.4 | 2026-05-18 | GIS (Global Iteration Strategy) SUCCESS — CatBoost achieved 0.7204 inference precision (>0.60 target), Phase 5 fixes (KeyError: 'precision' → 'Inf_P', shape mismatch handling, df_filtered→n_inference, inference_date→dates_inference[0]), sample size reduced 368816→184408 | CatBoost: 0.7204 Inf_P; LightGBM: 0.2722; XGBoost: 0.2751; 5 NNs skipped (shape mismatch); sample reduced for faster runs |
 | 3.5 | 2026-05-19 | Logging standardization (tag reorder, terminology), per-threshold feature pruning architecture, feature importance logging overhaul, HPO logging improvements (best trial tracking, [BEST TRIAL] format, [OPTIMAL] expanded), Section 2 redundant logs removed with stale y_val_binarized fix | Tag reorder: [BASELINE] {arch_tag}→{arch_tag} [BASELINE]; Phase Xa stores threshold_kept_indices dict; Phase 4+5 per-threshold feature slicing; _log_top_features()→_log_all_features(); 13 redundant log lines removed; stale-variable bug identified (dropped_indices on lines 187-188) |
 
 ---
@@ -1042,27 +1054,15 @@ This section is a PERMANENT record of failed approaches. Once entered, entries s
 
 Each entry MUST include evidence from .log results and be tagged by date.
 
-## 4.1 Failed Architecture Configurations
+## 4.1-4.4 Archived Failure Records
 
-| Architecture | Configuration Tried | Failed Reason | Date Tagged | Evidence/Justification (from .log) | Notes |
-|--------------|---------------------|----------------|--------------|---------------------------------------|-------|
+Detailed failure records (failed configs, hyperparameters, strategies, avoidances) are documented inline in Sections 4.5-4.7 below. Empty template tables were removed — add new entries following the format used in 4.5-4.7.
 
-## 4.2 Failed Hyperparameter Combinations
-
-| Architecture | Hyperparameters | Why Failed | Date Tagged | Evidence/Justification (from .log) | What to Avoid |
-|--------------|-----------------|------------|--------------|---------------------------------------|----------------|
-
-## 4.3 Failed Improvement Strategies
-
-| Strategy | Target Area | Failed Outcome | Date Tagged | Evidence/Justification (from .log) | Lessons Learned |
-|----------|--------------|---------------|--------------|---------------------------------------|-----------------|
-
-## 4.4 Recommended Avoidances (Based on Past Failures)
-
-DO NOT attempt the following approaches in future iterations:
-
-| Approach | Reason | Date Tagged | Evidence/Justification (from .log) |
-|----------|--------|--------------|---------------------------------------|
+| Type | Location |
+|------|----------|
+| NN Prediction Range Failures | §4.5 |
+| XGBoost Train-Val Gap | §4.6 |
+| Phase 5 Crash | §4.7 |
 ## 4.5 NN Prediction Range Failures (May 11, 2026)
 
 | Architecture | MaxPred | Root Cause | Fix Applied | Evidence |
@@ -1104,7 +1104,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 
 ## Date: 2026-05-13
 
-### GIS Hyperparameter Reconfiguration
+### GIS (Global Iteration Strategy) Hyperparameter Reconfiguration
 
 **Root Cause**: All 6 NNs (CNN/LSTM/RNN/VAE/Transformer/Dense) produced MaxPred << 0.5 — search space too conservative. Gradient boosting trees stagnated due to small search spaces and missing key parameters.
 
@@ -1153,7 +1153,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 - sklearn models wrapped in SklearnModelWrapper with `_is_fitted = True`
 - Phase 5 re-run pending — fixes not yet validated end-to-end
 
-### GIS Execution Plan
+### GIS (Global Iteration Strategy) Execution Plan
 | Iteration | Architectures | Phase | Target |
 |-----------|--------------|-------|--------|
 | 1 | CatBoost | Maximize | P ≥ 0.60 |
@@ -1166,8 +1166,8 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 ---
 
 *Document generated: 2026-04-15*  
-*Last updated: 2026-05-13*  
-*Version: 3.3*
+*Last updated: 2026-05-22*  
+*Version: 3.6*
 
 ---
 
