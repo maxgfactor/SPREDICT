@@ -1615,7 +1615,7 @@ class Phase4_NeuralEnsemble(BasePhase):
             # - split_date.txt: Date used for train/val split
             # - all_dates.json: All unique dates for temporal feature extraction
             #
-            # These files are loaded by predict.py for inference on new data
+            # These files are loaded by legacy files/predict.py for inference on new data
             
             # Save trained models and preprocessing parameters
             save_models = self.config.get('SAVE_TRAINED_MODELS', True)

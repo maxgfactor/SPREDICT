@@ -10,13 +10,10 @@ This directory contains the decomposed pipeline broken into 21 individually test
 
 ```
 cicd/
-├── chunk_00_validation_framework.py    # Centralized validation utilities
 ├── chunk_01_config.py                  # Configuration and constants
 ├── chunk_02_utils_logging.py           # Logger class and formatting
-├── chunk_03_utils_memory.py            # Memory management utilities
 ├── chunk_04_utils_metrics.py           # Metric calculation utilities
 ├── chunk_05_data_manager.py            # Data loading and management
-├── chunk_06_data_augmentation.py       # Fraud case augmentation
 ├── chunk_07_data_temporal.py           # Temporal feature extraction
 ├── chunk_08_models_base.py             # Base neural architectures (VAE, CNN, RNN)
 ├── chunk_09_models_advanced.py         # Advanced architectures (Transformer, GNN)
@@ -29,13 +26,16 @@ cicd/
 ├── chunk_16_phase_1_setup.py           # Phase 1: Pipeline setup
 ├── chunk_17_phase_3_temporal.py        # Phase 3: Temporal weighting
 ├── chunk_18_phase_4_ensemble.py        # Phase 4: Neural ensemble
- ├── chunk_19_phase_5_optimization.py    # Phase 5: Prediction optimization
- ├── chunk_20_pipeline_main.py          # Main orchestrator
- ├── chunk_21_hyperparam_optimizer.py    # Hyperparameter optimization (Optuna)
- ├── chunk_22_model_loader.py           # Model loading for predictions
- ├── predict.py                         # Prediction script for new data
- # Note: Phase 2 was removed - threshold optimization merged into Phase 4
- └── study9011_enhanced_final.py   # Original monolithic file (reference)
+├── chunk_19_phase_5_optimization.py    # Phase 5: Prediction optimization
+├── chunk_20_pipeline_main.py           # Main orchestrator
+├── chunk_21_hyperparam_optimizer.py    # Hyperparameter optimization (Optuna)
+├── chunk_22_model_loader.py            # Model loading for predictions
+├── chunk_XX_feature_importance.py      # 6-method feature importance engine
+├── chunk_XX_phase_feature_analysis_a.py # Phase Xa: Raw feature analysis
+├── chunk_XX_phase_feature_analysis_b.py # Phase Xb: Temporal precision gap
+├── legacy files/                       # Moved non-functional/legacy code and logs
+├── for_train_x_2025_10_24_clean.csv    # Input data (~938 MB)
+└── ... (output artifacts, config backups, documentation)
 ```
 
 ## Dependency Layers
@@ -255,6 +255,16 @@ steps:
     run: python 20_pipeline_main.py
 ```
 
+## Future Roadmap
+
+| Phase | Goal | Status |
+|-------|------|--------|
+| **Unit Testing** | pytest, tests/ directory, conftest.py, coverage targets | 📋 Planned |
+| **CI/CD** | GitHub Actions (ci.yml, train.yml), Ruff, Black, MyPy | 📋 Planned |
+| **Documentation Site** | MkDocs, GitHub Pages, architecture docs, model card | 📋 Planned |
+| **Containerization** | Dockerfile, docker-compose for reproducible builds | 💡 Future |
+| **MLOps** | MLflow tracking, model registry, Feast, Evidently, Airflow | 💡 Future |
+
 ## Key Features
 
 1. **Modular Design**: Each chunk is self-contained and testable
@@ -285,7 +295,23 @@ The original `study9011_enhanced_final.py` (6,402 lines) has been decomposed int
 | **SPEC.md** | Full specification: results, configs, history, failures | Before making code changes |
 | **shortmemory.txt** | Current project state, key nuances, bug fixes | Every session start |
 | **longmemory.txt** | Principles, SOPs, bug patterns, best practices | When designing new features |
-| **cloudnativetransformationplan.txt** | Aspirational future roadmap (CI/CD, testing, containerization) | Long-term planning |
+| **legacy files/cloudnativetransformationplan.txt** | *Superseded — content migrated to README and longmemory* | Archived |
+| **legacy files/** | Non-functional/legacy code, logs, and unused resources | Reference only |
+
+## CWDA: Current Working Directory Analysis
+
+The working directory is organized into functional groups determined by tracing the actual import graph from `chunk_20_pipeline_main.py`:
+
+| Group | Count | Description |
+|-------|-------|-------------|
+| **Functional Pipeline Code** | 24 files | Direct or transitive imports of the orchestrator — pipeline cannot run without these |
+| **Non-Functional Code** | 7 files → `legacy files/` | Zero imports by pipeline code (orphaned chunks, standalone scripts, shell wrappers) |
+| **Functional Logs** | 1 file | `pipeline_cpu.log` — latest active run |
+| **Non-Functional Logs** | 4 files → `legacy files/` | Dated and legacy run logs |
+| **Functional Documentation** | 4 files + 1 dir | README, SPEC, shortmemory, longmemory |
+| **Generated Artifacts** | ~30 files | saved models, feature reports, metrics CSV, config snapshots |
+| **Infrastructure** | tf_venv/, .git/, .gitignore | Environment and VCS |
+| **Unused Resource** | → `legacy files/` | 2.8 GB CUDA WSL installer (pipeline runs CPU-only) |
 
 ## Project Continuity
 

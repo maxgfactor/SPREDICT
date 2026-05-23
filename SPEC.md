@@ -302,7 +302,7 @@ The pipeline calculates and reports the following metrics:
 | AC-02 | All 10 architectures train successfully | Check logs | → FR-05 |
 | AC-03 | Validation precision ≥ 0.60 | Check metrics output | → FR-06, FR-07, FR-11 |
 | AC-04 | Models saved to ./saved_models/ | Directory inspection | → FR-09 |
-| AC-05 | Predictions generated | Run predict.py | → FR-10 |
+| AC-05 | Predictions generated | Run legacy files/predict.py | → FR-10 |
 | AC-06 | Each chunk independently testable | Run individual chunk files | → All FRs |
 | AC-07 | HPO completes 20 trials per architecture | Check chunk_21 logs | → FR-07 |
 | AC-08 | Logging captures all 5 sections per architecture | Check phase 4 logs | → Section 1.1.1 to 1.1.5 |
@@ -575,7 +575,7 @@ The following features were removed during preprocessing:
 | FR-07 | Perform hyperparameter optimization (20 Optuna trials) | Required | chunk_21_hyperparam_optimizer.py | → See Section 1.1.3, Section 1.3 |
 | FR-08 | Create precision-weighted ensemble | Required | chunk_10_models_ensemble.py | → See Section 1.1.4, Section 1.3 |
 | FR-09 | Save trained models to `./saved_models/` | Required | chunk_18_phase_4_ensemble.py | → See Section 1.2 |
-| FR-10 | Generate predictions on new data | Required | predict.py, chunk_22_model_loader.py | → See Section 1.1.5, Section 1.3 |
+| FR-10 | Generate predictions on new data | Required | legacy files/predict.py, chunk_22_model_loader.py | → See Section 1.1.5, Section 1.3 |
 | FR-11 | Evaluate model against precision threshold | Required | chunk_12_evaluation_evaluator.py | → See Section 1.3 |
 | FR-12 | Apply log transform (Option C: sign * log1p(|y|)) to handle extreme target values | Improvement (Step 1) | chunk_05_data_manager.py, chunk_04_utils_metrics.py | → See Section 2.7 |
 
@@ -963,7 +963,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | FR-07 (HPO) | chunk_21_hyperparam_optimizer.py | → Section 2.5 |
 | FR-08 (Ensemble) | chunk_10_models_ensemble.py | → Section 2.5 |
 | FR-09 (Save Models) | chunk_18_phase_4_ensemble.py | → Section 2.5 |
-| FR-10 (Predictions) | chunk_22_model_loader.py, predict.py | → Section 2.5 |
+| FR-10 (Predictions) | chunk_22_model_loader.py, legacy files/predict.py | → Section 2.5 |
 | FR-11 (Evaluation) | chunk_12_evaluation_evaluator.py | → Section 2.5 |
 
 ---
@@ -984,13 +984,13 @@ Discovery sequence for dataset understanding and precision optimization:
 
 | File | Purpose | FR Reference |
 |------|---------|--------------|
-| chunk_00_validation_framework.py | Centralized validation utilities | → All FRs (validates) |
+| legacy files/chunk_00_validation_framework.py | Centralized validation utilities | → All FRs (validates, moved to legacy) |
 | chunk_01_config.py | Configuration and constants | → All FRs (defines config) |
 | chunk_02_utils_logging.py | Logger class and formatting | → All FRs (produces Section 1.1.x logs) |
-| chunk_03_utils_memory.py | Memory management utilities | → All FRs (memory mgmt) |
+| legacy files/chunk_03_utils_memory.py | Memory management utilities | → All FRs (memory mgmt, moved to legacy) |
 | chunk_04_utils_metrics.py | Metric calculation utilities | → FR-06, FR-11 |
 | chunk_05_data_manager.py | Data loading and management | → FR-01 |
-| chunk_06_data_augmentation.py | Fraud case augmentation | → FR-01 |
+| legacy files/chunk_06_data_augmentation.py | Fraud case augmentation | → FR-01 (moved to legacy) |
 | chunk_07_data_temporal.py | Temporal feature extraction | → FR-04 |
 | chunk_08_models_base.py | Base neural architectures (VAE, Dense, CNN) | → FR-05 |
 | chunk_09_models_advanced.py | Advanced architectures (Transformer, GNN, etc.) | → FR-05 |
@@ -1013,8 +1013,8 @@ Discovery sequence for dataset understanding and precision optimization:
 
 | File | Purpose | FR Reference |
 |------|---------|--------------|
-| predict.py | Prediction script for new data | → FR-10 |
-| run_tests.py | Test runner | → All FRs (validation) |
+| legacy files/predict.py | Prediction script for new data | → FR-10 (moved to legacy) |
+| legacy files/run_tests.py | Test runner | → All FRs (validation, moved to legacy) |
 | study9011_enhanced_final.py | Legacy monolithic reference | → All FRs |
 
 ### Documentation
@@ -1223,7 +1223,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 
 ### TensorFlow Warning Suppression
 - **TF_CPP_MIN_LOG_LEVEL**: '3' (suppress all CUDA/cuFFT/cuDNN/cuBLAS errors on CPU)
-- **run_pipeline_cpu.sh**: Wrapper script using system Python (TF 2.20.0)
+- **legacy files/run_pipeline_cpu.sh**: Wrapper script using system Python (TF 2.20.0, moved to legacy)
 
 ### Files Modified
 | File | Changes |
