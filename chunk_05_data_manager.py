@@ -158,7 +158,7 @@ class DataManager:
             for col in range(X.shape[1]):
                 p_low, p_high = np.percentile(X[:, col], [low_pct, high_pct])
                 X[:, col] = np.clip(X[:, col], p_low, p_high)
-            print(f"   [FEATURE] Winsorized {X.shape[1]} features at {low_pct}/{high_pct} percentiles")
+            print(f"   [feature] Winsorized {X.shape[1]} features at {low_pct}/{high_pct} percentiles")
         
         # Step 4c: Log-transform highly skewed features
         if self.config.get('LOG_TRANSFORM_FEATURES', False):
@@ -169,11 +169,12 @@ class DataManager:
                     X[:, idx] = np.sign(X[:, idx]) * np.log1p(np.abs(X[:, idx]))
                     transformed_count += 1
             if transformed_count > 0:
-                print(f"   [FEATURE] Log-transformed {transformed_count} skewed features")
+                print(f"   [feature] Log-transformed {transformed_count} skewed features")
         
         # Step 4b: Add ratio features (must be after winsorization and log-transform)
         if self.config.get('ADD_RATIO_FEATURES', False) and self._feature_columns:
             new_features = []
+            added_names = []
             feature_names = self._feature_columns
             
             try:
@@ -182,30 +183,31 @@ class DataManager:
                     high_52w_idx = feature_names.index('52W_High')
                     ratio_1 = X[:, price_idx] / (X[:, high_52w_idx] + 1e-8)
                     new_features.append(ratio_1)
-                    self._feature_columns.append('Price_to_52W_High')
+                    added_names.append('Price_to_52W_High')
                 
                 if 'Volume' in feature_names and 'Avg_Volume' in feature_names:
                     vol_idx = feature_names.index('Volume')
                     avg_vol_idx = feature_names.index('Avg_Volume')
                     ratio_2 = X[:, vol_idx] / (X[:, avg_vol_idx] + 1e-8)
                     new_features.append(ratio_2)
-                    self._feature_columns.append('Volume_to_Avg_Volume')
+                    added_names.append('Volume_to_Avg_Volume')
                 
                 if 'Price' in feature_names and '52W_Low' in feature_names:
                     price_idx = feature_names.index('Price')
                     low_52w_idx = feature_names.index('52W_Low')
                     ratio_3 = X[:, price_idx] / (X[:, low_52w_idx] + 1e-8)
                     new_features.append(ratio_3)
-                    self._feature_columns.append('Price_to_52W_Low')
+                    added_names.append('Price_to_52W_Low')
                 
                 if new_features:
                     X = np.column_stack([X] + new_features)
-                    print(f"   [FEATURE] Added {len(new_features)} ratio features")
+                    self._feature_columns.extend(added_names)
+                    print(f"   [feature] Added {len(new_features)} ratio features")
             except Exception as e:
-                print(f"   [FEATURE] Warning: Could not add ratio features: {e}")
+                print(f"   [feature] Warning: Could not add ratio features: {e}")
         
         if X.shape[1] > original_features:
-            print(f"   [FEATURE] Total features: {original_features} -> {X.shape[1]}")
+            print(f"   [feature] Total features: {original_features} -> {X.shape[1]}")
         
         return X
     
@@ -493,22 +495,21 @@ if __name__ == "__main__":
         df['date'] = dates
         df['target'] = y
         df.to_csv('test_data.csv', index=False)
-        print("[PASS] Test data created")
+        print("[pass] Test data created")
     
     # Test data loading
     try:
         data_manager = DataManager(config)
         X, y, dates = data_manager.load_data()
         
-        print(f"[PASS] Data loaded: X={X.shape}, y={y.shape}, dates={dates.shape}")
+        print(f"[pass] Data loaded: X={X.shape}, y={y.shape}, dates={dates.shape}")
         print(f"   Fraud rate: {y.mean():.3f}")
         print(f"   Date range: {dates.min()} to {dates.max()}")
         
         # Validate output
         validate_data_output(X, y, dates, config['MIN_SAMPLES'], config)
-        print("[PASS] Data output validation passed")
         
     except FileNotFoundError as e:
-        print(f"[WARNING] File not found (expected if test_data.csv missing): {e}")
+        print(f"[warning] File not found (expected if test_data.csv missing): {e}")
     
-    print("\n[PASS] DataManager tests completed")
+    print("\n[pass] DataManager tests completed")

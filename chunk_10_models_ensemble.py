@@ -279,25 +279,25 @@ if __name__ == "__main__":
     # Test Bagging RF
     print("\nTesting Bagging Random Forest...")
     bagging_rf = build_bagging_random_forest_model(config, input_dim)
-    print(f"[PASS] Bagging RF created")
+    print(f"[pass] Bagging RF created")
     
     # Test Extra Trees
     print("\nTesting Extra Trees...")
     extra_trees = build_extra_trees_ensemble_model(config, input_dim)
-    print(f"[PASS] Extra Trees created")
+    print(f"[pass] Extra Trees created")
     
     # Test Boosting
     print("\nTesting Boosting...")
     boosting = build_boosting_adaptive_model(config, input_dim)
     from chunk_08_models_base import validate_model_output
     validate_model_output(boosting, input_dim)
-    print(f"[PASS] Boosting validated: {boosting.count_params()} params")
+    print(f"[pass] Boosting validated: {boosting.count_params()} params")
     
     # Test Stacking
     print("\nTesting Stacking Meta...")
     stacking = build_stacking_meta_model(config, input_dim)
     validate_model_output(stacking, input_dim)
-    print(f"[PASS] Stacking validated: {stacking.count_params()} params")
+    print(f"[pass] Stacking validated: {stacking.count_params()} params")
     
     # Test ensemble creation
     print("\nTesting ensemble creation...")
@@ -307,6 +307,6 @@ if __name__ == "__main__":
     
     X_test = np.random.randn(100, input_dim).astype(np.float32)
     validate_ensemble_output(ensemble, X_test, 100)
-    print(f"[PASS] Ensemble validated")
+    print(f"[pass] Ensemble validated")
     
-    print("\n[PASS] All ensemble model tests passed")
+    print("\n[pass] All ensemble model tests passed")

@@ -35,28 +35,26 @@ class Phase1_PipelineSetup(BasePhase):
         Returns:
             Updated context with loaded data
         """
-        self.logger.log("Starting Phase 1: Pipeline Setup", 'info')
-        
         # Load data
         try:
             X, y, dates = self.data_manager.load_data()
             self.logger.log(f"Data loaded: {len(X)} samples, {X.shape[1]} features", 'info')
         except FileNotFoundError as e:
-            self.logger.log(f"CRITICAL: Data file not found - {e}", 'error')
+            self.logger.log(f"critical: Data file not found - {e}", 'error')
             raise RuntimeError("Cannot proceed without valid fraud data file") from e
         except ValueError as e:
-            self.logger.log(f"DATA VALIDATION ERROR: {e}", 'error')
+            self.logger.log(f"data validation error: {e}", 'error')
             raise RuntimeError("Data validation failed") from e
         except Exception as e:
             self.logger.log(f"Unexpected data loading error: {e}", 'error')
             raise RuntimeError("Data loading failed") from e
         
-        # SANITY CHECK: Sample size validation
+        # sanity check: Sample size validation
         expected_samples = self.config.get('SAMPLE_SIZE', 0)
         if expected_samples > 0 and len(X) != expected_samples:
-            self.logger.log(f"SANITY CHECK: SAMPLE_SIZE={expected_samples}, got {len(X)} samples", 'warning')
+            self.logger.log(f"sanity check: sample_size={expected_samples}, got {len(X)} samples", 'warning')
         
-        # SANITY CHECK: Target value distribution (for continuous targets)
+        # sanity check: Target value distribution (for continuous targets)
         if self.config.get('TARGET_TYPE') == 'continuous':
             raw_target = self.data_manager._raw_target_values
             if raw_target is not None:
@@ -65,7 +63,7 @@ class Phase1_PipelineSetup(BasePhase):
                 self.logger.log(f"   Median: {np.nanmedian(raw_target):.2f} | Std: {np.nanstd(raw_target):.2f}", 'info')
                 # Check for extreme values
                 if np.nanmax(raw_target) > 100:
-                    self.logger.log(f"SANITY CHECK: Extreme target values detected (max={np.nanmax(raw_target):.2f})", 'warning')
+                    self.logger.log(f"sanity check: Extreme target values detected (max={np.nanmax(raw_target):.2f})", 'warning')
                 # Class distribution for ENTIRE dataset at all thresholds (full detail)
                 first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
                 last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
@@ -80,7 +78,7 @@ class Phase1_PipelineSetup(BasePhase):
                     fraud_rate = fraud_count / total
                     imbalance_ratio = max(fraud_count, normal_count) / min(fraud_count, normal_count) if min(fraud_count, normal_count) > 0 else float('inf')
                     
-                    self.logger.log(f"[CLASS] Class Distribution (Label_Threshold={thresh:>4.1f}):", 'info')
+                    self.logger.log(f"[class] Class Distribution (LABEL_THRESHOLD={thresh:>4.1f}):", 'info')
                     self.logger.log(f"  Total samples: {total:,}", 'info')
                     self.logger.log(f"  Fraud cases: {fraud_count:,} ({fraud_rate:.1%})", 'info')
                     self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
@@ -108,7 +106,7 @@ class Phase1_PipelineSetup(BasePhase):
             fraud_rate = fraud_count / total
             imbalance_ratio = max(fraud_count, normal_count) / min(fraud_count, normal_count) if min(fraud_count, normal_count) > 0 else float('inf')
             
-            self.logger.log(f"[CLASS] Class Distribution (Label_Threshold={thresh:>4.1f}):", 'info')
+            self.logger.log(f"[class] Class Distribution (LABEL_THRESHOLD={thresh:>4.1f}):", 'info')
             self.logger.log(f"  Total samples: {total:,}", 'info')
             self.logger.log(f"  Fraud cases: {fraud_count:,} ({fraud_rate:.1%})", 'info')
             self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
@@ -146,7 +144,9 @@ class Phase1_PipelineSetup(BasePhase):
                 raw_target_values = raw_target_values[:len(X)]
         
         # Generate feature names from data manager or create generic names
-        feature_names = self.data_manager._feature_columns if hasattr(self.data_manager, '_feature_columns') else [f'feature_{i}' for i in range(n_features)]
+        feature_names = (self.data_manager._feature_columns[:X.shape[1]]
+                          if hasattr(self.data_manager, '_feature_columns')
+                          else [f'feature_{i}' for i in range(X.shape[1])])
         
         # Log feature names for transparency
         self.logger.log(f"  Feature names ({len(feature_names)}): {feature_names}", 'info')
@@ -192,17 +192,17 @@ class Phase1_PipelineSetup(BasePhase):
         dates_inference = dates[inference_mask]
         
         # Log split summary
-        self.logger.log("[DATA SPLIT] Summary:", 'info')
+        self.logger.log("[data split] Summary:", 'info')
         self.logger.log(f"  Total: {len(X):,} samples, {n_dates} dates", 'info')
-        self.logger.log(f"  Train: {len(X_train):,} samples ({train_mask.sum() / len(X):.1%}), dates < {train_dates_threshold}", 'info')
-        self.logger.log(f"  Val: {len(X_val):,} samples ({val_mask.sum() / len(X):.1%}), dates >= {train_dates_threshold}", 'info')
+        self.logger.log(f"  train: {len(X_train):,} samples ({train_mask.sum() / len(X):.1%}), dates < {train_dates_threshold}", 'info')
+        self.logger.log(f"  validation: {len(X_val):,} samples ({val_mask.sum() / len(X):.1%}), dates >= {train_dates_threshold}", 'info')
         self.logger.log(f"  Inference: {len(X_inference):,} samples ({inference_mask.sum() / len(X):.1%}), date = {inference_date}", 'info')
         
         context.update({
             'X': X,
             'y': y,
             'dates': dates,
-            'features': [X],
+            'features': feature_names,
             'feature_names': feature_names,
             'data_stats': stats,
             'raw_target_values': raw_target_values if raw_target_values is not None else y,
@@ -220,7 +220,6 @@ class Phase1_PipelineSetup(BasePhase):
             'dates_inference': dates_inference,
         })
         
-        self.logger.log("Phase 1 completed successfully", 'info')
         return context
 
 
@@ -310,7 +309,7 @@ if __name__ == "__main__":
         df['date'] = dates
         df['target'] = y
         df.to_csv('test_data.csv', index=False)
-        print("[PASS] Test data created")
+        print("[pass] Test data created")
     
     # Run Phase 1
     try:
@@ -318,7 +317,7 @@ if __name__ == "__main__":
         context = {}
         result = phase1.execute(context)
         
-        print(f"[PASS] Phase 1 executed successfully")
+        print(f"[pass] Phase 1 executed successfully")
         print(f"   X shape: {result['X'].shape}")
         print(f"   y shape: {result['y'].shape}")
         print(f"   dates shape: {result['dates'].shape}")
@@ -326,11 +325,10 @@ if __name__ == "__main__":
         
         # Validate output
         validate_phase1_output(result)
-        print("[PASS] Phase 1 output validation passed")
         
     except FileNotFoundError:
-        print("[WARNING] Test skipped: test_data.csv not found")
+        print("[warning] Test skipped: test_data.csv not found")
     except Exception as e:
-        print(f"[WARNING] Test error: {e}")
+        print(f"[warning] Test error: {e}")
     
-    print("\n[PASS] Phase1_PipelineSetup tests completed")
+    print("\n[pass] Phase1_PipelineSetup tests completed")

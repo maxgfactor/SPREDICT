@@ -59,7 +59,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         if val_dates is not None and val_y_raw is not None:
             if len(val_dates) != len(val_y_raw):
                 if self.logger:
-                    self.logger.log(f"WARNING: Dimension mismatch detected! val_dates: {len(val_dates)}, val_y_raw: {len(val_y_raw)}", 'warning')
+                    self.logger.log(f"warning: Dimension mismatch detected! val_dates: {len(val_dates)}, val_y_raw: {len(val_y_raw)}", 'warning')
                     # Align to minimum length
                 min_len = min(len(val_dates), len(val_y_raw))
                 val_dates = val_dates[:min_len]
@@ -67,7 +67,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
                 val_predictions = [p[:min_len] for p in val_predictions]
                 
                 if self.logger:
-                    self.logger.log(f"INFO: Aligned to {min_len} elements", 'info')
+                    self.logger.log(f"info: Aligned to {min_len} elements", 'info')
         
         if self.logger:
             self.logger.log(f"Analyzing temporal precision gap for {len(arch_names)} architectures", 'info')
@@ -77,7 +77,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         n_dates = len(unique_dates)
         
         if n_dates < 3 and self.logger:
-            self.logger.log(f"WARNING: Only {n_dates} unique dates in validation - splitting may be unreliable", 'warning')
+            self.logger.log(f"warning: Only {n_dates} unique dates in validation - splitting may be unreliable", 'warning')
         
         recent_date_cutoff = unique_dates[int(n_dates * 0.67)]
         older_date_cutoff = unique_dates[int(n_dates * 0.33)]
@@ -203,7 +203,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
             self.logger.log(f"{positive_gap_count}/{len(results_df)} architectures show positive temporal precision gap", 'info')
         
         if positive_gap_count == 0 and self.logger:
-            self.logger.log(f"WARNING: No architecture shows meaningful improvement on recent fraud", 'warning')
+            self.logger.log(f"warning: No architecture shows meaningful improvement on recent fraud", 'warning')
             self.logger.log(f"Consider: stronger temporal weighting or different architectures", 'warning')
         
         context['temporal_precision_gap'] = results_df.to_dict('records')
@@ -255,4 +255,4 @@ if __name__ == "__main__":
     phase = PhaseXb_TemporalCorrelation(config)
     result = phase.execute(context)
     
-    print(f"\n[PASS] Phase Xb test passed")
+    print(f"\n[pass] Phase Xb test passed")

@@ -412,24 +412,24 @@ if __name__ == "__main__":
     print("\nTesting VAE...")
     vae = build_vae_model(config, input_dim)
     validate_model_output(vae, input_dim)
-    print(f"[PASS] VAE validated: {vae.count_params()} params")
+    print(f"[pass] VAE validated: {vae.count_params()} params")
     
     # Test CNN
     print("\nTesting CNN...")
     cnn = build_cnn_model(config, input_dim)
     validate_model_output(cnn, input_dim)
-    print(f"[PASS] CNN validated: {cnn.count_params()} params")
+    print(f"[pass] CNN validated: {cnn.count_params()} params")
     
     # Test RNN
     print("\nTesting RNN...")
     rnn = build_rnn_model(config, input_dim)
     validate_model_output(rnn, input_dim)
-    print(f"[PASS] RNN validated: {rnn.count_params()} params")
+    print(f"[pass] RNN validated: {rnn.count_params()} params")
     
     # Test Dense
     print("\nTesting Dense...")
     dense = build_dense_model(config, input_dim)
     validate_model_output(dense, input_dim)
-    print(f"[PASS] Dense validated: {dense.count_params()} params")
+    print(f"[pass] Dense validated: {dense.count_params()} params")
     
-    print("\n[PASS] All base model tests passed")
+    print("\n[pass] All base model tests passed")

@@ -136,7 +136,7 @@ def load_models_with_metadata(models_path: str = './saved_models', logger=None) 
                 meta = load_model_metadata(arch_name, models_path)
                 if meta:
                     metadata[arch_name] = meta
-                    logger.log(f"Loaded {arch_name} metadata: Label_Threshold={meta.get('optimal_threshold')}", 'info')
+                    logger.log(f"Loaded {arch_name} metadata: label_threshold={meta.get('optimal_threshold')}", 'info')
     
     return models, metadata
 

@@ -43,8 +43,6 @@ class Phase3_TemporalWeighting(BasePhase):
         Returns:
             Updated context with temporal weights
         """
-        self.logger.log("Starting Phase 3: Temporal Weighting", 'info')
-        
         # Validate input from Phase 1
         self._validate_input(context)
         
@@ -85,7 +83,6 @@ class Phase3_TemporalWeighting(BasePhase):
             'phase3_complete': True
         })
         
-        self.logger.log("Phase 3 completed successfully", 'info')
         return context
     
     def _validate_input(self, context: Dict):
@@ -176,12 +173,11 @@ if __name__ == "__main__":
     phase3 = Phase3_TemporalWeighting(config)
     result = phase3.execute(context.copy())
     
-    print(f"[PASS] Phase 3 executed successfully")
+    print(f"[pass] Phase 3 executed successfully")
     print(f"   Temporal weights shape: {result['temporal_weights'].shape}")
     print(f"   Temporal features keys: {list(result['temporal_features'].keys())}")
     
     # Validate
     validate_phase3_output(result)
-    print("[PASS] Phase 3 output validation passed")
     
-    print("\n[PASS] Phase3_TemporalWeighting tests passed")
+    print("\n[pass] Phase3_TemporalWeighting tests passed")

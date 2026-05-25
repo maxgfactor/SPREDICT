@@ -385,11 +385,11 @@ class Evaluator:
             val_class_0 = int(np.sum(y_val_binary == 0))
             val_class_1 = int(np.sum(y_val_binary == 1))
             
-            train_status = "[OK]" if train_class_1 > 0 else "[WARNING]"
-            val_status = "[OK]" if val_class_1 > 0 else "[WARNING]"
+            train_status = "[ok]" if train_class_1 > 0 else "[warning]"
+            val_status = "[ok]" if val_class_1 > 0 else "[warning]"
             
             arch_tag = f"[{arch_name.upper()}]"
-            if self.logger: self.logger.log(f"{arch_tag} Label_Threshold={thresh:.1f} | Train: 0={train_class_0:,},1={train_class_1:,} {train_status} | Val: 0={val_class_0:,},1={val_class_1:,} {val_status}", 'info')
+            if self.logger: self.logger.log(f"{arch_tag} LABEL_THRESHOLD={thresh:.1f} | Train: 0={train_class_0:,},1={train_class_1:,} {train_status} | Val: 0={val_class_0:,},1={val_class_1:,} {val_status}", 'info')
             
             # Use model for inference only (no retraining) - for POST-HPO threshold search
             # Or train model for each threshold - for Section 2 pre-HPO threshold search
@@ -425,10 +425,10 @@ class Evaluator:
                 
                 # SANITY CHECK: Validate and fix predictions
                 if not np.all(np.isfinite(train_pred)):
-                    if self.logger: self.logger.log(f"{arch_tag} train_pred contains NaN/Inf at Label_Threshold={thresh}", 'warning')
+                    if self.logger: self.logger.log(f"{arch_tag} train_pred contains NaN/Inf at LABEL_THRESHOLD={thresh}", 'warning')
                     train_pred = np.nan_to_num(train_pred, nan=0.0, posinf=1.0, neginf=0.0)
                 if not np.all(np.isfinite(val_pred)):
-                    if self.logger: self.logger.log(f"{arch_tag} val_pred contains NaN/Inf at Label_Threshold={thresh}", 'warning')
+                    if self.logger: self.logger.log(f"{arch_tag} val_pred contains NaN/Inf at LABEL_THRESHOLD={thresh}", 'warning')
                     val_pred = np.nan_to_num(val_pred, nan=0.0, posinf=1.0, neginf=0.0)
                 
                 # Additional safety: clip predictions to valid probability range
@@ -466,7 +466,7 @@ class Evaluator:
             
             val_total_positive_preds = val_metrics['TP'] + val_metrics['FP']
             if val_total_positive_preds < min_positive_predictions:
-                if self.logger: self.logger.log(f"[REJECT] Skipping threshold {thresh:.1f}: only {val_total_positive_preds} positive VALIDATION predictions (min={min_positive_predictions})", 'info')
+                if self.logger: self.logger.log(f"[reject] Skipping threshold {thresh:.1f}: only {val_total_positive_preds} positive VALIDATION predictions (min={min_positive_predictions})", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
                     if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)", 'info')
@@ -478,7 +478,7 @@ class Evaluator:
             max_pos_ratio = self.config.get('MAX_POS_PRED_RATIO', 0.70)
             pos_pred_ratio = val_total_positive_preds / len(y_val_binary)
             if pos_pred_ratio < min_pos_ratio or pos_pred_ratio > max_pos_ratio:
-                if self.logger: self.logger.log(f"{arch_tag} [REJECT] Skipping Label_Threshold={thresh:.1f}: pos_pred_ratio={pos_pred_ratio:.2%} outside [{min_pos_ratio:.0%}, {max_pos_ratio:.0%}]", 'info')
+                if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: pos_pred_ratio={pos_pred_ratio:.2%} outside [{min_pos_ratio:.0%}, {max_pos_ratio:.0%}]", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
                     if self.logger: self.logger.log(f"{arch_tag} Early stopping at threshold {thresh:.1f}", 'info')
@@ -496,7 +496,7 @@ class Evaluator:
                 min_improvement = self.config.get('MIN_PRECISION_OVER_BASELINE', 0.05)
             current_precision = val_metrics['P']
             if current_precision <= baseline_precision + min_improvement:
-                if self.logger: self.logger.log(f"{arch_tag} [REJECT] Skipping Label_Threshold={thresh:.1f}: P={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')
+                if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: precision={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
                     if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f}", 'info')
@@ -505,7 +505,7 @@ class Evaluator:
             
             # === PER-THRESHOLD DIAGNOSTICS ===
             val_pos_pct = (val_pred >= 0.5).mean() * 100
-            if self.logger: self.logger.log(f"{arch_tag} [DIAG] Label_Threshold={thresh:.1f}: pred_mean={val_pred.mean():.4f}, pred_std={val_pred.std():.4f}, pred_min={val_pred.min():.4f}, pred_max={val_pred.max():.4f}, %pos@0.5={val_pos_pct:.2f}%", 'info')
+            if self.logger: self.logger.log(f"{arch_tag} [diagnostic] LABEL_THRESHOLD={thresh:.1f}: pred_mean={val_pred.mean():.4f}, pred_std={val_pred.std():.4f}, pred_min={val_pred.min():.4f}, pred_max={val_pred.max():.4f}, percent_positive_at_0_5={val_pos_pct:.2f}%", 'info')
             
             result = {
                 'threshold': thresh,
@@ -742,7 +742,7 @@ if __name__ == "__main__":
     
     # Validate instance
     validate_evaluator_instance(evaluator)
-    print("[PASS] Evaluator instance validated")
+    print("[pass] Evaluator instance validated")
     
     # Create test data
     np.random.seed(42)
@@ -752,18 +752,18 @@ if __name__ == "__main__":
     
     # Test precision
     precision = evaluator.calculate_precision(y_true, y_pred)
-    print(f"[PASS] Precision: {precision:.4f}")
+    print(f"[pass] precision: {precision:.4f}")
     
     # Test metrics
     metrics = evaluator.calculate_metrics(y_true, y_pred, y_proba)
-    print(f"[PASS] Metrics: {metrics}")
+    print(f"[pass] Metrics: {metrics}")
     validate_evaluator_output(metrics)
-    print("[PASS] Metrics output validated")
+    print("[pass] Metrics output validated")
     
     # Test learning assessment
     loss_history = [0.9, 0.7, 0.5, 0.4, 0.35, 0.32, 0.30]
     prc_history = [0.5, 0.6, 0.7, 0.75, 0.78, 0.80]
     assessment = evaluator.assess_learning(loss_history, prc_history, 10)
-    print(f"[PASS] Learning assessment: {assessment}")
+    print(f"[pass] Learning assessment: {assessment}")
     
-    print("\n[PASS] All Evaluator tests passed")
+    print("\n[pass] All Evaluator tests passed")

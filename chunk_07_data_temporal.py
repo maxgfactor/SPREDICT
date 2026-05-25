@@ -173,20 +173,19 @@ if __name__ == "__main__":
     
     # Test feature extraction
     features = extract_temporal_features(dates)
-    print(f"[PASS] Extracted {len(features)} temporal features")
+    print(f"[pass] Extracted {len(features)} temporal features")
     for key, value in list(features.items())[:3]:
         print(f"   {key}: shape={value.shape}, range=[{value.min()}, {value.max()}]")
     
     # Test weighting
     weights = apply_temporal_weighting_strategy(dates, {'type': 'linear', 'multiplier': 9.0})
-    print(f"[PASS] Generated weights: min={weights.min():.3f}, max={weights.max():.3f}, mean={weights.mean():.3f}")
+    print(f"[pass] Generated weights: min={weights.min():.3f}, max={weights.max():.3f}, mean={weights.mean():.3f}")
     
     # Test advanced weighting
     weights_adv, features_dict = apply_advanced_temporal_weighting(dates)
-    print(f"[PASS] Advanced weighting: {len(features_dict)} features returned")
+    print(f"[pass] Advanced weighting: {len(features_dict)} features returned")
     
     # Validate
     validate_temporal_features(dates, features_dict)
-    print("[PASS] Temporal features validation passed")
     
-    print("\n[PASS] All temporal feature tests passed")
+    print("\n[pass] All temporal feature tests passed")

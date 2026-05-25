@@ -436,21 +436,21 @@ if __name__ == "__main__":
     print("\nTesting Isolation Forest...")
     iso_forest = build_isolation_forest_model(config)
     validate_sklearn_model(iso_forest, X)
-    print("[PASS] Isolation Forest validated")
+    print("[pass] Isolation Forest validated")
     
     # Test One-Class SVM
     print("\nTesting One-Class SVM...")
     oc_svm = build_oneclass_svm_model(config)
     validate_sklearn_model(oc_svm, X)  # Unsupervised, no labels needed
-    print("[PASS] One-Class SVM validated")
+    print("[pass] One-Class SVM validated")
     
     # Test Standard SVM
     print("\nTesting Standard SVM...")
     svm = build_svm_model(config)
     validate_sklearn_model(svm, X, y)
-    print("[PASS] Standard SVM validated")
+    print("[pass] Standard SVM validated")
     
-    print("\n[PASS] All sklearn model tests passed")
+    print("\n[pass] All sklearn model tests passed")
 
 
 # =============================================================================

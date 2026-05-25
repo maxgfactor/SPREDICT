@@ -95,7 +95,7 @@ def format_diagnostic_string(predictions: np.ndarray, prefix: str = "") -> str:
     
     Args:
         predictions: Array of prediction values
-        prefix: Prefix for log message (e.g., "[BASELINE]", "[HPO]")
+        prefix: Prefix for log message (e.g., "[baseline]", "[hpo]")
         
     Returns:
         Formatted diagnostic string
@@ -107,11 +107,11 @@ def format_diagnostic_string(predictions: np.ndarray, prefix: str = "") -> str:
     hist = get_prediction_histogram(predictions)
     
     # Format percentiles
-    result = f"{prefix} Percentiles: p1={stats['p1']:.4f}, p5={stats['p5']:.4f}, p10={stats['p10']:.4f}, p25={stats['p25']:.4f}, p50={stats['p50']:.4f}, p75={stats['p75']:.4f}, p90={stats['p90']:.4f}, p95={stats['p95']:.4f}, p99={stats['p99']:.4f}, max={stats['max']:.4f}"
+    result = f"{prefix} percentiles: p1={stats['p1']:.4f}, p5={stats['p5']:.4f}, p10={stats['p10']:.4f}, p25={stats['p25']:.4f}, p50={stats['p50']:.4f}, p75={stats['p75']:.4f}, p90={stats['p90']:.4f}, p95={stats['p95']:.4f}, p99={stats['p99']:.4f}, max={stats['max']:.4f}"
     
     # Add histogram info (first and last 3 bins)
     if len(hist['counts']) > 0:
-        result += f" | Hist: bins[{hist['counts'][0]},{hist['counts'][1]},{hist['counts'][2]}...{hist['counts'][-3]},{hist['counts'][-2]},{hist['counts'][-1]}]"
+        result += f" | histogram: bins[{hist['counts'][0]},{hist['counts'][1]},{hist['counts'][2]}...{hist['counts'][-3]},{hist['counts'][-2]},{hist['counts'][-1]}]"
     
     return result
 
@@ -581,9 +581,9 @@ def get_trend_indicator(current: float, previous: Optional[float],
     change = (current - previous) / previous if previous != 0 else 0
     
     if change > threshold:
-        return "[UP]"
+        return "[up]"
     elif change < -threshold:
-        return "[DOWN]"
+        return "[down]"
     else:
         return "->"
 
@@ -605,7 +605,7 @@ def format_phase_1_5_standardized(precision_value: float, prc_value: float,
     prc_formatted = format_metric_value(prc_value, False)
     context_info = f"OBJECTIVE: MAXIMIZE, ITERATIONS: {iterations_completed}"
     
-    report = f"[PHASE_1_5] PRECISION: {precision_formatted} ({context_info}) → optimization complete | PRC: {prc_formatted}"
+    report = f"[phase_1_5] PRECISION: {precision_formatted} ({context_info}) → optimization complete | PRC: {prc_formatted}"
     return report
 
 
@@ -704,7 +704,7 @@ if __name__ == "__main__":
     y_scores = np.array([0.1, 0.2, 0.8, 0.9])
     score = safe_average_precision_score(y_true, y_scores)
     assert 0 <= score <= 1
-    print(f"[PASS] Average precision: {score:.4f}")
+    print(f"[pass] Average precision: {score:.4f}")
     
     # Test assess_model_learning
     loss_history = [0.9, 0.7, 0.5, 0.4, 0.35, 0.32, 0.30]
@@ -712,22 +712,22 @@ if __name__ == "__main__":
     result = assess_model_learning(loss_history, prc_history, 10)
     assert 'learned' in result
     assert 'issues' in result
-    print(f"[PASS] Learning assessment: {result}")
+    print(f"[pass] Learning assessment: {result}")
     
     # Test format_metric_value
     assert format_metric_value(0.955, True) == "95.5%"
     assert format_metric_value(0.955, False) == "1.0"
-    print("[PASS] Metric formatting works")
+    print("[pass] Metric formatting works")
     
     # Test format_phase_1_5_standardized
     report = format_phase_1_5_standardized(0.95, 0.87, 50)
     assert "PHASE_1_5" in report
     assert "95.0%" in report
-    print(f"[PASS] Phase report: {report}")
+    print(f"[pass] Phase report: {report}")
     
     # Test calculate_precision_at_threshold
     precision = calculate_precision_at_threshold(y_true, y_scores, 0.5)
     assert 0 <= precision <= 1
-    print(f"[PASS] Precision at threshold 0.5: {precision:.4f}")
+    print(f"[pass] precision at threshold 0.5: {precision:.4f}")
     
-    print("\n[PASS] All metrics utility tests passed")
+    print("\n[pass] All metrics utility tests passed")

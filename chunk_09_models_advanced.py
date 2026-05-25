@@ -496,36 +496,36 @@ if __name__ == "__main__":
     print("\nTesting Transformer...")
     transformer = build_transformer_model(config, input_dim)
     validate_model_output(transformer, input_dim)
-    print(f"[PASS] Transformer validated: {transformer.count_params()} params")
+    print(f"[pass] Transformer validated: {transformer.count_params()} params")
     
     # Test TabNet
     print("\nTesting TabNet...")
     tabnet = build_tabnet_model(config, input_dim)
     validate_model_output(tabnet, input_dim)
-    print(f"[PASS] TabNet validated: {tabnet.count_params()} params")
+    print(f"[pass] TabNet validated: {tabnet.count_params()} params")
     
     # Test GNN SAGE
     print("\nTesting GNN SAGE...")
     gnn_sage = build_gnn_sage_model(config, input_dim)
     validate_model_output(gnn_sage, input_dim)
-    print(f"[PASS] GNN SAGE validated: {gnn_sage.count_params()} params")
+    print(f"[pass] GNN SAGE validated: {gnn_sage.count_params()} params")
     
     # Test GNN GAT
     print("\nTesting GNN GAT...")
     gnn_gat = build_gnn_gat_model(config, input_dim)
     validate_model_output(gnn_gat, input_dim)
-    print(f"[PASS] GNN GAT validated: {gnn_gat.count_params()} params")
+    print(f"[pass] GNN GAT validated: {gnn_gat.count_params()} params")
     
     # Test Hybrid CNN-LSTM
     print("\nTesting Hybrid CNN-LSTM...")
     hybrid_cnn_lstm = build_hybrid_cnn_lstm_model(config, input_dim)
     validate_model_output(hybrid_cnn_lstm, input_dim)
-    print(f"[PASS] Hybrid CNN-LSTM validated: {hybrid_cnn_lstm.count_params()} params")
+    print(f"[pass] Hybrid CNN-LSTM validated: {hybrid_cnn_lstm.count_params()} params")
     
     # Test Hybrid Transformer-GNN
     print("\nTesting Hybrid Transformer-GNN...")
     hybrid_trans_gnn = build_hybrid_transformer_gnn_model(config, input_dim)
     validate_model_output(hybrid_trans_gnn, input_dim)
-    print(f"[PASS] Hybrid Transformer-GNN validated: {hybrid_trans_gnn.count_params()} params")
+    print(f"[pass] Hybrid Transformer-GNN validated: {hybrid_trans_gnn.count_params()} params")
     
-    print("\n[PASS] All advanced model tests passed")
+    print("\n[pass] All advanced model tests passed")

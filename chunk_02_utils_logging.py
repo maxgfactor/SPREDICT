@@ -11,7 +11,7 @@ All log messages automatically include the source filename in brackets [filename
 for easy traceability and debugging.
 
 ## Usage
-self.logger.log("message", "info")  # Output: [chunk_XX_filename.py] [INFO] message
+self.logger.log("message", "info")  # Output: [chunk_XX_filename.py] [info] message
 """
 
 import os
@@ -66,8 +66,8 @@ class Logger:
                 except Exception:
                     source = "logger"
             
-            # Format: [log_count] [source] [LEVEL] message
-            level_prefix = {"info": "[INFO]", "warning": "[WARNING]", "error": "[ERROR]"}.get(level, "[INFO]")
+            # Format: [log_count] [source] [level] message
+            level_prefix = {"info": "[info]", "warning": "[warning]", "error": "[error]"}.get(level, "[info]")
             print(f"[{Logger.log_count:<5}] [{source}] {level_prefix} {message}", flush=True)
     
     def format_metric(self, value: float, is_percentage: bool = True) -> str:
@@ -103,9 +103,9 @@ class Logger:
             return ""
         change = (current - previous) / previous if previous != 0 else 0
         if change > threshold:
-            return " [UP]"  # Improving
+            return " [up]"  # Improving
         elif change < -threshold:
-            return " [DOWN]"  # Declining
+            return " [down]"  # Declining
         else:
             return " →"   # Stable
     
@@ -126,7 +126,7 @@ class Logger:
         prc_formatted = self.format_metric(prc_value, False)
         context_info = f"OBJECTIVE: MAXIMIZE, ITERATIONS: {iterations_completed}"
         
-        report = f"[PHASE_1_5] PRECISION: {precision_formatted} ({context_info}) → optimization complete | PRC: {prc_formatted}"
+        report = f"[phase_1_5] PRECISION: {precision_formatted} ({context_info}) → optimization complete | PRC: {prc_formatted}"
         return report
     
     def format_standard_metric_report(self, phase_name: str, primary_metric_type: str,
@@ -202,7 +202,7 @@ class Logger:
         if self.verbosity < 2:
             return
         
-        print("[STAT] Feature Quality Analysis:")
+        print("[stat] Feature Quality Analysis:")
         if feature_names is None:
             feature_names = [f"feature_{i}" for i in range(X.shape[1])]
         
@@ -240,7 +240,7 @@ class Logger:
         imbalance_ratio = (max(fraud_count, normal_count) / min(fraud_count, normal_count)
                           if min(fraud_count, normal_count) > 0 else float('inf'))
         
-        print("[CLASS] Class Distribution:")
+        print("[class] Class Distribution:")
         print(f"  Total samples: {total_samples}")
         print(f"  Fraud cases: {fraud_count} ({fraud_rate:.1%})")
         print(f"  Normal cases: {normal_count} ({1-fraud_rate:.1%})")
@@ -260,10 +260,10 @@ class Logger:
         valid_dates = dates_numeric[~np.isnan(dates_numeric)]
         
         if len(valid_dates) == 0:
-            print("[WARNING] No valid dates found")
+            print("[warning] No valid dates found")
             return
         
-        print("[DATE] Temporal Coverage:")
+        print("[date] Temporal Coverage:")
         print(f"  Date range: {int(valid_dates.min())} to {int(valid_dates.max())}")
         print(f"  Unique dates: {len(np.unique(valid_dates))}")
         print(f"  Total samples: {len(valid_dates)}")
@@ -278,7 +278,7 @@ class Logger:
             total_time: Total execution time
             memory_usage: Memory usage in GB
         """
-        print("\n[TIME] Performance Metrics:")
+        print("\n[time] Performance Metrics:")
         print(f"  Total execution time: {total_time:.2f}s")
         for phase, timing in phase_timings.items():
             print(f"  {phase}: {timing:.2f}s")
@@ -292,7 +292,7 @@ class Logger:
         Args:
             data_flow_stages: Dictionary of stage names to metrics
         """
-        print("\n[STAT] Data Flow Metrics:")
+        print("\n[stat] Data Flow Metrics:")
         for stage, metrics in data_flow_stages.items():
             print(f"  {stage}: {metrics}")
     
@@ -306,17 +306,17 @@ class Logger:
         """
         from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
         
-        print("\n[TARGET] Final Evaluation:")
+        print("\n[target] Final Evaluation:")
         print(f"  Accuracy: {accuracy_score(y_true, y_pred):.4f}")
-        print(f"  Precision: {precision_score(y_true, y_pred, zero_division=0):.4f}")
-        print(f"  Recall: {recall_score(y_true, y_pred, zero_division=0):.4f}")
-        print(f"  F1 Score: {f1_score(y_true, y_pred, zero_division=0):.4f}")
+        print(f"  precision: {precision_score(y_true, y_pred, zero_division=0):.4f}")
+        print(f"  recall: {recall_score(y_true, y_pred, zero_division=0):.4f}")
+        print(f"  f1 Score: {f1_score(y_true, y_pred, zero_division=0):.4f}")
         
         try:
             auc = roc_auc_score(y_true, y_pred)
-            print(f"  AUC: {auc:.4f}")
+            print(f"  auc: {auc:.4f}")
         except ValueError:
-            print("  AUC: N/A (only one class present)")
+            print("  auc: N/A (only one class present)")
 
 
 def validate_logger_instance(logger: Logger) -> bool:
@@ -356,7 +356,6 @@ if __name__ == "__main__":
     
     # Validate instance
     validate_logger_instance(logger)
-    print("[PASS] Logger validation passed")
     
     # Test methods
     logger.log("Test message", "info")
@@ -372,4 +371,4 @@ if __name__ == "__main__":
     logger.log_class_distribution(y)
     logger.log_temporal_coverage(dates)
     
-    print("\n[PASS] All Logger tests passed")
+    print("\n[pass] All Logger tests passed")

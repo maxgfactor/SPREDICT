@@ -76,8 +76,6 @@ class Phase5_PredictionOptimization(BasePhase):
         Returns:
             Updated context with per-architecture metrics and final_predictions
         """
-        self.logger.log("Starting Phase 5: Inference on Newest Data", 'info')
-        
         phase5_start_time = time.time()
         
         # =========================================================================
@@ -101,7 +99,6 @@ class Phase5_PredictionOptimization(BasePhase):
         # =========================================================================
         # STEP 2: Receive data from context (NO CSV loading)
         # =========================================================================
-        self.logger.log("Phase 5: Prediction Optimization", 'info')
         self.logger.log("Receiving inference data from context (NO CSV loading)...", 'info')
         
         # Get data from context
@@ -113,7 +110,7 @@ class Phase5_PredictionOptimization(BasePhase):
         
         # Validate
         if X_inference is None:
-            self.logger.log("[ERROR] X_inference not found in context!", 'error')
+            self.logger.log("[error] X_inference not found in context!", 'error')
             context.update({'phase5_complete': True})
             return context
         
@@ -180,7 +177,7 @@ class Phase5_PredictionOptimization(BasePhase):
         architecture_results = []
         
         self.logger.log("", 'info')
-        self.logger.log("Phase 5: Per-Architecture Results on Newest Data", 'info')
+        self.logger.log("Per-Architecture Results on Newest Data", 'info')
         
         for arch_name, model in models.items():
             # Get metadata for this architecture
@@ -196,11 +193,11 @@ class Phase5_PredictionOptimization(BasePhase):
                 X_arch = X[:, kept_idx]
                 self.logger.log(f"  {arch_name}: using {len(kept_idx)} features (optimal threshold's pruning)", 'info')
             else:
-                self.logger.log(f"  [WARNING] {arch_name}: kept_feature_indices not in metadata - skipping", 'warning')
+                self.logger.log(f"  [warning] {arch_name}: kept_feature_indices not in metadata - skipping", 'warning')
                 continue
             
             self.logger.log(
-                f"{arch_name} (Label_Threshold={opt_threshold:.1f}, Prediction_Binary_Split={pred_threshold:.2f}, hyperparams={best_hyperparams}, Val Precision={best_val_prec:.4f}):",
+                f"{arch_name} (LABEL_THRESHOLD={opt_threshold:.1f}, prediction_binary_split={pred_threshold:.2f}, hyperparams={best_hyperparams}, VALIDATION_PRECISION={best_val_prec:.4f}):",
                 'info'
             )
             
@@ -210,30 +207,30 @@ class Phase5_PredictionOptimization(BasePhase):
             except Exception as e:
                 error_msg = str(e)
                 if 'incompatible' in error_msg.lower() or 'shape' in error_msg.lower():
-                    self.logger.log(f"   [SKIP] Shape mismatch - model expects different input dimensions: {e}", 'warning')
+                    self.logger.log(f"   [skip] Shape mismatch - model expects different input dimensions: {e}", 'warning')
                 else:
                     self.logger.log(f"   Prediction failed: {e}", 'warning')
                 continue
             
             # Validate predictions are in valid probability range [0,1]
             if np.any(np.isnan(predictions)):
-                self.logger.log(f"   [WARNING] NaN values detected in predictions!", 'warning')
+                self.logger.log(f"   [warning] NaN values detected in predictions!", 'warning')
             if predictions.min() < 0 or predictions.max() > 1:
-                self.logger.log(f"   [WARNING] Predictions outside [0,1] range! min={predictions.min():.4f}, max={predictions.max():.4f}", 'warning')
+                self.logger.log(f"   [warning] Predictions outside [0,1] range! min={predictions.min():.4f}, max={predictions.max():.4f}", 'warning')
             
             # Log prediction distribution statistics
-            self.logger.log(f"   Predictions: mean={predictions.mean():.4f}, std={predictions.std():.4f}, min={predictions.min():.4f}, max={predictions.max():.4f}", 'info')
+            self.logger.log(f"   predictions: mean={predictions.mean():.4f}, std={predictions.std():.4f}, min={predictions.min():.4f}, max={predictions.max():.4f}", 'info')
             
             # Binary predictions: use prediction threshold from config
             binary_predictions = (predictions >= pred_threshold).astype(int)
             
             # Log prediction class distribution
             pos_pct = binary_predictions.mean() * 100
-            self.logger.log(f"   INFERENCE Predictions: {pos_pct:.2f}% positive predictions ({binary_predictions.sum():,} / {len(binary_predictions):,})", 'info')
+            self.logger.log(f"   INFERENCE predictions: {pos_pct:.2f}% positive predictions ({binary_predictions.sum():,} / {len(binary_predictions):,})", 'info')
             
             # Check for all-zero predictions
             if binary_predictions.sum() == 0:
-                self.logger.log(f"   [WARNING] Model predicts ALL NEGATIVES!", 'warning')
+                self.logger.log(f"   [warning] Model predicts ALL NEGATIVES!", 'warning')
             
             # Ground truth: use optimal_threshold for y
             y_val_binarized = (y_val_continuous >= opt_threshold).astype(int)
@@ -254,7 +251,7 @@ class Phase5_PredictionOptimization(BasePhase):
             
             # Log metrics (NO confusion matrix)
             self.logger.log(
-                f"  {arch_name} t={opt_threshold:.1f}: P={metrics['precision']:.4f} R={metrics['recall']:.4f} AUC={metrics['auc']:.4f} F1={metrics['f1']:.4f} FN={fn} TN={tn} TP={tp} FP={fp}",
+                f"  {arch_name} t={opt_threshold:.1f}: precision={metrics['precision']:.4f} recall={metrics['recall']:.4f} auc={metrics['auc']:.4f} f1={metrics['f1']:.4f} false_negatives={fn} true_negatives={tn} true_positives={tp} false_positives={fp}",
                 'info'
             )
             
@@ -275,7 +272,7 @@ class Phase5_PredictionOptimization(BasePhase):
             inf_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, predictions.flatten())
             
             self.logger.log(
-                f"  {arch_name} - Inference: Inf_P={metrics['precision']:.4f} Inf_TP={tp} Inf_TN={tn} Inf_FP={fp} Inf_FN={fn} Inf_MaxPred={predictions.max():.4f} Inf_MeanPred={predictions.mean():.4f} Inf_R={metrics['recall']:.4f} Inf_F1={metrics['f1']:.4f} Inf_AUC={metrics['auc']:.4f} Inf_Spec={inf_specificity:.4f} Inf_FPR={inf_fpr:.4f} Inf_F2={inf_f2:.4f} Inf_MCC={inf_mcc:.4f} Inf_PRAUC={inf_prauc:.4f} Inf_BalAcc={inf_balanced_acc:.4f} Inf_StdPred={inf_std_pred:.4f} Inf_PctAboveThresh={inf_pct_above_thresh:.2f} Inf_Brier={inf_brier:.4f} Inf_Kappa={inf_kappa:.4f} Inf_Informedness={inf_informedness:.4f} Inf_Markedness={inf_markedness:.4f} Inf_Gini={inf_gini:.4f} Inf_OptThresh={inf_opt_thresh:.4f}",
+                f"  {arch_name} - Inference: inference_precision={metrics['precision']:.4f} inference_true_positives={tp} inference_true_negatives={tn} inference_false_positives={fp} inference_false_negatives={fn} inference_max_prediction={predictions.max():.4f} inference_mean_prediction={predictions.mean():.4f} inference_recall={metrics['recall']:.4f} inference_f1={metrics['f1']:.4f} inference_auc={metrics['auc']:.4f} inference_specificity={inf_specificity:.4f} inference_false_positive_rate={inf_fpr:.4f} inference_f2={inf_f2:.4f} inference_mcc={inf_mcc:.4f} inference_prauc={inf_prauc:.4f} inference_balanced_accuracy={inf_balanced_acc:.4f} inference_standard_deviation_prediction={inf_std_pred:.4f} inference_percentage_above_threshold={inf_pct_above_thresh:.2f} inference_brier={inf_brier:.4f} inference_kappa={inf_kappa:.4f} inference_informedness={inf_informedness:.4f} inference_markedness={inf_markedness:.4f} inference_gini={inf_gini:.4f} inference_optimal_threshold={inf_opt_thresh:.4f}",
                 'info'
             )
             
@@ -290,7 +287,7 @@ class Phase5_PredictionOptimization(BasePhase):
 
                     self.logger.log("", 'info')
                     self.logger.log(f"{arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows)", 'info')
-                    self.logger.log(f"Architecture: {arch_name} | Precision: {metrics['precision']:.4f} | Prediction_Binary_Split: {pred_threshold} | Predicted: {len(pred_fraud_indices)}", 'info')
+                    self.logger.log(f"architecture: {arch_name} | precision: {metrics['precision']:.4f} | prediction_binary_split: {pred_threshold} | predicted: {len(pred_fraud_indices)}", 'info')
                     self.logger.log("Row," + ",".join(available_cols), 'info')
 
                     for idx, (_, row) in enumerate(fraud_rows_filtered.iterrows(), 1):
@@ -335,7 +332,7 @@ class Phase5_PredictionOptimization(BasePhase):
             sorted_results = sorted(architecture_results, key=lambda x: x['Inf_P'], reverse=True)
             
             self.logger.log("", 'info')
-            self.logger.log("FINAL PREDICTION RESULTS (sorted by Precision)", 'info')
+            self.logger.log("FINAL PREDICTION RESULTS (sorted by precision)", 'info')
             self.logger.log(
                 f"{'Rank':>4} | {'Architecture':<8} | {'Label_Threshold':>15} | {'Prediction_Binary_Split':>22} | "
                 f"{'Precision':>10} | {'Recall':>7} | {'AUC':>7} | {'F1':>6} | "
@@ -355,13 +352,11 @@ class Phase5_PredictionOptimization(BasePhase):
             # Best architecture
             best = sorted_results[0]
             phase5_time = time.time() - phase5_start_time
-            self.logger.log(f"Best Architecture: {best['architecture']} (Precision: {best['Inf_P']:.4f})", 'info')
-            self.logger.log(f"Phase 5 Total Time: {phase5_time:.1f}s", 'info')
-            self.logger.log(f"Data Points Evaluated: {n_inference} (date={dates_inference[0]})", 'info')
+            self.logger.log(f"Best architecture: {best['architecture']} (precision: {best['Inf_P']:.4f})", 'info')
+            self.logger.log(f"phase 5 total time: {phase5_time:.1f}s", 'info')
+            self.logger.log(f"data points evaluated: {n_inference} (date={dates_inference[0]})", 'info')
         
         self.logger.log("", 'info')
-        self.logger.log("Phase 5 completed successfully", 'info')
-        
         # =========================================================================
         # STEP 8: Update context (fixes AssertionError: Missing final_predictions)
         # =========================================================================
@@ -499,11 +494,10 @@ if __name__ == "__main__":
     phase5 = Phase5_PredictionOptimization(config)
     result = phase5.execute(context.copy())
     
-    print(f"[PASS] Phase 5 executed successfully")
+    print(f"[pass] Phase 5 executed successfully")
     print(f"   Architecture results: {len(result['architecture_results'])} architectures")
     
     # Validate
     validate_phase5_output(result)
-    print("[PASS] Phase 5 output validation passed")
     
-    print("\n[PASS] Phase5_PredictionOptimization tests passed")
+    print("\n[pass] Phase5_PredictionOptimization tests passed")

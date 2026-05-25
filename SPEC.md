@@ -1,7 +1,7 @@
 # Software Specification Requirements (SSR) - Fraud Detection Ensemble
 
-**Version**: 3.5  
-**Date**: 2026-05-19  
+**Version**: 3.6  
+**Date**: 2026-05-25  
 **Status**: Living Document - Update After Each Run  
 
 ---
@@ -93,7 +93,7 @@ Logged before threshold optimization:
 
 Example (current format with tag reorder):
 ```
-[ARCH_NAME] [BASELINE] Before threshold optimization:
+[ARCH_NAME] [BASELINE] BEFORE_THRESHOLD_OPTIMIZATION:
 [ARCH_NAME] [BASELINE] Predictions: mean=0.0023, std=0.0156, min=0.0001, max=0.4523
 [ARCH_NAME] [BASELINE] % positive predictions (Prediction_Threshold=0.5): 0.12%
 ```
@@ -103,7 +103,7 @@ Example (current format with tag reorder):
 | Architecture | mean | std | min | max | % Positive | Notes |
 |--------------|-----|-----|-----|-----|------------|-------|
 
-| Architecture | Optimal Threshold | Val_Precision | Val_Recall | Val_AUC | Val_TP | Val_FP | Notes |
+| Architecture | Optimal Threshold | VALIDATION_Precision | VALIDATION_Recall | VALIDATION_AUC | VALIDATION_TP | VALIDATION_FP | Notes |
 |--------------|-------------------|---------------|-----------|---------|--------|--------|-------|
 | CatBoost | 0.0 | **0.5381** | 0.4843 | 0.5195 | 27,034 | 23,209 | Best; stagnant trial 59+ |
 | LightGBM | 4.0 | 0.2970 | 0.5734 | 0.6612 | 12,078 | 28,589 | Stagnant trial 90+ |
@@ -115,7 +115,7 @@ Example (current format with tag reorder):
 | VAE | 2.0 | 0.0000 | 0.0000 | 0.0000 | 0 | 0 | All thresholds rejected |
 | Transformer | 2.0 | 0.0000 | 0.0000 | 0.0000 | 0 | 0 | All thresholds rejected |
 
-| Architecture | Pre-HPO Threshold | Pre-HPO P | Post-HPO Threshold | Post-HPO P | Improved? |
+| Architecture | Pre-HYPERPARAMETER_OPTIMIZATION Threshold | Pre-HYPERPARAMETER_OPTIMIZATION PRECISION | Post-HYPERPARAMETER_OPTIMIZATION Threshold | Post-HYPERPARAMETER_OPTIMIZATION PRECISION | Improved? |
 |--------------|-------------------|-----------|-------------------|-----------|-----------|
 | CatBoost | (baseline) | 0.5370 | 0.0 | **0.5381** | Yes |
 | LightGBM | (baseline) | 0.1802 | 4.0 | **0.1753** | No |
@@ -128,7 +128,7 @@ Example (current format with tag reorder):
 
 ### Section 2: Threshold Optimization Results
 Logged for each of 11 thresholds (20.0 to 0.0, step -2.0):
-- Train metrics: 24 metrics (P, TP, TN, FP, FN, MaxPred, MeanPred, R, F1, AUC, Spec, FPR, F2, MCC, PRAUC, BalAcc, Brier, Kappa, Informedness, Markedness, Gini, OptThresh, StdPred, PctAboveThresh)
+- Train metrics: 24 metrics (PRECISION, TRUE_POSITIVES, TRUE_NEGATIVES, FALSE_POSITIVES, FALSE_NEGATIVES, MAX_PREDICTION, MEAN_PREDICTION, RECALL, F1_SCORE, AUC, SPECIFICITY, FALSE_POSITIVE_RATE, F2_SCORE, MCC, PRAUC, BALANCED_ACCURACY, Brier, Kappa, Informedness, Markedness, Gini, OPTIMAL_THRESHOLD, STD_PREDICTION, PCT_ABOVE_THRESHOLD)
 - Val metrics: Same 24 metrics
 - Optimal threshold selection
 
@@ -136,20 +136,20 @@ Logged for each of 11 thresholds (20.0 to 0.0, step -2.0):
 
 Example:
 ```
-LightGBM t=20.0 | Train: Train_P=0.8500 Train_TP=5000 Train_TN=120000 Train_FP=880 Train_FN=45000 Train_MaxPred=0.9500 Train_MeanPred=0.0045 Train_R=0.1200 Train_F1=0.2100 Train_AUC=0.9500 Train_Spec=0.9920 Train_FPR=0.0070 Train_F2=0.1800 Train_MCC=0.2100 Train_PRAUC=0.8500 Train_BalAcc=0.5600 Train_Brier=0.0040 Train_Kappa=0.1800 Train_Informedness=0.1200 Train_Markedness=0.8500 Train_Gini=0.9000 Train_OptThresh=0.5500 Train_StdPred=0.0300 Train_PctAboveThresh=0.50
-LightGBM t=20.0 | Val:   Val_P=0.8200 Val_TP=1800 Val_TN=40000 Val_FP=395 Val_FN=15000 Val_MaxPred=0.9200 Val_MeanPred=0.0055 Val_R=0.1100 Val_F1=0.1900 Val_AUC=0.9400 Val_Spec=0.9900 Val_FPR=0.0100 Val_F2=0.1500 Val_MCC=0.1900 Val_PRAUC=0.8200 Val_BalAcc=0.5500 Val_Brier=0.0050 Val_Kappa=0.1600 Val_Informedness=0.1100 Val_Markedness=0.8200 Val_Gini=0.8800 Val_OptThresh=0.5200 Val_StdPred=0.0350 Val_PctAboveThresh=0.55
-LightGBM - OPTIMAL: label_threshold=12.0, Val P=0.7800
+LightGBM t=20.0 | TRAIN: TRAIN_PRECISION=0.8500 TRAIN_TRUE_POSITIVES=5000 TRAIN_TRUE_NEGATIVES=120000 TRAIN_FALSE_POSITIVES=880 TRAIN_FALSE_NEGATIVES=45000 TRAIN_MAX_PREDICTION=0.9500 TRAIN_MEAN_PREDICTION=0.0045 TRAIN_RECALL=0.1200 TRAIN_F1_SCORE=0.2100 TRAIN_AUC=0.9500 TRAIN_SPECIFICITY=0.9920 TRAIN_FALSE_POSITIVE_RATE=0.0070 TRAIN_F2_SCORE=0.1800 TRAIN_MCC=0.2100 TRAIN_PRAUC=0.8500 TRAIN_BALANCED_ACCURACY=0.5600 TRAIN_Brier=0.0040 TRAIN_Kappa=0.1800 TRAIN_Informedness=0.1200 TRAIN_Markedness=0.8500 TRAIN_Gini=0.9000 TRAIN_OPTIMAL_THRESHOLD=0.5500 TRAIN_STD_PREDICTION=0.0300 TRAIN_PCT_ABOVE_THRESHOLD=0.50
+LightGBM t=20.0 | VALIDATION:   VALIDATION_PRECISION=0.8200 VALIDATION_TRUE_POSITIVES=1800 VALIDATION_TRUE_NEGATIVES=40000 VALIDATION_FALSE_POSITIVES=395 VALIDATION_FALSE_NEGATIVES=15000 VALIDATION_MAX_PREDICTION=0.9200 VALIDATION_MEAN_PREDICTION=0.0055 VALIDATION_RECALL=0.1100 VALIDATION_F1_SCORE=0.1900 VALIDATION_AUC=0.9400 VALIDATION_SPECIFICITY=0.9900 VALIDATION_FALSE_POSITIVE_RATE=0.0100 VALIDATION_F2_SCORE=0.1500 VALIDATION_MCC=0.1900 VALIDATION_PRAUC=0.8200 VALIDATION_BALANCED_ACCURACY=0.5500 VALIDATION_Brier=0.0050 VALIDATION_Kappa=0.1600 VALIDATION_Informedness=0.1100 VALIDATION_Markedness=0.8200 VALIDATION_Gini=0.8800 VALIDATION_OPTIMAL_THRESHOLD=0.5200 VALIDATION_STD_PREDICTION=0.0350 VALIDATION_PCT_ABOVE_THRESHOLD=0.55
+LightGBM - OPTIMAL: label_threshold=12.0, VALIDATION_PRECISION=0.7800
 ```
 
 ### ACTUAL RESULTS - Run #
 
-| Architecture | Optimal Threshold | Val_Precision | Val_Recall | Val_AUC | Val_F1 | Pass? |
+| Architecture | Optimal Threshold | VALIDATION_Precision | VALIDATION_Recall | VALIDATION_AUC | VALIDATION_F1 | Pass? |
 |--------------|-------------------|---------------|-----------|---------|--------|-------|
 
 ### Section 3: Hyperparameter Optimization (HPO)
 Logged for each of 20 Optuna trials:
 - Trial parameters tested
-- Validation metrics: P, R, AUC, F1, TP, FP, TN, FN
+- Validation metrics: PRECISION, RECALL, AUC, F1_SCORE, TRUE_POSITIVES, FALSE_POSITIVES, TRUE_NEGATIVES, FALSE_NEGATIVES
 - MaxPred, MeanPred values
 - Rejection messages if MaxPred < 0.5
 
@@ -157,12 +157,12 @@ Logged for each of 20 Optuna trials:
 
 Example:
 ```
-Trial 1/30: n_estimators=500, num_leaves=31, learning_rate=0.05 → Val_P=0.4500 Val_TP=180 Val_TN=39800 Val_FP=220 Val_FN=8920 Val_MaxPred=0.8500 Val_MeanPred=0.0045 Val_R=0.0200 Val_F1=0.0380 Val_AUC=0.7200 Val_Spec=0.9945 Val_FPR=0.0055 Val_F2=0.0280 Val_MCC=0.0250 Val_PRAUC=0.4500 Val_BalAcc=0.5100 Val_Brier=0.0045 Val_Kappa=0.0200 Val_Informedness=0.0200 Val_Markedness=0.4400 Val_Gini=0.4400 Val_OptThresh=0.5200
+Trial 1/30: n_estimators=500, num_leaves=31, learning_rate=0.05 → VALIDATION_PRECISION=0.4500 VALIDATION_TRUE_POSITIVES=180 VALIDATION_TRUE_NEGATIVES=39800 VALIDATION_FALSE_POSITIVES=220 VALIDATION_FALSE_NEGATIVES=8920 VALIDATION_MAX_PREDICTION=0.8500 VALIDATION_MEAN_PREDICTION=0.0045 VALIDATION_RECALL=0.0200 VALIDATION_F1_SCORE=0.0380 VALIDATION_AUC=0.7200 VALIDATION_SPECIFICITY=0.9945 VALIDATION_FALSE_POSITIVE_RATE=0.0055 VALIDATION_F2_SCORE=0.0280 VALIDATION_MCC=0.0250 VALIDATION_PRAUC=0.4500 VALIDATION_BALANCED_ACCURACY=0.5100 VALIDATION_Brier=0.0045 VALIDATION_Kappa=0.0200 VALIDATION_Informedness=0.0200 VALIDATION_Markedness=0.4400 VALIDATION_Gini=0.4400 VALIDATION_OPTIMAL_THRESHOLD=0.5200
 ```
 
 ### ACTUAL RESULTS - Run #2026-05-11
 
-| Architecture | Best Trial# | Best Params | Val_Precision | Val_Recall | Val_AUC | Notes |
+| Architecture | Best Trial# | Best Params | VALIDATION_Precision | VALIDATION_Recall | VALIDATION_AUC | Notes |
 |--------------|-------------|-------------|---------------|-----------|---------|-------|
 | CatBoost | 59+ | iterations=200, depth=6, lr=0.1, auto_class_weights=Balanced, l2_leaf_reg=10 | 0.5381 | — | — | Stagnant; Maximize phase needed |
 | LightGBM | 110+ | n_estimators=500, num_leaves=63, lr=0.1, scale_pos_weight=500, min_child_samples=100, reg_alpha=0.1, reg_lambda=1.0, subsample=0.8 | 0.1753 | — | — | Stagnant; wider search needed |
@@ -176,7 +176,7 @@ Trial 1/30: n_estimators=500, num_leaves=31, learning_rate=0.05 → Val_P=0.4500
 
 ### Phase 5 Results - Run #2026-05-11 (CRASHED at chunk_19 line 272)
 
-| Architecture | Inf_Precision | Inf_Recall | Inf_AUC | Inf_TP | Inf_FP | Inf_TN | Inf_FN | Notes |
+| Architecture | INFERENCE_PRECISION | INFERENCE_RECALL | INFERENCE_AUC | INFERENCE_TRUE_POSITIVES | INFERENCE_FALSE_POSITIVES | INFERENCE_TRUE_NEGATIVES | INFERENCE_FALSE_NEGATIVES | Notes |
 |--------------|--------------|-----------|---------|--------|--------|--------|--------|-------|
 | LightGBM | 0.1753 | 0.7455 | 0.7177 | 460 | 2164 | 3142 | 157 | Only arch with positive predictions; processed before crash |
 | CatBoost | — | — | — | — | — | — | — | Crashed before processing |
@@ -190,24 +190,24 @@ Trial 1/30: n_estimators=500, num_leaves=31, learning_rate=0.05 → Val_P=0.4500
 
 **Crash**: `AttributeError: 'NoneType' object has no attribute 'columns'` at chunk_19_phase_5_optimization.py line 272. `df_with_all_cols` was None because context lookup failed. Fixed: added `if df_with_all_cols is not None` guard (Fix D). Pipeline failed at Phase 5; fixes A-D applied but not yet re-run.
 
-### Section 4: Post-HPO Threshold Search
+### Section 4: Post-HYPERPARAMETER_OPTIMIZATION Threshold Search
 Logged after HPO completes:
-- Pre-HPO vs Post-HPO comparison
+- Pre-HYPERPARAMETER_OPTIMIZATION vs Post-HYPERPARAMETER_OPTIMIZATION comparison
 - Final threshold selection
 
 **Source File**: chunk_12_evaluation_evaluator.py
 
 Example:
 ```
-PRE-HPO threshold: t=12.0, Val P=0.7800
-POST-HPO threshold: t=10.0, Val P=0.8200
-POST-HPO improved: using t=10.0
+PRE-HYPERPARAMETER_OPTIMIZATION threshold: t=12.0, VALIDATION_PRECISION=0.7800
+POST-HYPERPARAMETER_OPTIMIZATION threshold: t=10.0, VALIDATION_PRECISION=0.8200
+POST-HYPERPARAMETER_OPTIMIZATION improved: using t=10.0
 ```
 
 ### ACTUAL RESULTS - Run #
 
-| Architecture | Pre-HPO Threshold | Pre-HPO P | Post-HPO Threshold | Post-HPO P | Improved? |
-|--------------|-------------------|-----------|-------------------|-----------|-----------|
+| Architecture | Pre-HYPERPARAMETER_OPTIMIZATION Threshold | Pre-HYPERPARAMETER_OPTIMIZATION PRECISION | Post-HYPERPARAMETER_OPTIMIZATION Threshold | Post-HYPERPARAMETER_OPTIMIZATION PRECISION | Improved? |
+|--------------|-------------------|-------------------|-------------------|-------------------|-----------|
 
 ### Section 5: Final Model Summary
 Logged at completion:
@@ -219,7 +219,7 @@ Logged at completion:
 
 ### ACTUAL RESULTS - Run #
 
-| Architecture | Val_Precision | Val_Recall | Val_AUC | Val_F1 | Val_TP | Val_FP | TN | FN | MaxPred | MeanPred | Source |
+| Architecture | VALIDATION_PRECISION | VALIDATION_RECALL | VALIDATION_AUC | VALIDATION_F1_SCORE | VALIDATION_TRUE_POSITIVES | VALIDATION_FALSE_POSITIVES | VALIDATION_TRUE_NEGATIVES | VALIDATION_FALSE_NEGATIVES | VALIDATION_MAX_PREDICTION | VALIDATION_MEAN_PREDICTION | Source |
 |--------------|---------------|-----------|---------|--------|--------|--------|----|----|----------|-----------|--------|
 
 ## 1.2 Post-Execution Reports
@@ -232,10 +232,10 @@ Generated: `metrics_summary.csv`
 | Column | Description |
 |--------|-------------|
 | Architecture | Model name |
-| Val_Precision | Validation precision |
-| Val_Recall | Validation recall |
-| Val_F1 | Validation F1 score |
-| Val_AUC | Validation AUC |
+| VALIDATION_PRECISION | Validation precision |
+| VALIDATION_RECALL | Validation recall |
+| VALIDATION_F1_SCORE | Validation F1 score |
+| VALIDATION_AUC | Validation AUC |
 | Optimal_Threshold | Best label threshold |
 
 ### Feature Importance Report
@@ -287,10 +287,10 @@ The pipeline calculates and reports the following metrics:
 
 | Statistic | Description | Actual Value | Run Date | Source File |
 |-----------|-------------|--------------|----------|------------|
-| pred_mean | Mean prediction value | chunk_14_models_trainer.py |
-| pred_std | Standard deviation of predictions | chunk_14_models_trainer.py |
-| pred_max | Maximum prediction value | chunk_14_models_trainer.py |
-| pred_min | Minimum prediction value | chunk_14_models_trainer.py |
+| PREDICTION_MEAN | Mean prediction value | chunk_14_models_trainer.py |
+| PREDICTION_STANDARD_DEVIATION | Standard deviation of predictions | chunk_14_models_trainer.py |
+| PREDICTION_MAX | Maximum prediction value | chunk_14_models_trainer.py |
+| PREDICTION_MIN | Minimum prediction value | chunk_14_models_trainer.py |
 
 ---
 
@@ -318,7 +318,7 @@ The pipeline calculates and reports the following metrics:
 | 1.1.1 Baseline Diagnostics | Baseline prediction stats | chunk_14_models_trainer.py, chunk_18_phase_4_ensemble.py | → Section 2.4, Phase 4 |
 | 1.1.2 Threshold Opt Results | Per-threshold P,R,F1,AUC | chunk_12_evaluation_evaluator.py | → Section 2.5, FR-06 |
 | 1.1.3 HPO Trial Results | Trial parameters, val metrics | chunk_21_hyperparam_optimizer.py | → Section 2.5, FR-07 |
-| 1.1.4 Post-HPO Threshold | Pre vs Post comparison | chunk_12_evaluation_evaluator.py | → Section 2.5, FR-06 |
+| 1.1.4 Post-HYPERPARAMETER_OPTIMIZATION Threshold | Pre vs Post comparison | chunk_12_evaluation_evaluator.py | → Section 2.5, FR-06 |
 | 1.1.5 Final Model Summary | 17 metrics per model | chunk_18_phase_4_ensemble.py | → Section 2.5, FR-05 |
 
 ### Post-Execution Report Sources
@@ -341,130 +341,130 @@ The pipeline calculates and reports the following metrics:
 
 | Metric (Log Key) | Method Name | Used In Section | Returns |
 |----------------|------------|----------------|----------|
-| Val_P | calculate_precision() | SECTION 1-5, HPO Trials | Precision (0.0-1.0) |
-| Val_R | calculate_recall() | SECTION 1-5, HPO Trials | Recall (0.0-1.0) |
-| Val_AUC | calculate_auc() | SECTION 1-5, HPO Trials | AUC (0.0-1.0) |
-| Val_F1 | calculate_f1() | SECTION 1-5, HPO Trials | F1 Score (0.0-1.0) |
-| Val_TP | Extracted from CM | SECTION 1-5, HPO Trials | True Positives (count) |
-| Val_FP | Extracted from CM | SECTION 1-5, HPO Trials | False Positives (count) |
-| Val_TN | Extracted from CM | SECTION 1-5, HPO Trials | True Negatives (count) |
-| Val_FN | Extracted from CM | SECTION 1-5, HPO Trials | False Negatives (count) |
-| Val_MaxPred | pred.max() | SECTION 1-5 | Max prediction |
-| Val_MeanPred | pred.mean() | SECTION 1-5 | Mean prediction |
-| Val_StdPred | pred.std() | SECTION 1-5 | Std prediction |
-| Val_PctAboveThresh | (pred>=0.5).mean() | SECTION 1-5 | % above threshold |
-| Val_MCC | calculate_mcc() | SECTION 1-5, HPO Trials | MCC (-1 to 1) |
-| Val_PRAUC | calculate_average_precision() | SECTION 1-5, HPO Trials | PR-AUC |
-| Val_Spec | calculate_specificity() | SECTION 1-5, HPO Trials | Specificity |
-| Val_BalAcc | calculate_balanced_accuracy() | SECTION 1-5, HPO Trials | Balanced Accuracy |
-| Val_FPR | calculate_fpr() | SECTION 1-5, HPO Trials | False Positive Rate |
-| Val_F2 | calculate_f2_score() | SECTION 1-5, HPO Trials | F2 Score |
-| Val_Brier | calculate_brier_score() | SECTION 1-5, HPO Trials | Brier Score (lower=better) |
-| Val_Kappa | calculate_kappa() | SECTION 1-5, HPO Trials | Cohen's Kappa |
-| Val_Informedness | calculate_informedness() | SECTION 1-5, HPO Trials | Informedness |
-| Val_Markedness | calculate_markedness() | SECTION 1-5, HPO Trials | Markedness |
-| Val_Gini | calculate_gini() | SECTION 1-5, HPO Trials | Gini Coefficient |
-| Val_OptThresh | calculate_optimal_threshold() | SECTION 1-5, HPO Trials | Optimal Threshold |
+| VALIDATION_PRECISION | calculate_precision() | SECTION 1-5, HPO Trials | Precision (0.0-1.0) |
+| VALIDATION_RECALL | calculate_recall() | SECTION 1-5, HPO Trials | Recall (0.0-1.0) |
+| VALIDATION_AUC | calculate_auc() | SECTION 1-5, HPO Trials | AUC (0.0-1.0) |
+| VALIDATION_F1_SCORE | calculate_f1() | SECTION 1-5, HPO Trials | F1 Score (0.0-1.0) |
+| VALIDATION_TRUE_POSITIVES | Extracted from CM | SECTION 1-5, HPO Trials | True Positives (count) |
+| VALIDATION_FALSE_POSITIVES | Extracted from CM | SECTION 1-5, HPO Trials | False Positives (count) |
+| VALIDATION_TRUE_NEGATIVES | Extracted from CM | SECTION 1-5, HPO Trials | True Negatives (count) |
+| VALIDATION_FALSE_NEGATIVES | Extracted from CM | SECTION 1-5, HPO Trials | False Negatives (count) |
+| VALIDATION_MAX_PREDICTION | pred.max() | SECTION 1-5 | Max prediction |
+| VALIDATION_MEAN_PREDICTION | pred.mean() | SECTION 1-5 | Mean prediction |
+| VALIDATION_STD_PREDICTION | pred.std() | SECTION 1-5 | Std prediction |
+| VALIDATION_PCT_ABOVE_THRESHOLD | (pred>=0.5).mean() | SECTION 1-5 | % above threshold |
+| VALIDATION_MCC | calculate_mcc() | SECTION 1-5, HPO Trials | MCC (-1 to 1) |
+| VALIDATION_PRAUC | calculate_average_precision() | SECTION 1-5, HPO Trials | PR-AUC |
+| VALIDATION_SPECIFICITY | calculate_specificity() | SECTION 1-5, HPO Trials | Specificity |
+| VALIDATION_BALANCED_ACCURACY | calculate_balanced_accuracy() | SECTION 1-5, HPO Trials | Balanced Accuracy |
+| VALIDATION_FALSE_POSITIVE_RATE | calculate_fpr() | SECTION 1-5, HPO Trials | False Positive Rate |
+| VALIDATION_F2_SCORE | calculate_f2_score() | SECTION 1-5, HPO Trials | F2 Score |
+| VALIDATION_Brier | calculate_brier_score() | SECTION 1-5, HPO Trials | Brier Score (lower=better) |
+| VALIDATION_Kappa | calculate_kappa() | SECTION 1-5, HPO Trials | Cohen's Kappa |
+| VALIDATION_Informedness | calculate_informedness() | SECTION 1-5, HPO Trials | Informedness |
+| VALIDATION_Markedness | calculate_markedness() | SECTION 1-5, HPO Trials | Markedness |
+| VALIDATION_Gini | calculate_gini() | SECTION 1-5, HPO Trials | Gini Coefficient |
+| VALIDATION_OPTIMAL_THRESHOLD | calculate_optimal_threshold() | SECTION 1-5, HPO Trials | Optimal Threshold |
 
 ### Section Mapping
 
 | Section | Description | Metrics Logged |
 |---------|-------------|---------------|
-| SECTION 1 | Baseline | All 24 standard Val_ metrics |
-| SECTION 2 | Pre-HPO Threshold | All 24 standard Val_ metrics |
-| HPO Trials | Hyperparameter Opt | All 24 standard Val_ metrics + hyperparams |
-| SECTION 3 | HPO Results | All 24 standard Val_ metrics + Best hyperparams |
-| SECTION 4 | Post-HPO Threshold | All 24 standard Val_ metrics + Source tag |
-| SECTION 5 | Final Model | All 24 standard Val_ metrics + 18 Train_ metrics |
-| Threshold Search (Train) | Per-threshold train | 8 Train_ metrics |
-| Threshold Search (Val) | Per-threshold val | 8 Val_ metrics |
+| SECTION_1_BASELINE | Baseline | All 24 standard VALIDATION_ metrics |
+| SECTION_2_HYPERPARAMETER_OPTIMIZATION_SEARCH | Pre-HYPERPARAMETER_OPTIMIZATION Threshold | All 24 standard VALIDATION_ metrics |
+| HPO Trials | Hyperparameter Opt | All 24 standard VALIDATION_ metrics + hyperparams |
+| SECTION_3_PRE_HYPERPARAMETER_OPTIMIZATION | HPO Results | All 24 standard VALIDATION_ metrics + Best hyperparams |
+| SECTION_4_POST_HYPERPARAMETER_OPTIMIZATION | Post-HYPERPARAMETER_OPTIMIZATION Threshold | All 24 standard VALIDATION_ metrics + Source tag |
+| SECTION_5_FINAL | Final Model | All 24 standard VALIDATION_ metrics + 18 TRAIN_ metrics |
+| Threshold Search (Train) | Per-threshold train | 8 TRAIN_ metrics |
+| Threshold Search (Val) | Per-threshold val | 8 VALIDATION_ metrics |
 
 ### Training Metrics
 
-All 18 training metrics are reported in SECTION 5 (Final) with Train_ prefix:
+All 18 training metrics are reported in SECTION 5 (Final) with TRAIN_ prefix:
 
 | Metric | Prefix | Description | Formula |
 |--------|--------|-------------|---------|
-| Train_P | Train_ | Precision | TP / (TP + FP) |
-| Train_TP | Train_ | True Positives | count(y=1 & pred=1) |
-| Train_TN | Train_ | True Negatives | count(y=0 & pred=0) |
-| Train_FP | Train_ | False Positives | count(y=0 & pred=1) |
-| Train_FN | Train_ | False Negatives | count(y=1 & pred=0) |
-| Train_MaxPred | Train_ | Max Probability | predictions.max() |
-| Train_MeanPred | Train_ | Mean Probability | predictions.mean() |
-| Train_R | Train_ | Recall (Sensitivity) | TP / (TP + FN) |
-| Train_F1 | Train_ | F1 Score | 2*P*R / (P+R) |
-| Train_AUC | Train_ | ROC-AUC | sklearn roc_auc_score |
-| Train_Spec | Train_ | Specificity | TN / (TN + FP) |
-| Train_FPR | Train_ | False Positive Rate | FP / (FP + TN) |
-| Train_F2 | Train_ | F2 Score | 5*P*R / (4*P+R) |
-| Train_MCC | Train_ | Matthews Corr Coef | sklearn matthews_corrcoef |
-| Train_PRAUC | Train_ | Precision-Recall AUC | sklearn avg_precision_score |
-| Train_BalAcc | Train_ | Balanced Accuracy | (Sens + Spec) / 2 |
-| Train_StdPred | Train_ | Std Probability | predictions.std() |
-| Train_PctAboveThresh | Train_ | % Above Threshold 0.5 | (pred >= 0.5).mean() * 100 |
+| TRAIN_PRECISION | TRAIN_ | Precision | TP / (TP + FP) |
+| TRAIN_TRUE_POSITIVES | TRAIN_ | True Positives | count(y=1 & pred=1) |
+| TRAIN_TRUE_NEGATIVES | TRAIN_ | True Negatives | count(y=0 & pred=0) |
+| TRAIN_FALSE_POSITIVES | TRAIN_ | False Positives | count(y=0 & pred=1) |
+| TRAIN_FALSE_NEGATIVES | TRAIN_ | False Negatives | count(y=1 & pred=0) |
+| TRAIN_MAX_PREDICTION | TRAIN_ | Max Probability | predictions.max() |
+| TRAIN_MEAN_PREDICTION | TRAIN_ | Mean Probability | predictions.mean() |
+| TRAIN_RECALL | TRAIN_ | Recall (Sensitivity) | TP / (TP + FN) |
+| TRAIN_F1_SCORE | TRAIN_ | F1 Score | 2*P*R / (P+R) |
+| TRAIN_AUC | TRAIN_ | ROC-AUC | sklearn roc_auc_score |
+| TRAIN_SPECIFICITY | TRAIN_ | Specificity | TN / (TN + FP) |
+| TRAIN_FALSE_POSITIVE_RATE | TRAIN_ | False Positive Rate | FP / (FP + TN) |
+| TRAIN_F2_SCORE | TRAIN_ | F2 Score | 5*P*R / (4*P+R) |
+| TRAIN_MCC | TRAIN_ | Matthews Corr Coef | sklearn matthews_corrcoef |
+| TRAIN_PRAUC | TRAIN_ | Precision-Recall AUC | sklearn avg_precision_score |
+| TRAIN_BALANCED_ACCURACY | TRAIN_ | Balanced Accuracy | (Sens + Spec) / 2 |
+| TRAIN_STD_PREDICTION | TRAIN_ | Std Probability | predictions.std() |
+| TRAIN_PCT_ABOVE_THRESHOLD | TRAIN_ | % Above Threshold 0.5 | (pred >= 0.5).mean() * 100 |
 
 ### Validation Metrics
 
-All 24 validation metrics are reported in SECTIONS 1-5 with Val_ prefix:
+All 24 validation metrics are reported in SECTIONS 1-5 with VALIDATION_ prefix:
 
 | Metric | Prefix | Description | Formula |
 |--------|--------|-------------|---------|
-| Val_P | Val_ | Precision | TP / (TP + FP) |
-| Val_TP | Val_ | True Positives | count(y=1 & pred=1) |
-| Val_TN | Val_ | True Negatives | count(y=0 & pred=0) |
-| Val_FP | Val_ | False Positives | count(y=0 & pred=1) |
-| Val_FN | Val_ | False Negatives | count(y=1 & pred=0) |
-| Val_MaxPred | Val_ | Max Probability | predictions.max() |
-| Val_MeanPred | Val_ | Mean Probability | predictions.mean() |
-| Val_R | Val_ | Recall (Sensitivity) | TP / (TP + FN) |
-| Val_F1 | Val_ | F1 Score | 2*P*R / (P+R) |
-| Val_AUC | Val_ | ROC-AUC | sklearn roc_auc_score |
-| Val_Spec | Val_ | Specificity | TN / (TN + FP) |
-| Val_FPR | Val_ | False Positive Rate | FP / (FP + TN) |
-| Val_F2 | Val_ | F2 Score | 5*P*R / (4*P+R) |
-| Val_MCC | Val_ | Matthews Corr Coef | sklearn matthews_corrcoef |
-| Val_PRAUC | Val_ | Precision-Recall AUC | sklearn avg_precision_score |
-| Val_BalAcc | Val_ | Balanced Accuracy | (Sens + Spec) / 2 |
-| Val_StdPred | Val_ | Std Probability | predictions.std() |
-| Val_PctAboveThresh | Val_ | % Above Threshold 0.5 | (pred >= 0.5).mean() * 100 |
-| Val_Brier | Val_ | Brier Score | mean((pred - y)^2) |
-| Val_Kappa | Val_ | Cohen's Kappa | sklearn cohen_kappa_score |
-| Val_Informedness | Val_ | Informedness | Sensitivity + Specificity - 1 |
-| Val_Markedness | Val_ | Markedness | Precision + NPV - 1 |
-| Val_Gini | Val_ | Gini Coefficient | 2 * AUC - 1 |
-| Val_OptThresh | Val_ | Optimal Threshold | Youden's J (max TPR - FPR) |
+| VALIDATION_PRECISION | VALIDATION_ | Precision | TP / (TP + FP) |
+| VALIDATION_TRUE_POSITIVES | VALIDATION_ | True Positives | count(y=1 & pred=1) |
+| VALIDATION_TRUE_NEGATIVES | VALIDATION_ | True Negatives | count(y=0 & pred=0) |
+| VALIDATION_FALSE_POSITIVES | VALIDATION_ | False Positives | count(y=0 & pred=1) |
+| VALIDATION_FALSE_NEGATIVES | VALIDATION_ | False Negatives | count(y=1 & pred=0) |
+| VALIDATION_MAX_PREDICTION | VALIDATION_ | Max Probability | predictions.max() |
+| VALIDATION_MEAN_PREDICTION | VALIDATION_ | Mean Probability | predictions.mean() |
+| VALIDATION_RECALL | VALIDATION_ | Recall (Sensitivity) | TP / (TP + FN) |
+| VALIDATION_F1_SCORE | VALIDATION_ | F1 Score | 2*P*R / (P+R) |
+| VALIDATION_AUC | VALIDATION_ | ROC-AUC | sklearn roc_auc_score |
+| VALIDATION_SPECIFICITY | VALIDATION_ | Specificity | TN / (TN + FP) |
+| VALIDATION_FALSE_POSITIVE_RATE | VALIDATION_ | False Positive Rate | FP / (FP + TN) |
+| VALIDATION_F2_SCORE | VALIDATION_ | F2 Score | 5*P*R / (4*P+R) |
+| VALIDATION_MCC | VALIDATION_ | Matthews Corr Coef | sklearn matthews_corrcoef |
+| VALIDATION_PRAUC | VALIDATION_ | Precision-Recall AUC | sklearn avg_precision_score |
+| VALIDATION_BALANCED_ACCURACY | VALIDATION_ | Balanced Accuracy | (Sens + Spec) / 2 |
+| VALIDATION_STD_PREDICTION | VALIDATION_ | Std Probability | predictions.std() |
+| VALIDATION_PCT_ABOVE_THRESHOLD | VALIDATION_ | % Above Threshold 0.5 | (pred >= 0.5).mean() * 100 |
+| VALIDATION_Brier | VALIDATION_ | Brier Score | mean((pred - y)^2) |
+| VALIDATION_Kappa | VALIDATION_ | Cohen's Kappa | sklearn cohen_kappa_score |
+| VALIDATION_Informedness | VALIDATION_ | Informedness | Sensitivity + Specificity - 1 |
+| VALIDATION_Markedness | VALIDATION_ | Markedness | Precision + NPV - 1 |
+| VALIDATION_Gini | VALIDATION_ | Gini Coefficient | 2 * AUC - 1 |
+| VALIDATION_OPTIMAL_THRESHOLD | VALIDATION_ | Optimal Threshold | Youden's J (max TPR - FPR) |
 
 ### Inference Metrics
 
-All 24 inference metrics are reported in Phase 5 with Inf_ prefix:
+All 24 inference metrics are reported in Phase 5 with INFERENCE_ prefix:
 
 | Metric | Prefix | Description | Formula |
 |--------|--------|-------------|---------|
-| Inf_P | Inf_ | Precision | TP / (TP + FP) |
-| Inf_TP | Inf_ | True Positives | count(y=1 & pred=1) |
-| Inf_TN | Inf_ | True Negatives | count(y=0 & pred=0) |
-| Inf_FP | Inf_ | False Positives | count(y=0 & pred=1) |
-| Inf_FN | Inf_ | False Negatives | count(y=1 & pred=0) |
-| Inf_MaxPred | Inf_ | Max Probability | predictions.max() |
-| Inf_MeanPred | Inf_ | Mean Probability | predictions.mean() |
-| Inf_StdPred | Inf_ | Std Probability | predictions.std() |
-| Inf_PctAboveThresh | Inf_ | % Above Threshold 0.5 | (pred >= 0.5).mean() * 100 |
-| Inf_R | Inf_ | Recall (Sensitivity) | TP / (TP + FN) |
-| Inf_F1 | Inf_ | F1 Score | 2*P*R / (P+R) |
-| Inf_AUC | Inf_ | ROC-AUC | sklearn roc_auc_score |
-| Inf_Spec | Inf_ | Specificity | TN / (TN + FP) |
-| Inf_FPR | Inf_ | False Positive Rate | FP / (FP + TN) |
-| Inf_F2 | Inf_ | F2 Score | 5*P*R / (4*P+R) |
-| Inf_MCC | Inf_ | Matthews Corr Coef | sklearn matthews_corrcoef |
-| Inf_PRAUC | Inf_ | Precision-Recall AUC | sklearn avg_precision_score |
-| Inf_BalAcc | Inf_ | Balanced Accuracy | (Sens + Spec) / 2 |
-| Inf_Brier | Inf_ | Brier Score | mean((pred - y)^2) |
-| Inf_Kappa | Inf_ | Cohen's Kappa | sklearn cohen_kappa_score |
-| Inf_Informedness | Inf_ | Informedness | Sensitivity + Specificity - 1 |
-| Inf_Markedness | Inf_ | Markedness | Precision + NPV - 1 |
-| Inf_Gini | Inf_ | Gini Coefficient | 2 * AUC - 1 |
-| Inf_OptThresh | Inf_ | Optimal Threshold | Youden's J (max TPR - FPR) |
+| INFERENCE_PRECISION | INFERENCE_ | Precision | TP / (TP + FP) |
+| INFERENCE_TRUE_POSITIVES | INFERENCE_ | True Positives | count(y=1 & pred=1) |
+| INFERENCE_TRUE_NEGATIVES | INFERENCE_ | True Negatives | count(y=0 & pred=0) |
+| INFERENCE_FALSE_POSITIVES | INFERENCE_ | False Positives | count(y=0 & pred=1) |
+| INFERENCE_FALSE_NEGATIVES | INFERENCE_ | False Negatives | count(y=1 & pred=0) |
+| INFERENCE_MAX_PREDICTION | INFERENCE_ | Max Probability | predictions.max() |
+| INFERENCE_MEAN_PREDICTION | INFERENCE_ | Mean Probability | predictions.mean() |
+| INFERENCE_STD_PREDICTION | INFERENCE_ | Std Probability | predictions.std() |
+| INFERENCE_PCT_ABOVE_THRESHOLD | INFERENCE_ | % Above Threshold 0.5 | (pred >= 0.5).mean() * 100 |
+| INFERENCE_RECALL | INFERENCE_ | Recall (Sensitivity) | TP / (TP + FN) |
+| INFERENCE_F1_SCORE | INFERENCE_ | F1 Score | 2*P*R / (P+R) |
+| INFERENCE_AUC | INFERENCE_ | ROC-AUC | sklearn roc_auc_score |
+| INFERENCE_SPECIFICITY | INFERENCE_ | Specificity | TN / (TN + FP) |
+| INFERENCE_FALSE_POSITIVE_RATE | INFERENCE_ | False Positive Rate | FP / (FP + TN) |
+| INFERENCE_F2_SCORE | INFERENCE_ | F2 Score | 5*P*R / (4*P+R) |
+| INFERENCE_MCC | INFERENCE_ | Matthews Corr Coef | sklearn matthews_corrcoef |
+| INFERENCE_PRAUC | INFERENCE_ | Precision-Recall AUC | sklearn avg_precision_score |
+| INFERENCE_BALANCED_ACCURACY | INFERENCE_ | Balanced Accuracy | (Sens + Spec) / 2 |
+| INFERENCE_Brier | INFERENCE_ | Brier Score | mean((pred - y)^2) |
+| INFERENCE_Kappa | INFERENCE_ | Cohen's Kappa | sklearn cohen_kappa_score |
+| INFERENCE_Informedness | INFERENCE_ | Informedness | Sensitivity + Specificity - 1 |
+| INFERENCE_Markedness | INFERENCE_ | Markedness | Precision + NPV - 1 |
+| INFERENCE_Gini | INFERENCE_ | Gini Coefficient | 2 * AUC - 1 |
+| INFERENCE_OPTIMAL_THRESHOLD | INFERENCE_ | Optimal Threshold | Youden's J (max TPR - FPR) |
 
 ---
 
@@ -902,8 +902,9 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.0 | 2026-04-15 | Living document updates - added actual value templates | Converted to dynamic document for post-run updates |
 | 3.1 | 2026-05-11 | Updated precision target to 0.60, discovery sequence execution order | Mission-focused optimization |
 | 3.3 | 2026-05-13 | GIS hyperparameter reconfiguration — all 9 search spaces expanded, HPO thresholds raised (stagnation 30→50, trials 30→60, cap 500→1000), Phase 4 results logged (CatBoost 0.5381 best, 6 NNs broken), Phase 5 crash documented in Section 4.7, fixes A-D applied | Phase 4: CatBoost 0.5381, LightGBM 0.2970, XGBoost 0.2527; 6 NNs all MaxPred<<0.5; Phase 5 crashed line 272 — df_with_all_cols None guard fix |
-| 3.4 | 2026-05-18 | GIS (Global Iteration Strategy) SUCCESS — CatBoost achieved 0.7204 inference precision (>0.60 target), Phase 5 fixes (KeyError: 'precision' → 'Inf_P', shape mismatch handling, df_filtered→n_inference, inference_date→dates_inference[0]), sample size reduced 368816→184408 | CatBoost: 0.7204 Inf_P; LightGBM: 0.2722; XGBoost: 0.2751; 5 NNs skipped (shape mismatch); sample reduced for faster runs |
+| 3.4 | 2026-05-18 | GIS (Global Iteration Strategy) SUCCESS — CatBoost achieved 0.7204 inference precision (>0.60 target), Phase 5 fixes (KeyError: 'precision' → 'Inf_P' [now INFERENCE_PRECISION per Category A rename], shape mismatch handling, df_filtered→n_inference, inference_date→dates_inference[0]), sample size reduced 368816→184408 | CatBoost: 0.7204 INFERENCE_PRECISION; LightGBM: 0.2722; XGBoost: 0.2751; 5 NNs skipped (shape mismatch); sample reduced for faster runs |
 | 3.5 | 2026-05-19 | Logging standardization (tag reorder, terminology), per-threshold feature pruning architecture, feature importance logging overhaul, HPO logging improvements (best trial tracking, [BEST TRIAL] format, [OPTIMAL] expanded), Section 2 redundant logs removed with stale y_val_binarized fix | Tag reorder: [BASELINE] {arch_tag}→{arch_tag} [BASELINE]; Phase Xa stores threshold_kept_indices dict; Phase 4+5 per-threshold feature slicing; _log_top_features()→_log_all_features(); 13 redundant log lines removed; stale-variable bug identified (dropped_indices on lines 187-188) |
+| 3.6 | 2026-05-25 | `[diag]`→`[diagnostic]`, `[diag-hpo]`→`[diagnostic-hyperparameter_optimization]`, `[diag-ensemble]`→`[diagnostic-ensemble]`, `[post-hpo]`→`[post hyperparameter_optimization]`, `Percentiles:`→`percentiles:`, `Hist:`→`histogram:`, `PredBuckets:`→`prediction_buckets:`, inline prose lowercased (`best_prediction_threshold:`, `prediction_threshold_search:`, etc.), `[label_threshold_optimal]`→`[label_threshold_OPTIMAL]`, `Train:`→`train:`, `Val:`→`validation:`, `hpo:`→`hyperparameter_optimization:`, `label_threshold=`→`LABEL_THRESHOLD=` in chunk_12 (6×), `[HPO]`/`[PRE-HPO]`→`[HYPERPARAMETER_OPTIMIZATION]`/`[PRE-HYPERPARAMETER_OPTIMIZATION]`, all HPO/POST-HPO prose labels expanded, `Phase #:` prefix removed, `[pass] ... validation passed` deleted (8 print + 1 logger), `[time]` per-phase timing deleted, `Running`/`Starting` phase start lines deleted, POST-HPO comparison fixed (uses `hpo_val_precision` not `pre_hpo_val_precision`), threshold comparison labels renamed + ` search` suffix added | Expand all `diag` shorthand to full `diagnostic`, expand `hpo` to `hyperparameter_optimization` in bracket tags, standardize diagnostic string labels, lowercase all remaining cosmetic prose labels, fix POST-HPO logic to compare against HPO model precision, remove redundant phase logging |
 
 ---
 
@@ -920,7 +921,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | FR-05 (Train Architectures) | Section 1.1.5 | Final model summary |
 | FR-06 (Threshold Opt) | Section 1.1.2 | Per-threshold P, R, F1, AUC |
 | FR-07 (HPO) | Section 1.1.3 | Trial parameters, validation metrics |
-| FR-08 (Ensemble) | Section 1.1.4 | Post-HPO comparison, ensemble weights |
+| FR-08 (Ensemble) | Section 1.1.4 | Post-HYPERPARAMETER_OPTIMIZATION comparison, ensemble weights |
 | FR-09 (Save Models) | Section 1.2 | Model files in ./saved_models/ |
 | FR-10 (Predictions) | Section 1.1.5 | Prediction output |
 | FR-11 (Evaluation) | Section 1.3 | P, R, F1, AUC, MCC |
@@ -933,7 +934,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | Phase 3 | 1.1.1 | Temporal weights |
 | Phase 4a | 1.1.2 | Threshold optimization results |
 | Phase 4b | 1.1.3 | HPO trial results |
-| Phase 4c | 1.1.4 | Post-HPO threshold search |
+| Phase 4c | 1.1.4 | Post-HYPERPARAMETER_OPTIMIZATION threshold search |
 | Phase 4d | 1.2 | Saved model files |
 | Phase 5 | 1.2, 1.3 | Final metrics, rankings |
 
@@ -1087,7 +1088,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 | TP | 45,811 | 0 | -45,811 |
 | TN | 35,833 | 0 | -35,833 |
 
-**Root Cause**: scale_pos_weight=500 + max_depth=7 + n_estimators=500 → extreme overfitting. Phase 4 threshold search produces TP=0 on validation due to optimal_threshold=2.0 producing zero TPs (all confusion matrix = 0). Train_P=0.2134 but Val_P=0.2527 only because Val predictions at threshold 0.5 yield 0 TP + 0 FP → precision undefined → zero_division=1.0 default, but confusion matrix shows all zeros. **Fix Applied**: Lower n_estimators [100-300], shallower depth [3-7], lower scale_pos_weight [200-500], higher regularization, add colsample_bytree, gamma. **Evidence**: pipeline_cpu.log lines 1140-1152.
+**Root Cause**: scale_pos_weight=500 + max_depth=7 + n_estimators=500 → extreme overfitting. Phase 4 threshold search produces TP=0 on validation due to optimal_threshold=2.0 producing zero TPs (all confusion matrix = 0). TRAIN_PRECISION=0.2134 but VALIDATION_PRECISION=0.2527 only because Val predictions at threshold 0.5 yield 0 TP + 0 FP → precision undefined → zero_division=1.0 default, but confusion matrix shows all zeros. **Fix Applied**: Lower n_estimators [100-300], shallower depth [3-7], lower scale_pos_weight [200-500], higher regularization, add colsample_bytree, gamma. **Evidence**: pipeline_cpu.log lines 1140-1152.
 
 ## 4.7 Phase 5 Crash — df_with_all_cols AttributeError (May 11, 2026)
 
@@ -1296,3 +1297,302 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 ---
 
 ## All Implementation Items Complete
+
+---
+
+## PROJECT_LEXICON
+
+Complete reference of all cosmetic log labels, section tags, metric keys, and abbreviations used across the pipeline. Labels follow lowercase_snake_case convention unless noted. Exceptions that stay UPPER_SNAKE_CASE: VALIDATION_PRECISION, VALIDATION_TRUE_POSITIVES, VALIDATION_TRUE_NEGATIVES, LABEL_THRESHOLD, [HYPERPARAMETER_OPTIMIZATION_SEARCH], TRIAL, OPTIMAL. Title-case metrics unchanged: Brier, Kappa, Informedness, Markedness, Gini.
+
+### G1: Section / Status Tags
+
+**Log Section Tags** (bracketed identifiers in output)
+
+| Tag | Description | Source File(s) |
+|-----|-------------|---------------|
+| `[section_1_baseline]` | Baseline threshold search | chunk_18 |
+| `[SECTION_2_HYPERPARAMETER_OPTIMIZATION_SEARCH]` | Pre-HPO threshold search | chunk_18 |
+| `[section_3_pre_hyperparameter_optimization]` | Pre-HPO evaluation | chunk_18 |
+| `[section_4_post_hyperparameter_optimization]` | Post-HPO evaluation | chunk_18 |
+| `[section_5_final]` | Final training summary | chunk_18 |
+| `[baseline]` | Baseline model evaluation | chunk_18 |
+| `[label_threshold_search]` | Label threshold search step | chunk_18 |
+| `[label_threshold_optimal]` | Optimal threshold found | chunk_18 |
+| `[final]` | Final training step | chunk_18 |
+| `[post_hyperparameter_optimization]` | Post-HPO results | chunk_18 |
+| `[pre_hyperparameter_optimization]` | Pre-HPO results | chunk_18 |
+| `[diagnostic]` | Diagnostic info (expanded from `[diag]`) | chunk_18 |
+| `[diagnostic-hyperparameter_optimization]` | Diagnostic HPO info (expanded from `[diag-hpo]`) | chunk_18 |
+| `[diagnostic-ensemble]` | Diagnostic ensemble info (expanded from `[diag-ensemble]`) | chunk_18 |
+| `[HYPERPARAMETER_OPTIMIZATION_SEARCH]` | HPO search header | chunk_21 |
+| `[best_trial]` | Best HPO trial result | chunk_21 |
+| `[cross_threshold]` | Cross-threshold feature analysis | chunk_XX |
+| `[class_distribution]` | Class distribution section | chunk_02, chunk_16 |
+| `[data_split]` | Data split configuration | chunk_16 |
+| `[statistics]` | Statistics section | chunk_02, chunk_16 |
+| `[date]` | Date coverage section | chunk_02 |
+| `[feature_engineering]` | Feature engineering step | chunk_05 |
+| `[running]` | Pipeline running status | chunk_20 |
+| `[passed]` | Test/step passed | chunk_20 |
+| `[skipped]` | Skipped iteration | chunk_20 |
+| `[timing]` | Timing measurement | chunk_20 |
+| `[error]` | Error status | chunk_20 |
+| `[warning]` | Warning status | chunk_20 |
+| `[ok]` | Status passed | chunk_12, chunk_18 |
+| `[rejected]` | Threshold rejected | chunk_12, chunk_18 |
+| `[phase_1_5]` | Phase 1.5 diagnostics | chunk_02, chunk_04 |
+
+**Inline Status / Warning Labels**
+
+| Label | Context | File(s) |
+|-------|---------|---------|
+| `sanity_check:` | Data validation warnings | chunk_16 |
+| `feature_quality_analysis:` | Feature statistics header | chunk_02 |
+| `temporal_coverage:` | Date coverage header | chunk_02 |
+| `before_threshold_optimization:` | Baseline diagnostics before threshold search | chunk_18 |
+| `info` | Informational log level | All |
+| `warning` | Warning log level | All |
+| `running` | Pipeline running | chunk_20 |
+
+### G2: Model / Architecture Names
+
+| Abbreviation | Full Name | Log Reference | Doc Reference |
+|-------------|-----------|---------------|---------------|
+| CatBoost | Categorical Boosting | log:108,120,167,182,557,587,599 | SPEC:590,659-668 |
+| LightGBM | Light Gradient Boosting Machine | log:109,121,141,168,181,590,670 | SPEC:590,670-684 |
+| XGBoost | Extreme Gradient Boosting | log:110,122,169,184,591,686-700 | SPEC:591,686-700 |
+| RF | Random Forest | log:~110 area | SPEC:593,832 |
+| CNN | Convolutional Neural Network | log:112,1155-1260+ | SPEC:596,717-731 |
+| RNN | Recurrent Neural Network | log:113 area | SPEC:597,734-745 |
+| LSTM | Long Short-Term Memory | log:114 area | SPEC:598,748-759 |
+| VAE | Variational Autoencoder | log:115 area | SPEC:594,762-774 |
+| Dense | Dense (Fully-Connected) Neural Network | log:111,170,1107-1154 | SPEC:595,703-715 |
+| GBM | Gradient Boosting Machine | log:direct matches | SPEC:590-593,832-834 |
+| Transformer | Attention-based Neural Network | log:1302-1331 | SPEC:599,776-790 |
+
+### G3: Metric Keys (all-prefix variants)
+
+**Base metric keys** — each appears with TRAIN_, VALIDATION_, and INFERENCE_ prefix.
+
+| Old Key | Current Key | Description | Source File(s) |
+|---------|-------------|-------------|----------------|
+| P | PRECISION | Precision score | chunk_04, chunk_12 |
+| R | RECALL | Recall / sensitivity | chunk_04, chunk_12 |
+| F1 | F1_SCORE | F1 score (harmonic mean) | chunk_04, chunk_12 |
+| F2 | F2_SCORE | F2 score (recall weighted 2x) | chunk_04, chunk_12 |
+| Spec | SPECIFICITY | Specificity / true negative rate | chunk_04, chunk_12 |
+| FPR | FALSE_POSITIVE_RATE | False positive rate | chunk_04, chunk_12 |
+| TP | TRUE_POSITIVES | True positives count | chunk_04, chunk_12 |
+| FP | FALSE_POSITIVES | False positives count | chunk_04, chunk_12 |
+| TN | TRUE_NEGATIVES | True negatives count | chunk_04, chunk_12 |
+| FN | FALSE_NEGATIVES | False negatives count | chunk_04, chunk_12 |
+| MaxPred | MAX_PREDICTION | Maximum prediction value | chunk_12, chunk_14 |
+| MeanPred | MEAN_PREDICTION | Mean prediction value | chunk_12, chunk_14 |
+| StdPred | STD_PREDICTION | Std deviation of predictions | chunk_12, chunk_14 |
+| PctAboveThresh | PCT_ABOVE_THRESHOLD | % predictions above 0.5 | chunk_12, chunk_14 |
+| OptThresh | OPTIMAL_THRESHOLD | Optimal threshold (Youden's J) | chunk_12 |
+| BalAcc | BALANCED_ACCURACY | Balanced accuracy | chunk_12 |
+| AUC | AUC | ROC AUC (kept as-is) | chunk_04, chunk_12 |
+| MCC | MCC | Matthews correlation coeff (kept as-is) | chunk_04, chunk_12 |
+| PRAUC | PRAUC | PR AUC (kept as-is) | chunk_04, chunk_12 |
+| Brier | Brier | Brier score (Title-case) | chunk_04, chunk_12 |
+| Kappa | Kappa | Cohen's kappa (Title-case) | chunk_04, chunk_12 |
+| Informedness | Informedness | Sensitivity + Specificity - 1 (Title-case) | chunk_04, chunk_12 |
+| Markedness | Markedness | Precision + NPV - 1 (Title-case) | chunk_04, chunk_12 |
+| Gini | Gini | Gini coefficient (Title-case) | chunk_04, chunk_12 |
+
+**Prefix conventions for metric keys in log output:**
+
+| Prefix | Usage | Section(s) |
+|--------|-------|------------|
+| `train_` | Training split metrics | section_5_final |
+| `validation_` | Validation split metrics | sections 1-5, HPO trials, threshold search |
+| `inference_` | Inference/prediction metrics | phase 5 |
+
+### G4: Data / Configuration Labels
+
+**Data Loading & Stats**
+
+| Label | Description | File(s) |
+|-------|-------------|---------|
+| `data_loaded:` | Dataset load confirmation | chunk_16, chunk_05 |
+| `total_samples:` | Total sample count | chunk_16, chunk_02 |
+| `fraud_cases:` | Fraud case count | chunk_16, chunk_02 |
+| `normal_cases:` | Normal case count | chunk_16, chunk_02 |
+| `imbalance_ratio:` | Class imbalance ratio | chunk_16, chunk_02 |
+| `data_concentration:` | Post-concentration sample count | chunk_16 |
+| `data_preprocessing_complete:` | Feature count after preprocessing | chunk_16 |
+| `min:` / `max:` / `mean:` / `median:` / `standard_deviation:` | Target value distribution stats | chunk_16 |
+| `date_range:` / `unique_dates:` | Date coverage | chunk_02 |
+
+**Data Split**
+
+| Label | Description | File(s) |
+|-------|-------------|---------|
+| `dataset_split_ratio:` | Train/validation split ratio | chunk_18 |
+| `train:` / `validation:` / `inference:` / `total:` | Data split summary headers | chunk_16 |
+| `target_column:` / `date_split:` / `remaining_dates:` | Column/split metadata | chunk_18 |
+| `validation_split:` / `training_split:` | Split date counts | chunk_18 |
+| `validation_set:` / `training_set:` | Set row counts | chunk_18 |
+| `train_positives:` / `validation_positives:` | Per-threshold positive counts | chunk_18 |
+| `sampling:` | Sampling config (size / enabled / forced) | chunk_20 |
+| `temporal_weights:` | Temporal weight stats (min / max / mean) | chunk_17 |
+
+**Configuration / Threshold Labels**
+
+| Label | Description | File(s) |
+|-------|-------------|---------|
+| `LABEL_THRESHOLD` | Label binarization threshold | chunk_12, chunk_18, chunk_19, chunk_21 |
+| `prediction_binary_split` | Binary split threshold (0.5) | chunk_12, chunk_18, chunk_19 |
+| `hyperparameters` | Hyperparameter dict | chunk_18 |
+| `hyperparameter_optimization` | HPO trials/config | chunk_18, chunk_20, chunk_21 |
+| `ChangeY` | Target column name | chunk_16 |
+
+### G5: Prediction Distribution Labels
+
+| Label | Description | File(s) |
+|-------|-------------|---------|
+| `predictions:` | Prediction stats header (mean / standard_deviation / min / max) | chunk_18, chunk_19 |
+| `train_predictions:` | Train prediction stats | chunk_18 |
+| `validation_predictions:` | Validation prediction stats | chunk_18 |
+| `inference_predictions:` | Inference prediction stats | chunk_19 |
+| `prediction_mean` | Per-threshold mean prediction | chunk_12 |
+| `prediction_standard_deviation` | Per-threshold std prediction | chunk_12 |
+| `prediction_min` | Per-threshold min prediction | chunk_12 |
+| `prediction_max` | Per-threshold max prediction | chunk_12 |
+| `percentage_positive_at_prediction_binary_split` | % positive predictions at 0.5 split | chunk_12 |
+| `percentiles` | Prediction percentile distribution | chunk_04 |
+| `histogram` | Prediction histogram bins | chunk_04 |
+
+### G6: Report / Table Headers
+
+| Header | Description | File(s) |
+|--------|-------------|---------|
+| `feature_importance_analysis_report` | Feature importance analysis header | chunk_XX |
+| `consolidated_ranking (1 = most_important)` | Consolidated feature ranking | chunk_XX |
+| `top_features_per_method` | Top features per method | chunk_XX |
+| `spearman_correlation` | Spearman correlation method | chunk_XX |
+| `tree_importance (rf+gbm)` | Tree-based importance method | chunk_XX |
+| `permutation_importance` | Permutation importance method | chunk_XX |
+| `neural_weight_magnitude` | Neural weight importance method | chunk_XX |
+| `shap_values` | SHAP importance method | chunk_XX |
+| `ablation_study (auc)` | Ablation study method | chunk_XX |
+| `runtime:` / `correlation:` / `tree:` | Method runtime/type labels | chunk_XX |
+| `permutation:` / `neural:` / `shap:` / `ablation:` | Method runtime/type labels | chunk_XX |
+| `architecture ranking (by validation precision)` | Architecture ranking header | chunk_18 |
+| `hyperparameter_optimization impact summary` | HPO impact header | chunk_18 |
+| `training time summary` | Training time header | chunk_18 |
+| `final prediction results (sorted by precision)` | Final results header | chunk_19 |
+| `features:` / `samples:` | Feature importance input dimensions | chunk_XX |
+| `borderline:` | Features pruned in some thresholds | chunk_XX |
+| `best_for_recent_fraud:` / `worst_for_recent_fraud:` / `gap:` | Temporal precision gap analysis | chunk_XX |
+
+### G7: Hyperparameter Names
+
+| Abbreviation | Full Name | Log Reference | Doc Reference |
+|-------------|-----------|---------------|---------------|
+| lr | Learning rate | log:557,600,852,977,1152 | SPEC:664,676,690 |
+| alpha | Focal Loss alpha / reg_alpha | log:HPO trial lines | SPEC:710,726,770 |
+| gamma | Focal Loss gamma / tree gamma | log:HPO trial lines | SPEC:711,727,771 |
+| dropout | Dropout rate | log:HPO trial lines | SPEC:707,723,767 |
+| latent_dim | Latent dimension (VAE) | log:557,747,971,1150 | SPEC:765 |
+| epochs | Number of training epochs | log:HPO trial lines | SPEC:709,725,740 |
+| units | Dense/RNN units | log:1102,1152 | SPEC:705,737 |
+| layers | Number of NN layers | log:1102,1152 | SPEC:706 |
+| filters | Number of CNN filters | log:CNN trial lines | SPEC:721 |
+| kernel_size | CNN kernel size | log:CNN trial lines | SPEC:722 |
+| pooling | CNN pooling type (max/avg/none) | log:CNN trial lines | SPEC:729 |
+| batch_size | Mini-batch size | log:Dense trial lines | SPEC:712 |
+| activation | Activation function | log:Dense trial lines | SPEC:713 |
+| n_estimators | Number of trees | log:XGB tree trials | SPEC:673,689 |
+| max_depth | Maximum tree depth | log:XGB tree trials | SPEC:690 |
+| scale_pos_weight | Positive class weight ratio | log:tree trial lines | SPEC:676,692 |
+| min_child_weight | Min child weight (XGBoost) | log:XGB trial lines | SPEC:693 |
+| reg_alpha | L1 regularization on weights | log:tree trial lines | SPEC:678,694 |
+| reg_lambda | L2 regularization on weights | log:tree trial lines | SPEC:679,695 |
+| subsample | Row sampling ratio | log:tree trial lines | SPEC:680,696 |
+| colsample_bytree | Column sampling ratio per tree | log:tree trial lines | SPEC:681,697 |
+| num_leaves | Max leaves (LightGBM) | log:LightGBM HP | SPEC:674 |
+| min_child_samples | Min samples per leaf (LightGBM) | log:LightGBM HP | SPEC:677 |
+| min_split_gain | Minimum split gain (LightGBM) | log:LightGBM HP | SPEC:682 |
+| l2_leaf_reg | L2 leaf regularization (CatBoost) | log:557,587,599 | SPEC:666 |
+| auto_class_weights | Automatic class weight mode | log:557,587 | SPEC:665 |
+| SqrtBalanced | Square-root balanced class weighting | log:557,587 | SPEC:665 |
+| loss_function | Loss function name | log:CNN trial lines | — |
+| binary_crossentropy | Binary cross-entropy loss (BCE) | log:trial lines | — |
+| focal_loss | Focal loss function | log:~1211+ | — |
+
+### G8: Financial Feature Names
+
+| Feature | Description | Log Reference |
+|---------|-------------|---------------|
+| SMA50/20/200 | Simple Moving Average (50/20/200 period) | log:159-270 |
+| ATR | Average True Range | log:159-270 |
+| RSI_14 | Relative Strength Index (14 period) | log:159-270 |
+| Market_Cap | Market Capitalization | log:throughout |
+| Perf_Half_Y | 6-month performance | log:throughout |
+| Perf_Quarter | 3-month performance | log:throughout |
+| Perf_Month | 1-month performance | log:throughout |
+| Perf_Week | 1-week performance | log:throughout |
+| Perf_Year | 1-year performance | log:throughout |
+| Perf_YTD | Year-to-date performance | log:throughout |
+| Prev_Close | Previous closing price | log:throughout |
+| Avg_Volume | Average volume | log:throughout |
+| Rel_Volume | Relative volume | log:throughout |
+| Change | Price change | log:throughout |
+| Price | Current price | log:throughout |
+| Volume | Trading volume | log:throughout |
+| Price_to_52W_High | Price / 52-week high ratio | log:throughout |
+| Price_to_52W_Low | Price / 52-week low ratio | log:throughout |
+| 52W_High | 52-week high price | log:throughout |
+| 52W_Low | 52-week low price | log:throughout |
+| Ticker_id | Ticker identifier (dropped) | log:throughout |
+| Volume_to_Avg_Volume | Volume / average volume ratio | log:throughout |
+
+### G9: HPO / Phase Labels
+
+| Label | Description | File(s) |
+|-------|-------------|---------|
+| `progress:` | HPO search progress counter | chunk_21 |
+| `TRIAL:` | Individual HPO trial counter | chunk_21 |
+| `target:` | HPO target metric | chunk_21 |
+| `best_precision:` | Best precision tracking during HPO | chunk_21 |
+| `phase_5_total_time:` | Phase 5 total runtime | chunk_19 |
+| `data_points_evaluated:` | Phase 5 data count | chunk_19 |
+| `search` | HPO search phase | chunk_21 |
+| `OPTIMAL` | Optimal label threshold found | chunk_12 |
+| `prediction_buckets` | Prediction bucket distribution | chunk_18 |
+
+### G10: Terms NOT in pipeline_cpu.log (documentation only)
+
+CI/CD, GPU, GNN, JSON, HTML, WSL, TF/TensorFlow, sklearn, FR, AC, SSR, SOP, GIS, KS, MI, PSI, SNR, LogitComp, Bhattacharyya, Transformer (as doc term), BCE, NaN, CUDA, cuDNN, cuBLAS, cuFFT, CSV
+
+### G11: Cosmetic Label Refactoring — Implementation Plan
+
+**Date**: 2026-05-24
+**Scope**: Lowercase all cosmetic log labels across the pipeline. Dict keys unchanged.
+**Exceptions** (stay UPPER_SNAKE_CASE): VALIDATION_PRECISION, VALIDATION_TRUE_POSITIVES, VALIDATION_TRUE_NEGATIVES, LABEL_THRESHOLD, [HYPERPARAMETER_OPTIMIZATION_SEARCH], TRIAL, OPTIMAL.
+
+**Execution Categories:**
+
+| Cat | Description | Count | Safety Pattern |
+|-----|-------------|-------|----------------|
+| A | Bracket tags: `[BASELINE]`→`[baseline]` (except `[HYPERPARAMETER_OPTIMIZATION_SEARCH]`) | ~38 | `replaceAll` — globally unique |
+| B | TRAIN_ metric labels: `TRAIN_PRECISION=`→`train_precision=` | 25 | `={ ` suffix — never matches `'KEY'` dict keys |
+| C | INFERENCE_ metric labels: `INFERENCE_PRECISION=`→`inference_precision=` | 24 | Same `={ ` pattern; 18 strings dual-used with dict keys, safe |
+| D | VALIDATION_ non-exceptions: `VALIDATION_RECALL=`→`validation_recall=` | 20 (3 stay) | Values are variables/attributes, not dict keys |
+| E | Standalone/base metric labels: `PRECISION=`→`precision=` | ~15 | `={ ` pattern only in f-string context |
+| F | Colon-terminated: `DATA_LOADED:`→`data_loaded:` | ~50 | `replaceAll` — globally unique |
+| G | Inline stats: `mean=0.0023` (already handled by parent label change) | ~12 | Covered by B/D/F cascading |
+| H | PREDICTION_ diagnostic: `PREDICTION_MEAN=`→`prediction_mean=` | 6 | Unique to chunk_12:508 |
+| I | Feature importance: `SPEARMAN_CORRELATION`→`spearman_correlation` | 9 | Unique to chunk_XX |
+| J | HPO labels: `PROGRESS:`→`progress:`, `Trial`→`TRIAL`, `OPTIMAL` stays | 8 | `TRIAL` and `OPTIMAL` are UPPER exceptions |
+| K | CSV/table headers: `MCC`→`mcc`, `Precision`→`precision` | ~15 | Standalone strings |
+| L | Standalone one-offs: `SAMPLES`→`samples`, `FEATURES`→`features` | ~20 | Unique per file |
+| M | Prose: `Class Distribution`→`class distribution` | ~25 | Initial caps → lowercase |
+| N | Abbreviation expansion: `[diag]`→`[diagnostic]`, `[diag-hpo]`→`[diagnostic-hyperparameter_optimization]`, `[diag-ensemble]`→`[diagnostic-ensemble]`, `[post-hpo]`→`[post hyperparameter_optimization]`, `PredBuckets:`→`prediction_buckets:`, `Percentiles:`→`percentiles:`, `Hist:`→`histogram:`, plus inline prose labels | 16 | chunk_04 (2), chunk_18 (14) |
+| O | HPO label expansion + Phase logging removal: `[HPO]`/`[PRE-HPO]`→`[HYPERPARAMETER_OPTIMIZATION]`/`[PRE-HYPERPARAMETER_OPTIMIZATION]`, `hpo:`→`hyperparameter_optimization:`, all HPO/POST-HPO prose expanded, `Phase #:` removed, `[pass]`/`[time]`/`Running`/`Starting` deleted, `label_threshold=`→`LABEL_THRESHOLD=` in chunk_12 (6×), `Skipping`→`skipping` (2×), `P=`→`precision=`, `%pos@0.5=`→`percent_positive_at_0_5=`, `Train:`→`train:`, `Val:`→`validation:`, `[label_threshold_optimal]`→`[label_threshold_OPTIMAL]` | ~45 | chunk_12 (11), chunk_16 (4), chunk_17 (3), chunk_18 (~25), chunk_19 (4), chunk_20 (10), chunk_01/02/05/07 (4 print deletions) |
+
+**Files affected**: 19 chunk files
+**Highest risk**: chunk_18 (~200 changes), chunk_19 (~50 changes), chunk_20 (~60 changes)
+**Verification**: grep zero-survivors + py_compile all files

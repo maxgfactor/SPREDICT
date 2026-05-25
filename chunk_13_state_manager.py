@@ -205,10 +205,10 @@ if __name__ == "__main__":
     
     state_manager = StateManager()
     validate_state_manager(state_manager)
-    print("[PASS] StateManager validated")
+    print("[pass] StateManager validated")
     
     print(f"   Backtrack count: {state_manager.get_backtrack_count()}")
-    print(f"   Precision history: {state_manager.get_precision_history()}")
+    print(f"   precision history: {state_manager.get_precision_history()}")
     print(f"   Results history length: {len(state_manager.results_history)}")
     
-    print("\n[PASS] All StateManager tests passed")
+    print("\n[pass] All StateManager tests passed")

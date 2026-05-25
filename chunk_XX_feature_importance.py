@@ -49,7 +49,7 @@ class FeatureImportanceAnalyzer:
     def _log_all_features(self, method_prefix: str, df: pd.DataFrame, score_col: str, dropped_indices: List[int], timing: float, label_threshold: float, pos_rate: float, extra: str = ""):
         kept_df = df[~df['index'].isin(dropped_indices)].sort_values(score_col, ascending=False)
         parts = [f"{row['feature']}={row[score_col]:.6f}" for _, row in kept_df.iterrows()]
-        self._log(f"  {method_prefix} (Label_Threshold={label_threshold:.1f}, +{pos_rate:.3%}{extra}, kept {len(kept_df)}/{len(df)}) Done in {timing:.1f}s: {' | '.join(parts)}")
+        self._log(f"  {method_prefix} (label_threshold={label_threshold:.1f}, +{pos_rate:.3%}{extra}, kept {len(kept_df)}/{len(df)}) Done in {timing:.1f}s: {' | '.join(parts)}")
     
     def run_full_analysis(
         self,
@@ -138,12 +138,12 @@ class FeatureImportanceAnalyzer:
             # Consolidated ranking of all kept features
             kept_df = consolidated[~consolidated['index'].isin(dropped_indices)]
             parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in kept_df.iterrows()]
-            self._log(f"  Consolidated ranking (Label_Threshold={thresh:.1f}, +{pos_rate:.3%}, kept {len(kept_df)}/{len(feature_names)}): {' | '.join(parts)}")
+            self._log(f"  Consolidated ranking (label_threshold={thresh:.1f}, +{pos_rate:.3%}, kept {len(kept_df)}/{len(feature_names)}): {' | '.join(parts)}")
             
             results_by_threshold[thresh] = results
             pruned_df = consolidated[consolidated['index'].isin(dropped_indices)]
             parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in pruned_df.iterrows()]
-            self._log(f"  Consolidated pruning (Label_Threshold={thresh:.1f}, +{pos_rate:.3%}, pruned {len(dropped_indices)}/{n_features}): {' | '.join(parts)}")
+            self._log(f"  Consolidated pruning (label_threshold={thresh:.1f}, +{pos_rate:.3%}, pruned {len(dropped_indices)}/{n_features}): {' | '.join(parts)}")
         
         # Cross-threshold stability summary
         n_thresh = len(thresholds)
@@ -153,9 +153,9 @@ class FeatureImportanceAnalyzer:
         always_pruned = sorted([f for f, c in drop_counts.items() if c == n_thresh])
         never_pruned = sorted([f for f, c in drop_counts.items() if c == 0])
         borderline = {f: c for f, c in sorted(drop_counts.items()) if 0 < c < n_thresh}
-        self._log(f"[CROSS-THRESHOLD] Always pruned ({n_thresh}/{n_thresh}): {always_pruned}")
-        self._log(f"[CROSS-THRESHOLD] Never pruned (0/{n_thresh}): {never_pruned}")
-        self._log(f"[CROSS-THRESHOLD] Borderline: {borderline}")
+        self._log(f"[cross-threshold] Always pruned ({n_thresh}/{n_thresh}): {always_pruned}")
+        self._log(f"[cross-threshold] Never pruned (0/{n_thresh}): {never_pruned}")
+        self._log(f"[cross-threshold] Borderline: {borderline}")
         
         # Use results from first threshold for return (unless specified otherwise)
         # This maintains backward compatibility while storing all thresholds
@@ -169,9 +169,9 @@ class FeatureImportanceAnalyzer:
         total_time = time.time() - start_time
         self.timings['total'] = total_time
         
-        self._log(f"TOTAL TIME: {total_time:.1f}s ({total_time/60:.1f} min)")
-        self._log(f"FEATURES: {n_features} total -> {len(results['kept_indices'])} kept, {len(results['dropped_indices'])} pruned")
-        self._log(f"DROPPED: {[feature_names[i] for i in results['dropped_indices']]}")
+        self._log(f"total time: {total_time:.1f}s ({total_time/60:.1f} min)")
+        self._log(f"features: {n_features} total -> {len(results['kept_indices'])} kept, {len(results['dropped_indices'])} pruned")
+        self._log(f"dropped: {[feature_names[i] for i in results['dropped_indices']]}")
         
         return {
             'results': results,
@@ -346,7 +346,7 @@ class FeatureImportanceAnalyzer:
         tf_logger.setLevel(old_level)
         
         if weights is None:
-            self._log(f"  WARNING: Could not extract input weights, using random", 'warning')
+            self._log(f"  warning: Could not extract input weights, using random", 'warning')
             return pd.DataFrame({
                 'feature': feature_names,
                 'index': range(len(feature_names)),
@@ -513,7 +513,7 @@ class FeatureImportanceAnalyzer:
         lines.append(f"  - Tree: {timings.get('tree', 0):.1f}s")
         lines.append(f"  - Permutation: {timings.get('permutation', 0):.1f}s")
         lines.append(f"  - Neural: {timings.get('neural', 0):.1f}s")
-        lines.append(f"  - SHAP: {timings.get('shap', 0):.1f}s")
+        lines.append(f"  - shap: {timings.get('shap', 0):.1f}s")
         lines.append(f"  - Ablation: {timings.get('ablation', 0):.1f}s")
         
         lines.append(f"\nDropped features: {analysis_results['dropped_names']}")
@@ -620,6 +620,6 @@ if __name__ == "__main__":
     results = analyzer.run_full_analysis(X, y_raw, feature_names)
     analyzer.save_report(results, './feature_importance_report_test.txt')
     
-    print(f"\n[PASS] FeatureImportanceAnalyzer test passed")
-    print(f"[PASS] Kept {results['n_features_pruned']}/{results['n_features_original']} features")
-    print(f"[PASS] Dropped: {results['dropped_names']}")
+    print(f"\n[pass] FeatureImportanceAnalyzer test passed")
+    print(f"[pass] Kept {results['n_features_pruned']}/{results['n_features_original']} features")
+    print(f"[pass] Dropped: {results['dropped_names']}")

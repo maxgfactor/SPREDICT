@@ -333,10 +333,10 @@ class ModelTrainer:
                     trained_model, _ = self.train_model(model, X, y)
                 
                 trained_models.append(trained_model)
-                print(f"[PASS] {arch_name} trained successfully")
+                print(f"[pass] {arch_name} trained successfully")
                 
             except Exception as e:
-                print(f"[ERROR] {arch_name} training failed: {e}")
+                print(f"[error] {arch_name} training failed: {e}")
                 continue
         
         return trained_models
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     
     # Validate instance
     validate_trainer_instance(trainer)
-    print("[PASS] Trainer instance validated")
+    print("[pass] Trainer instance validated")
     
     # Create test data
     np.random.seed(42)
@@ -432,7 +432,7 @@ if __name__ == "__main__":
     # Test building architecture
     print("\nTesting architecture building...")
     model = trainer.build_architecture('Dense', 10)
-    print(f"[PASS] Model built: {type(model)}")
+    print(f"[pass] Model built: {type(model)}")
     
     # Test training
     print("\nTesting model training...")
@@ -440,6 +440,6 @@ if __name__ == "__main__":
         model, X, y, epochs=5, batch_size=16, verbose=0
     )
     validate_training_output(trained_model, history, X, y)
-    print(f"[PASS] Model trained, history keys: {list(history.keys())}")
+    print(f"[pass] Model trained, history keys: {list(history.keys())}")
     
-    print("\n[PASS] All ModelTrainer tests passed")
+    print("\n[pass] All ModelTrainer tests passed")

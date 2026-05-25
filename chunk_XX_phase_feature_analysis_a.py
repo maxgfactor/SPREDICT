@@ -30,7 +30,7 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         
         if X is None or y_raw is None:
             if self.logger:
-                self.logger.log("ERROR: X or y not found in context", 'error')
+                self.logger.log("error: X or y not found in context", 'error')
             return context
         
         n_features = X.shape[1]
@@ -88,7 +88,7 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         
         n_pruned = n_features - len(pruned_indices)
         if self.logger:
-            self.logger.log(f"COMPLETE: {n_features} raw features (per-threshold pruning stored)", 'info')
+            self.logger.log(f"complete: {n_features} raw features (per-threshold pruning stored)", 'info')
             first_thr = next(iter(threshold_kept.keys()))
             self.logger.log(f"  First threshold ({first_thr}): {len(pruned_indices)} kept", 'info')
         
@@ -123,6 +123,6 @@ if __name__ == "__main__":
     phase = PhaseXa_FeatureAnalysis(config)
     result = phase.execute(context)
     
-    print(f"\n[PASS] Phase Xa test passed")
-    print(f"[PASS] Original: {X.shape[1]} -> Pruned: {result['X'].shape[1]}")
-    print(f"[PASS] Dropped: {result['dropped_feature_names']}")
+    print(f"\n[pass] Phase Xa test passed")
+    print(f"[pass] Original: {X.shape[1]} -> Pruned: {result['X'].shape[1]}")
+    print(f"[pass] Dropped: {result['dropped_feature_names']}")

@@ -491,12 +491,11 @@ if __name__ == "__main__":
     print("Validating configuration...")
     try:
         validate_config_structure(CONFIG)
-        print("[PASS] Configuration validation passed")
         print(f"   Total config keys: {len(CONFIG)}")
         print(f"   Required keys present: {len(REQUIRED_CONFIG_KEYS)}")
         print(f"   Data path: {CONFIG['DATA_PATH']}")
         print(f"   Sample size: {CONFIG['SAMPLE_SIZE']}")
         print(f"   Min samples: {CONFIG['MIN_SAMPLES']}")
     except ValueError as e:
-        print(f"[ERROR] Configuration validation failed: {e}")
+        print(f"[error] Configuration validation failed: {e}")
         raise

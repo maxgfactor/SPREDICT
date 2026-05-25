@@ -63,7 +63,7 @@ class HyperparameterOptimizer:
             return {}, None, 0.0
         
         arch_tag = f"[{arch_name.upper()}]"
-        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Running Bayesian optimization ({self.n_trials} trials)...", 'info')
+        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] Running Bayesian optimization ({self.n_trials} trials)...", 'info')
         
         best_model = None
         best_precision = 0.0
@@ -154,7 +154,7 @@ class HyperparameterOptimizer:
                     # Min TP constraint for RNN: reject trials with very low TP (< 100).
                     # TP=100 ensures statistically meaningful positive rate (~0.06% of val set).
                     if self.arch_name == 'RNN' and tp < 100:
-                        if self.logger: self.logger.log(f"   Trial {trial_number}/{self.total_trials}: REJECTED - TP={tp} < 100 (min TP threshold)", 'warning')
+                        if self.logger: self.logger.log(f"   TRIAL {trial_number}/{self.total_trials}: REJECTED - true_positives={tp} < 100 (min true_positives threshold)", 'warning')
                         return 0.0
                     
                     # TP-balanced objective for Dense: maximize precision * log(TP + 1)
@@ -194,11 +194,13 @@ class HyperparameterOptimizer:
                         trial_gini = evaluator.calculate_gini(self.y_val, y_pred.flatten())
                         trial_opt_thresh = evaluator.calculate_optimal_threshold(self.y_val, y_pred.flatten())
                         
-                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_Spec={trial_spec:.4f} Val_FPR={trial_fpr:.4f} Val_F2={trial_f2:.4f} Val_MCC={trial_mcc:.4f} Val_PRAUC={trial_prauc:.4f} Val_BalAcc={trial_balacc:.4f} Val_Brier={trial_brier:.4f} Val_Kappa={trial_kappa:.4f} Val_Informedness={trial_informedness:.4f} Val_Markedness={trial_markedness:.4f} Val_Gini={trial_gini:.4f} Val_OptThresh={trial_opt_thresh:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f} (Label_Threshold={self.label_threshold:.1f})", 'info')
-                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] LABEL_THRESHOLD={self.label_threshold:.1f}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] VALIDATION_PRECISION={precision:.4f} VALIDATION_TRUE_POSITIVES={tp} VALIDATION_TRUE_NEGATIVES={tn} validation_false_positives={fp} validation_false_negatives={fn} validation_max_prediction={max_pred:.4f} validation_mean_prediction={mean_pred:.4f} validation_recall={recall:.4f} validation_f1={f1:.4f} validation_auc={auc:.4f} validation_specificity={trial_spec:.4f} validation_false_positive_rate={trial_fpr:.4f} validation_f2={trial_f2:.4f} validation_mcc={trial_mcc:.4f} validation_prauc={trial_prauc:.4f} validation_balanced_accuracy={trial_balacc:.4f} validation_brier={trial_brier:.4f} validation_kappa={trial_kappa:.4f} validation_informedness={trial_informedness:.4f} validation_markedness={trial_markedness:.4f} validation_gini={trial_gini:.4f} validation_optimal_threshold={trial_opt_thresh:.4f} validation_standard_deviation_prediction={std_pred:.4f} validation_percentage_above_threshold={pct_above:.2f}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] TRIAL {trial_number}/{self.total_trials}: {params_str}", 'info')
                     except Exception as e:
-                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Val_P={precision:.4f} Val_TP={tp} Val_TN={tn} Val_FP={fp} Val_FN={fn} Val_MaxPred={max_pred:.4f} Val_MeanPred={mean_pred:.4f} Val_R={recall:.4f} Val_F1={f1:.4f} Val_AUC={auc:.4f} Val_StdPred={std_pred:.4f} Val_PctAboveThresh={pct_above:.2f} (Label_Threshold={self.label_threshold:.1f})", 'info')
-                        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [HPO SEARCH] Trial {trial_number}/{self.total_trials}: {params_str}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] LABEL_THRESHOLD={self.label_threshold:.1f}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] VALIDATION_PRECISION={precision:.4f} VALIDATION_TRUE_POSITIVES={tp} VALIDATION_TRUE_NEGATIVES={tn} validation_false_positives={fp} validation_false_negatives={fn} validation_max_prediction={max_pred:.4f} validation_mean_prediction={mean_pred:.4f} validation_recall={recall:.4f} validation_f1={f1:.4f} validation_auc={auc:.4f} validation_standard_deviation_prediction={std_pred:.4f} validation_percentage_above_threshold={pct_above:.2f}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] TRIAL {trial_number}/{self.total_trials}: {params_str}", 'info')
                     
                     # Track best model - use architecture-specific balanced score (Apr 4, 2026)
                     if self.arch_name == 'Dense':
@@ -298,7 +300,7 @@ class HyperparameterOptimizer:
                     else:
                         return precision
                 except Exception as e:
-                    if self.logger: self.logger.log(f"      Trial {trial_number} failed: {e}", 'warning')
+                    if self.logger: self.logger.log(f"      TRIAL {trial_number} failed: {e}", 'warning')
                     return 0.0
         
         objective = Objective(
@@ -334,12 +336,12 @@ class HyperparameterOptimizer:
             
             # Check: Target met?
             if current_precision >= target_precision and current_tp > 0:
-                if self.logger: self.logger.log(f"   TARGET MET at trial {trial_number}: P={current_precision:.4f} >= {target_precision}", 'info')
+                if self.logger: self.logger.log(f"   TARGET MET at trial {trial_number}: precision={current_precision:.4f} >= {target_precision}", 'info')
                 break
             
             # Progress logging every 10 trials
             if trial_number % 10 == 0:
-                if self.logger: self.logger.log(f"   Progress: Trial {trial_number} | Best P={current_precision:.4f} (trial {best_trial_number}) | Target={target_precision}", 'info')
+                if self.logger: self.logger.log(f"   progress: TRIAL {trial_number} | best_precision={current_precision:.4f} (trial {best_trial_number}) | target={target_precision}", 'info')
             
             # Check: Phase transition (reset stagnation every 30 trials)
             if trial_number % 30 == 0:
@@ -358,7 +360,7 @@ class HyperparameterOptimizer:
             
             # Stop if stagnant
             if no_improve_count >= stagnation_threshold:
-                if self.logger: self.logger.log(f"   STOPPED: No improvement for {stagnation_threshold} trials (best P={best_precision_seen:.4f})", 'info')
+                if self.logger: self.logger.log(f"   stopped: No improvement for {stagnation_threshold} trials (best_precision={best_precision_seen:.4f})", 'info')
                 break
             
             # Continue if enabled and not target met
@@ -367,7 +369,7 @@ class HyperparameterOptimizer:
             
             # Safety cap
             if trial_number >= max_trials:
-                if self.logger: self.logger.log(f"   SAFETY STOP: Reached {max_trials} trials (best P={best_precision_seen:.4f})", 'warning')
+                if self.logger: self.logger.log(f"   safety stop: Reached {max_trials} trials (best_precision={best_precision_seen:.4f})", 'warning')
                 break
         
         best_params = study.best_params
@@ -377,10 +379,10 @@ class HyperparameterOptimizer:
         arch_tag = f"[{arch_name.upper()}]"
         lt = objective.label_threshold
         o = objective
-        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [BEST TRIAL] Label_Threshold={lt:.1f}", 'info')
-        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [BEST TRIAL] Val_P={o.best_trial_precision:.4f} Val_TP={o.best_trial_tp} Val_TN={o.best_trial_tn} Val_FP={o.best_trial_fp} Val_FN={o.best_trial_fn} Val_MaxPred={o.best_trial_max_pred:.4f} Val_MeanPred={o.best_trial_mean_pred:.4f} Val_R={o.best_trial_recall:.4f} Val_F1={o.best_trial_f1:.4f} Val_AUC={o.best_trial_auc:.4f} Val_Spec={o.best_trial_spec:.4f} Val_FPR={o.best_trial_fpr:.4f} Val_F2={o.best_trial_f2:.4f} Val_MCC={o.best_trial_mcc:.4f} Val_PRAUC={o.best_trial_prauc:.4f} Val_BalAcc={o.best_trial_balacc:.4f} Val_Brier={o.best_trial_brier:.4f} Val_Kappa={o.best_trial_kappa:.4f} Val_Informedness={o.best_trial_informedness:.4f} Val_Markedness={o.best_trial_markedness:.4f} Val_Gini={o.best_trial_gini:.4f} Val_OptThresh={o.best_trial_opt_thresh:.4f} Val_StdPred={o.best_trial_std_pred:.4f} Val_PctAboveThresh={o.best_trial_pct_above:.2f}", 'info')
+        if self.logger: self.logger.log(f"[section 2] {arch_tag} [best trial] LABEL_THRESHOLD={lt:.1f}", 'info')
+        if self.logger: self.logger.log(f"[section 2] {arch_tag} [best trial] VALIDATION_PRECISION={o.best_trial_precision:.4f} VALIDATION_TRUE_POSITIVES={o.best_trial_tp} VALIDATION_TRUE_NEGATIVES={o.best_trial_tn} validation_false_positives={o.best_trial_fp} validation_false_negatives={o.best_trial_fn} validation_max_prediction={o.best_trial_max_pred:.4f} validation_mean_prediction={o.best_trial_mean_pred:.4f} validation_recall={o.best_trial_recall:.4f} validation_f1={o.best_trial_f1:.4f} validation_auc={o.best_trial_auc:.4f} validation_specificity={o.best_trial_spec:.4f} validation_false_positive_rate={o.best_trial_fpr:.4f} validation_f2={o.best_trial_f2:.4f} validation_mcc={o.best_trial_mcc:.4f} validation_prauc={o.best_trial_prauc:.4f} validation_balanced_accuracy={o.best_trial_balacc:.4f} validation_brier={o.best_trial_brier:.4f} validation_kappa={o.best_trial_kappa:.4f} validation_informedness={o.best_trial_informedness:.4f} validation_markedness={o.best_trial_markedness:.4f} validation_gini={o.best_trial_gini:.4f} validation_optimal_threshold={o.best_trial_opt_thresh:.4f} validation_standard_deviation_prediction={o.best_trial_std_pred:.4f} validation_percentage_above_threshold={o.best_trial_pct_above:.2f}", 'info')
         params_str = ", ".join([f"{k}={v}" for k, v in o.best_trial_params.items()])
-        if self.logger: self.logger.log(f"[SECTION 2] {arch_tag} [BEST TRIAL] {params_str}", 'info')
+        if self.logger: self.logger.log(f"[section 2] {arch_tag} [best trial] {params_str}", 'info')
         
         return best_params, best_model, best_precision
     
@@ -427,4 +429,4 @@ if __name__ == "__main__":
     print(f"Optimizer created successfully")
     print(f"Search space summary:\n{optimizer.get_search_space_summary()}")
     
-    print("\n[PASS] HyperparameterOptimizer tests passed")
+    print("\n[pass] HyperparameterOptimizer tests passed")

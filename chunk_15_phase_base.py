@@ -68,6 +68,6 @@ if __name__ == "__main__":
     print("Testing BasePhase...")
     
     validate_base_phase_interface()
-    print("[PASS] BasePhase correctly enforces abstract interface")
+    print("[pass] BasePhase correctly enforces abstract interface")
     
-    print("\n[PASS] BasePhase tests passed")
+    print("\n[pass] BasePhase tests passed")
