@@ -7,6 +7,7 @@ import optuna
 import numpy as np
 from typing import Dict, Any, Callable, Optional, Tuple
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score
+from chunk_01_config import DEFAULT_HPO_TRIALS
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -24,7 +25,7 @@ class HyperparameterOptimizer:
         """
         self.config = config
         self.logger = logger
-        self.n_trials = config.get('HYPERPARAM_OPTIMIZATION_TRIALS', 20)
+        self.n_trials = config.get('HYPERPARAM_OPTIMIZATION_TRIALS', DEFAULT_HPO_TRIALS)
         self.epochs = config.get('HYPERPARAM_OPTIMIZATION_EPOCHS', 3)
         self.search_space = config.get('HYPERPARAM_SEARCH_SPACE', {})
     
@@ -162,9 +163,9 @@ class HyperparameterOptimizer:
                     if self.arch_name == 'Dense':
                         # Use log-scaled TP to prevent precision from dominating
                         balanced_score = precision * np.log(tp + 1 + 1e-6)
-                    elif self.arch_name in ['CNN', 'LSTM', 'Transformer']:
-                        # MaxPred-prioritized objective for CNN/LSTM/Transformer: maximize precision * MaxPred
-                        # All have 100% TP=0, so we optimize for pushing predictions toward threshold (Apr 4, 2026)
+                    elif self.arch_name in ['CNN', 'RNN', 'LSTM', 'Transformer']:
+                        # MaxPred-prioritized objective for CNN/RNN/LSTM/Transformer: maximize precision * MaxPred
+                        # All have 100% TP=0 or collapse risk, so we optimize for pushing predictions toward threshold (Apr 4, 2026)
                         balanced_score = precision * max_pred
                     else:
                         balanced_score = precision
@@ -194,9 +195,9 @@ class HyperparameterOptimizer:
                         trial_gini = evaluator.calculate_gini(self.y_val, y_pred.flatten())
                         trial_opt_thresh = evaluator.calculate_optimal_threshold(self.y_val, y_pred.flatten())
                         
-                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] LABEL_THRESHOLD={self.label_threshold:.1f}", 'info')
-                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] VALIDATION_PRECISION={precision:.4f} VALIDATION_TRUE_POSITIVES={tp} VALIDATION_TRUE_NEGATIVES={tn} validation_false_positives={fp} validation_false_negatives={fn} validation_max_prediction={max_pred:.4f} validation_mean_prediction={mean_pred:.4f} validation_recall={recall:.4f} validation_f1={f1:.4f} validation_auc={auc:.4f} validation_specificity={trial_spec:.4f} validation_false_positive_rate={trial_fpr:.4f} validation_f2={trial_f2:.4f} validation_mcc={trial_mcc:.4f} validation_prauc={trial_prauc:.4f} validation_balanced_accuracy={trial_balacc:.4f} validation_brier={trial_brier:.4f} validation_kappa={trial_kappa:.4f} validation_informedness={trial_informedness:.4f} validation_markedness={trial_markedness:.4f} validation_gini={trial_gini:.4f} validation_optimal_threshold={trial_opt_thresh:.4f} validation_standard_deviation_prediction={std_pred:.4f} validation_percentage_above_threshold={pct_above:.2f}", 'info')
-                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] TRIAL {trial_number}/{self.total_trials}: {params_str}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search baseline] LABEL_THRESHOLD={self.label_threshold:.1f}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search baseline] VALIDATION_PRECISION={precision:.4f} VALIDATION_TRUE_POSITIVES={tp} VALIDATION_TRUE_NEGATIVES={tn} validation_false_positives={fp} validation_false_negatives={fn} validation_max_prediction={max_pred:.4f} validation_mean_prediction={mean_pred:.4f} validation_recall={recall:.4f} validation_f1={f1:.4f} validation_auc={auc:.4f} validation_specificity={trial_spec:.4f} validation_false_positive_rate={trial_fpr:.4f} validation_f2={trial_f2:.4f} validation_mcc={trial_mcc:.4f} validation_prauc={trial_prauc:.4f} validation_balanced_accuracy={trial_balacc:.4f} validation_brier={trial_brier:.4f} validation_kappa={trial_kappa:.4f} validation_informedness={trial_informedness:.4f} validation_markedness={trial_markedness:.4f} validation_gini={trial_gini:.4f} validation_optimal_threshold={trial_opt_thresh:.4f} validation_standard_deviation_prediction={std_pred:.4f} validation_percentage_above_threshold={pct_above:.2f}", 'info')
+                        if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search baseline] TRIAL {trial_number}/{self.total_trials}: {params_str}", 'info')
                     except Exception as e:
                         if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] LABEL_THRESHOLD={self.label_threshold:.1f}", 'info')
                         if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] VALIDATION_PRECISION={precision:.4f} VALIDATION_TRUE_POSITIVES={tp} VALIDATION_TRUE_NEGATIVES={tn} validation_false_positives={fp} validation_false_negatives={fn} validation_max_prediction={max_pred:.4f} validation_mean_prediction={mean_pred:.4f} validation_recall={recall:.4f} validation_f1={f1:.4f} validation_auc={auc:.4f} validation_standard_deviation_prediction={std_pred:.4f} validation_percentage_above_threshold={pct_above:.2f}", 'info')
@@ -232,8 +233,8 @@ class HyperparameterOptimizer:
                             self.best_trial_opt_thresh = trial_opt_thresh
                             self.best_trial_params = hyperparams
                             self.best_trial_model = trained
-                    elif self.arch_name in ['CNN', 'LSTM', 'Transformer']:
-                        # For CNN/LSTM/Transformer: track by precision * MaxPred
+                    elif self.arch_name in ['CNN', 'RNN', 'LSTM', 'Transformer']:
+                        # For CNN/RNN/LSTM/Transformer: track by precision * MaxPred
                         if balanced_score > getattr(self, 'best_trial_balanced_score', 0):
                             self.best_trial_balanced_score = balanced_score
                             self.best_trial_precision = precision
@@ -292,10 +293,10 @@ class HyperparameterOptimizer:
                             self.best_trial_model = trained
                     
                     # Return architecture-specific score (Apr 4, 2026)
-                    # Dense: precision * log(TP+1), CNN/LSTM/Transformer: precision * MaxPred, others: precision
+                    # Dense: precision * log(TP+1), CNN/RNN/LSTM/Transformer: precision * MaxPred, others: precision
                     if self.arch_name == 'Dense':
                         return balanced_score
-                    elif self.arch_name in ['CNN', 'LSTM', 'Transformer']:
+                    elif self.arch_name in ['CNN', 'RNN', 'LSTM', 'Transformer']:
                         return balanced_score
                     else:
                         return precision

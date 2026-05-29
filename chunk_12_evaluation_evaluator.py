@@ -350,6 +350,7 @@ class Evaluator:
         best_thresh = thresholds[0]
         best_precision = 0.0
         best_trained_model = None  # Store the best trained model
+        last_trained_model = None  # Track last trained model even if rejected by safeguards (fallback for architectures with weak default params)
         results = []
         no_improve_count = 0
         
@@ -417,6 +418,7 @@ class Evaluator:
             except Exception as e:
                 if self.logger: self.logger.log(f"Training failed for {arch_name} at threshold {thresh}: {e}", 'warning')
                 continue
+            last_trained_model = trained  # Always capture last-trained model regardless of safeguard acceptance
             
             # Get predictions
             try:
@@ -487,7 +489,7 @@ class Evaluator:
             
             # Safeguard 3: Reject if precision doesn't beat baseline by minimum margin
             # Prevents convergence to degenerate solutions where P ≈ base rate
-            baseline_precision = y_val_binary.mean()
+            baseline_precision = min(y_val_binary.mean(), 0.5)  # Cap at 0.5 to avoid degenerate rejections at high baseline prevalence (t=0.0)
             # Check for sklearn architecture-specific overrides
             if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
                 sklearn_safeguards = self.config.get('SKLEARN_SAFEGUARDS', {})
@@ -504,8 +506,8 @@ class Evaluator:
                 continue
             
             # === PER-THRESHOLD DIAGNOSTICS ===
-            val_pos_pct = (val_pred >= 0.5).mean() * 100
-            if self.logger: self.logger.log(f"{arch_tag} [diagnostic] LABEL_THRESHOLD={thresh:.1f}: pred_mean={val_pred.mean():.4f}, pred_std={val_pred.std():.4f}, pred_min={val_pred.min():.4f}, pred_max={val_pred.max():.4f}, percent_positive_at_0_5={val_pos_pct:.2f}%", 'info')
+            if self.logger: self.logger.log(f"{arch_tag} [diagnostic] LABEL_THRESHOLD={thresh:.1f} train_precision={train_metrics['P']:.4f} train_true_positives={train_metrics['TP']} train_true_negatives={train_metrics['TN']} train_false_positives={train_metrics['FP']} train_false_negatives={train_metrics['FN']} train_max_prediction={train_metrics['MaxPred']:.4f} train_mean_prediction={train_metrics['MeanPred']:.4f} train_recall={train_metrics['R']:.4f} train_f1={train_metrics['F1']:.4f} train_auc={train_metrics['AUC']:.4f} train_specificity={train_metrics['Spec']:.4f} train_false_positive_rate={train_metrics['FPR']:.4f} train_f2={train_metrics['F2']:.4f} train_mcc={train_metrics['MCC']:.4f} train_prauc={train_metrics['PRAUC']:.4f} train_balanced_accuracy={train_metrics['BalAcc']:.4f} train_brier={train_metrics['Brier']:.4f} train_kappa={train_metrics['Kappa']:.4f} train_informedness={train_metrics['Informedness']:.4f} train_markedness={train_metrics['Markedness']:.4f} train_gini={train_metrics['Gini']:.4f} train_optimal_threshold={train_metrics['OptThresh']:.4f} train_standard_deviation_prediction={train_metrics['StdPred']:.4f} train_percentage_above_threshold={train_metrics['PctAboveThresh']:.2f}", 'info')
+            if self.logger: self.logger.log(f"{arch_tag} [diagnostic] LABEL_THRESHOLD={thresh:.1f} VALIDATION_PRECISION={val_metrics['P']:.4f} VALIDATION_TRUE_POSITIVES={val_metrics['TP']} VALIDATION_TRUE_NEGATIVES={val_metrics['TN']} validation_false_positives={val_metrics['FP']} validation_false_negatives={val_metrics['FN']} validation_max_prediction={val_metrics['MaxPred']:.4f} validation_mean_prediction={val_metrics['MeanPred']:.4f} validation_recall={val_metrics['R']:.4f} validation_f1={val_metrics['F1']:.4f} validation_auc={val_metrics['AUC']:.4f} validation_specificity={val_metrics['Spec']:.4f} validation_false_positive_rate={val_metrics['FPR']:.4f} validation_f2={val_metrics['F2']:.4f} validation_mcc={val_metrics['MCC']:.4f} validation_prauc={val_metrics['PRAUC']:.4f} validation_balanced_accuracy={val_metrics['BalAcc']:.4f} validation_brier={val_metrics['Brier']:.4f} validation_kappa={val_metrics['Kappa']:.4f} validation_informedness={val_metrics['Informedness']:.4f} validation_markedness={val_metrics['Markedness']:.4f} validation_gini={val_metrics['Gini']:.4f} validation_optimal_threshold={val_metrics['OptThresh']:.4f} validation_standard_deviation_prediction={val_metrics['StdPred']:.4f} validation_percentage_above_threshold={val_metrics['PctAboveThresh']:.2f}", 'info')
             
             result = {
                 'threshold': thresh,
@@ -527,7 +529,7 @@ class Evaluator:
                 if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)", 'info')
                 break
         
-        return best_thresh, best_precision, results, best_trained_model
+        return best_thresh, best_precision, results, best_trained_model if best_trained_model is not None else last_trained_model
     
     def calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray, 
                          y_pred_proba: Optional[np.ndarray] = None) -> Dict[str, float]:

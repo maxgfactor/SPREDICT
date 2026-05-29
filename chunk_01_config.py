@@ -6,6 +6,12 @@ Defines CONFIG dictionary and validation
 import os
 from typing import Dict, Any
 
+# Threshold search defaults (used as fallback across all phases)
+DEFAULT_FIRST_THRESHOLD = 20.0
+DEFAULT_LAST_THRESHOLD = 0.0
+DEFAULT_THRESHOLD_STEP = -2.0
+DEFAULT_HPO_TRIALS = 10
+
 # Suppress TensorFlow/CUDA warnings for CPU-only execution
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 
@@ -65,7 +71,7 @@ CONFIG = {
     # LABEL thresholds for binarizing y (NOT prediction thresholds). y_binary = (y >= thresh).
     'FIRST_THRESHOLD': 20.0,
     'LAST_THRESHOLD': 0.0,
-    'THRESHOLD_STEP': -2.0,  # Step size (11 steps: 20.0, 18.0, ..., 0.0)
+    'THRESHOLD_STEP': -10.0,  # 3 thresholds: 20, 10, 0
     
     # PREDICTION THRESHOLD (used to convert model outputs to binary):
     # - Model outputs probabilities (0-1) from model.predict()
@@ -92,8 +98,8 @@ CONFIG = {
     
     # Hyperparameter Optimization Configuration
     'ENABLE_HYPERPARAM_OPTIMIZATION': True,  # Enable by default
-    'HYPERPARAM_OPTIMIZATION_EPOCHS': 20,
-    'HYPERPARAM_OPTIMIZATION_TRIALS': 30,  # Hard cap — each arch gets exactly 30 trials (May 18, 2026)
+    'HYPERPARAM_OPTIMIZATION_EPOCHS': 5,
+    'HYPERPARAM_OPTIMIZATION_TRIALS': 5,  # Hard cap — each arch gets exactly 5 trials (reduced from 30, May 25, 2026)
     
     # HPO Target and Continuation (May 11, 2026 / Updated May 13, 2026)
     'HPO_TARGET_PRECISION': 0.60,  # Stop HPO when precision >= this
@@ -106,7 +112,7 @@ CONFIG = {
     'MIN_POSITIVE_PREDICTIONS': 1000,  # Legacy (fixed value, deprecated)
     'MIN_POSITIVE_PERCENTAGE': 0.005,  # 0.5% of samples (lowered for selective models)
     'MIN_POSITIVE_ABSOLUTE': 50,       # Absolute floor (lowered from 100)
-    'MIN_PRECISION_OVER_BASELINE': 0.05,  # Precision must beat baseline by at least 5%
+    'MIN_PRECISION_OVER_BASELINE': 0.01,  # Precision must beat baseline by at least 1% (reduced from 5% to let weak-default models reach HPO)
     'MIN_POS_PRED_RATIO': 0.0001,          # Min 0.01% of predictions must be positive
     'MAX_POS_PRED_RATIO': 0.70,            # Max 70% of predictions can be positive
     
@@ -204,7 +210,6 @@ CONFIG = {
             'n_estimators': [300, 500, 800],     # was [200, 500]
             'num_leaves': [31, 63, 127],          # was [31, 63]
             'learning_rate': [0.03, 0.05, 0.08],  # added lower LR
-            'scale_pos_weight': [300, 400, 500, 700],  # was [400, 500]
             'min_child_samples': [50, 100, 200],  # was [100, 200]
             'reg_alpha': [0.01, 0.1, 0.5, 1.0],  # was [0.1, 0.5]
             'reg_lambda': [0.5, 1.0, 5.0, 10.0],  # was [1.0, 5.0]
@@ -232,6 +237,7 @@ CONFIG = {
             'dropout': [0.1, 0.2, 0.3, 0.4],     # was [0.05, 0.1, 0.2, 0.3]
             'learning_rate': [0.0001, 0.0003, 0.0005, 0.001],  # finer granularity
             'epochs': [15, 20, 30, 40],          # was [8, 10, 12, 15, 20]
+            'loss_function': ['binary_crossentropy', 'focal_loss'],
             'alpha': [1.0, 1.25, 1.5],           # was [0.5, 0.75, 1.0, 1.25]
             'gamma': [2.0, 2.5, 3.0, 4.0],      # was [1.0, 2.0, 2.5, 3.0, 3.5]
             'batch_size': [32, 64, 128, 256],    # NEW
@@ -267,6 +273,7 @@ CONFIG = {
             'dropout': [0.0, 0.05, 0.1, 0.2],  # allow no dropout
             'learning_rate': [0.0005, 0.001, 0.002, 0.005],
             'epochs': [20, 30, 50],             # was [12, 15, 20, 25]
+            'loss_function': ['binary_crossentropy', 'focal_loss'],
             'alpha': [0.75, 1.0],
             'gamma': [2.0, 2.5, 3.0],
             'layers': [1, 2],                    # NEW — number of LSTM layers

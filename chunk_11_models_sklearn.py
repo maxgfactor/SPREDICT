@@ -259,22 +259,16 @@ def build_lightgbm_model(config: Dict, input_dim: int, y_train: np.ndarray = Non
     except ImportError:
         raise ImportError("LightGBM not installed. Install with: pip install lightgbm")
     
-    # Calculate dynamic weight if enabled and y_train provided
-    if y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
-        scale_pos_weight = calculate_dynamic_class_weight(y_train, config)
-    else:
-        scale_pos_weight = config.get('scale_pos_weight', 400)
-    
     model = lgb.LGBMClassifier(
         objective='binary',
         boosting_type='gbdt',
         n_estimators=config.get('n_estimators', 1000),  # Increased from 500
         num_leaves=config.get('num_leaves', 127),  # Increased from 63
         learning_rate=config.get('learning_rate', 0.05),  # Decreased from 0.1
-        scale_pos_weight=scale_pos_weight,
+        class_weight='balanced',
         min_child_samples=config.get('min_child_samples', 100),  # Decreased from 200
         subsample=config.get('subsample', 0.8),
-        colsample_bytree=0.8,
+        colsample_bytree=config.get('colsample_bytree', 0.8),
         reg_alpha=config.get('reg_alpha', 0.1),
         reg_lambda=config.get('reg_lambda', 1.0),
         max_depth=config.get('max_depth', 8),  # Increased from 5
@@ -317,7 +311,10 @@ def build_xgboost_model(config: Dict, input_dim: int, y_train: np.ndarray = None
         scale_pos_weight=scale_pos_weight,
         min_child_weight=config.get('min_child_weight', 1),
         subsample=config.get('subsample', 0.8),
-        colsample_bytree=0.8,
+        colsample_bytree=config.get('colsample_bytree', 0.8),
+        gamma=config.get('gamma', 0),
+        reg_alpha=config.get('reg_alpha', 0),
+        reg_lambda=config.get('reg_lambda', 1),
         random_state=42,
         use_label_encoder=False,
         eval_metric='logloss',
@@ -352,13 +349,13 @@ def build_catboost_model(config: Dict, input_dim: int, y_train: np.ndarray = Non
         auto_weights = 'Scaled' if hasattr(CatBoostClassifier, 'scale_pos_weight') else 'Balanced'
     else:
         scale_pos_weight = config.get('scale_pos_weight', 259)
-        auto_weights = config.get('auto_class_weights', 'Balanced')
+        auto_weights = config.get('auto_class_weights', 'SqrtBalanced')
     
     model = CatBoostClassifier(
         iterations=config.get('iterations', 1000),  # Increased from 500
         depth=config.get('depth', 8),  # Increased from 6
         learning_rate=config.get('learning_rate', 0.03),  # Decreased from 0.05
-        auto_class_weights=config.get('auto_class_weights', 'Balanced'),
+        auto_class_weights=config.get('auto_class_weights', 'SqrtBalanced'),
         l2_leaf_reg=config.get('l2_leaf_reg', 3),
         random_state=42,
         verbose=False,

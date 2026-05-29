@@ -16,7 +16,7 @@ if sys.platform == 'linux':
 import numpy as np
 from typing import Dict, List, Type
 
-from chunk_01_config import CONFIG, validate_config_structure
+from chunk_01_config import CONFIG, validate_config_structure, DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
 from chunk_02_utils_logging import Logger
 from chunk_15_phase_base import BasePhase
 from chunk_16_phase_1_setup import Phase1_PipelineSetup, validate_phase1_output
@@ -56,7 +56,11 @@ class PipelineOrchestrator:
         self.logger.log(f"   Data path: {self.config['DATA_PATH']}", 'info')
         self.logger.log(f"   Sampling: size={self.config['SAMPLE_SIZE']}, enabled={self.config['USE_SAMPLING']}, forced={self.config['FORCE_SAMPLING']}", 'info')
         self.logger.log(f"   hyperparameter_optimization: trials={self.config['HYPERPARAM_OPTIMIZATION_TRIALS']}, continue_until_target={self.config['HPO_CONTINUE_UNTIL_TARGET']}, epochs_per_trial={self.config['HYPERPARAM_OPTIMIZATION_EPOCHS']}, stagnation_threshold={self.config['HPO_STAGNATION_THRESHOLD']}", 'info')
-        self.logger.log("", 'info')
+        first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
+        last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+        thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
+        thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
+        self.logger.log(f"   Label_Thresholds: {first_thresh} to {last_thresh} ({len(thresholds)} thresholds)", 'info')
         
         # Phase execution sequence
         phase_sequence = [
@@ -122,10 +126,10 @@ class PipelineOrchestrator:
                 metrics = metrics[0]
             if isinstance(metrics, dict):
                 self.logger.log(f"[stat] Final Results:", 'info')
-                self.logger.log(f"   precision: {metrics.get('precision', 0):.4f}", 'info')
-                self.logger.log(f"   recall: {metrics.get('recall', 0):.4f}", 'info')
-                self.logger.log(f"   f1 Score: {metrics.get('f1', 0):.4f}", 'info')
-                self.logger.log(f"   auc: {metrics.get('auc', 0):.4f}", 'info')
+                self.logger.log(f"   precision: {metrics.get('Inf_P', 0):.4f}", 'info')
+                self.logger.log(f"   recall: {metrics.get('Inf_R', 0):.4f}", 'info')
+                self.logger.log(f"   f1 Score: {metrics.get('Inf_F1', 0):.4f}", 'info')
+                self.logger.log(f"   auc: {metrics.get('Inf_AUC', 0):.4f}", 'info')
         
         # =========================================================================
         # METRICS REVIEW FRAMEWORK
@@ -260,7 +264,7 @@ class PipelineOrchestrator:
                 # Val metrics
                 if train_m:
                     csv_lines.append(
-                        f"{arch},Val,{loss},{epochs},"
+                        f"{arch},Validation,{loss},{epochs},"
                         f"{train_m.get('P', 0):.4f},"
                         f"{train_m.get('R', 0):.4f},"
                         f"{train_m.get('AUC', 0):.4f},"
@@ -290,7 +294,7 @@ class PipelineOrchestrator:
                         f"0.5"
                     )
                 else:
-                    csv_lines.append(f"{arch},Val,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A")
+                    csv_lines.append(f"{arch},Validation,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A")
                 
                 # Inference metrics with Inf_ prefix
                 if inf_m:
@@ -521,12 +525,13 @@ class PipelineOrchestrator:
         return context
 
 
-def validate_pipeline_execution(context: Dict) -> bool:
+def validate_pipeline_execution(context: Dict, logger: Logger = None) -> bool:
     """
-    Validate complete pipeline executed successfully
+    Validate pipeline execution results
     
     Args:
-        context: Final pipeline context
+        context: Pipeline execution context
+        logger: Optional Logger instance for formatted output
         
     Returns:
         True if valid
@@ -534,6 +539,7 @@ def validate_pipeline_execution(context: Dict) -> bool:
     Raises:
         AssertionError: If validation fails
     """
+    log = logger.log if logger else print
     # Check all phase completion flags
     required_phases = [1, 3, 4, 5]
     optional_phases = ['Xa', 'Xb']
@@ -543,7 +549,7 @@ def validate_pipeline_execution(context: Dict) -> bool:
     for phase_str in optional_phases:
         flag = f'phase{phase_str}_complete'
         if context.get(flag) is None:
-            print(f"[warning] {flag} not set (may be optional)")
+            log(f"[warning] {flag} not set (may be optional)")
     
     # Check final outputs present
     assert 'final_metrics' in context, "Missing final_metrics"
@@ -578,21 +584,23 @@ def main(config: Dict = None) -> Dict:
     if config is None:
         config = CONFIG
     
+    logger = Logger(config)
+    
     # CPU mode (GPU disabled)
     try:
         import tensorflow as tf
         # Force CPU mode - CUDA_VISIBLE_DEVICES already set to ''
-        print("[info] Running in CPU mode")
+        logger.log("Running in CPU mode", 'info', 'pipeline')
     except Exception as e:
-        print(f"[warning] TensorFlow configuration: {e}")
+        logger.log(f"TensorFlow configuration: {e}", 'warning', 'pipeline')
     
     # Create and run orchestrator
     orchestrator = PipelineOrchestrator(config)
     context = orchestrator.run()
     
     # Validate final result
-    validate_pipeline_execution(context)
-    print("\n[pass] Pipeline execution validated successfully")
+    validate_pipeline_execution(context, logger)
+    logger.log("Pipeline execution validated successfully", 'info', 'pipeline')
     
     return context
 

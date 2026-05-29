@@ -5,10 +5,11 @@ Metric calculation utilities with defensive programming
 
 import numpy as np
 import warnings
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 
 
-def safe_average_precision_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+def safe_average_precision_score(y_true: np.ndarray, y_pred: np.ndarray,
+                                 logger: Callable = None) -> float:
     """
     Wrapper for average_precision_score that handles edge cases
     
@@ -25,7 +26,10 @@ def safe_average_precision_score(y_true: np.ndarray, y_pred: np.ndarray) -> floa
             warnings.filterwarnings("ignore", message="No positive class found in y_true")
             return average_precision_score(y_true, y_pred)
     except Exception as e:
-        print(f"Warning: average_precision_score failed: {e}")
+        if logger:
+            logger(f"Warning: average_precision_score failed: {e}", 'warning')
+        else:
+            print(f"Warning: average_precision_score failed: {e}")
         return 0.0
 
 
@@ -140,7 +144,8 @@ def analyze_loss_distribution(loss_history: List[float]) -> Dict[str, float]:
     }
 
 
-def calibrate_predictions(predictions: np.ndarray, y_binary: np.ndarray) -> np.ndarray:
+def calibrate_predictions(predictions: np.ndarray, y_binary: np.ndarray,
+                         logger: Callable = None) -> np.ndarray:
     """
     Apply isotonic regression for probability calibration.
     
@@ -157,7 +162,10 @@ def calibrate_predictions(predictions: np.ndarray, y_binary: np.ndarray) -> np.n
         calibrated = ir.fit_transform(predictions, y_binary)
         return calibrated
     except Exception as e:
-        print(f"Warning: Calibration failed: {e}")
+        if logger:
+            logger(f"Warning: Calibration failed: {e}", 'warning')
+        else:
+            print(f"Warning: Calibration failed: {e}")
         return predictions
 
 
@@ -242,7 +250,8 @@ def calculate_temporal_drift(segment_metrics: Dict[str, Dict[str, float]]) -> Di
 def calculate_permutation_importance(model: Any, X: np.ndarray, y_true: np.ndarray,
                                      scoring_metric: str = 'precision',
                                      n_iterations: int = 5,
-                                     pred_threshold: float = 0.5) -> Dict[int, float]:
+                                     pred_threshold: float = 0.5,
+                                     logger: Callable = None) -> Dict[int, float]:
     """
     Calculate permutation importance for each feature.
     
@@ -261,7 +270,7 @@ def calculate_permutation_importance(model: Any, X: np.ndarray, y_true: np.ndarr
     
     try:
         # Get baseline predictions
-        y_pred = model.predict(X).flatten()
+        y_pred = model.predict(X, verbose=0).flatten()
         y_binary = (y_pred >= pred_threshold).astype(int)
         
         # Calculate baseline score
@@ -288,7 +297,7 @@ def calculate_permutation_importance(model: Any, X: np.ndarray, y_true: np.ndarr
                 np.random.shuffle(X_permuted[:, i])
                 
                 # Get predictions with shuffled feature
-                y_pred_perm = model.predict(X_permuted).flatten()
+                y_pred_perm = model.predict(X_permuted, verbose=0).flatten()
                 y_binary_perm = (y_pred_perm >= pred_threshold).astype(int)
                 
                 # Calculate score
@@ -311,7 +320,10 @@ def calculate_permutation_importance(model: Any, X: np.ndarray, y_true: np.ndarr
         return importance
     
     except Exception as e:
-        print(f"Warning: Permutation importance calculation failed: {e}")
+        if logger:
+            logger(f"Warning: Permutation importance calculation failed: {e}", 'warning')
+        else:
+            print(f"Warning: Permutation importance calculation failed: {e}")
         return {}
 
 

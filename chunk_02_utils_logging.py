@@ -68,7 +68,7 @@ class Logger:
             
             # Format: [log_count] [source] [level] message
             level_prefix = {"info": "[info]", "warning": "[warning]", "error": "[error]"}.get(level, "[info]")
-            print(f"[{Logger.log_count:<5}] [{source}] {level_prefix} {message}", flush=True)
+            print(f"[LN{Logger.log_count:<7}] [{source}] {level_prefix} {message}", flush=True)
     
     def format_metric(self, value: float, is_percentage: bool = True) -> str:
         """
@@ -260,13 +260,10 @@ class Logger:
         valid_dates = dates_numeric[~np.isnan(dates_numeric)]
         
         if len(valid_dates) == 0:
-            print("[warning] No valid dates found")
+            self.log("[warning] No valid dates found", 'warning')
             return
         
-        print("[date] Temporal Coverage:")
-        print(f"  Date range: {int(valid_dates.min())} to {int(valid_dates.max())}")
-        print(f"  Unique dates: {len(np.unique(valid_dates))}")
-        print(f"  Total samples: {len(valid_dates)}")
+        self.log(f"[date] Temporal Coverage:  Date range: {int(valid_dates.min())} to {int(valid_dates.max())}  Unique dates: {len(np.unique(valid_dates))}  Total samples: {len(valid_dates)}", 'info')
     
     def log_system_performance(self, phase_timings: Dict[str, float], 
                               total_time: float, memory_usage: float):

@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Any, Tuple, Optional
 from scipy.stats import spearmanr, pointbiserialr
+from chunk_01_config import DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
 
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.inspection import permutation_importance
@@ -65,14 +66,14 @@ class FeatureImportanceAnalyzer:
         n_features = X.shape[1]
         
         # Get thresholds from config (synchronized with Phase 4)
-        first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
-        last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
-        thresh_step = self.config.get('THRESHOLD_STEP', -2.0)
+        first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
+        last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+        thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         
         self._log(f"Starting 6-method feature importance analysis")
         self._log(f"Features: {n_features}, Samples: {X.shape[0]}")
-        self._log(f"Running at {len(thresholds)} Label_Thresholds: {first_thresh} to {last_thresh}")
+        # Moved to pipeline init (chunk_20) for log ordering after HPO config
         
         for thresh in thresholds:
             y_binary = (y_raw >= thresh).astype(int)

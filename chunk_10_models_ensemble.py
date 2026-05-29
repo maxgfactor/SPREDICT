@@ -148,7 +148,7 @@ class SklearnModelWrapper:
         self._is_fitted = True
         return self
     
-    def predict(self, X):
+    def predict(self, X, **kwargs):
         """Predict class labels"""
         if not self._is_fitted:
             raise RuntimeError("Model not fitted yet")
@@ -168,7 +168,9 @@ class SklearnModelWrapper:
 
 def create_precision_ensemble(models: List, val_preds_matrix: np.ndarray, 
                              ensemble_name: str = "ensemble",
-                             precision_weights: List[float] = None) -> Callable:
+                             precision_weights: List[float] = None,
+                             features_per_model: List[List[int]] = None,
+                         logger: Callable = None) -> Callable:
     """
     Create precision-optimized ensemble from trained models
     
@@ -177,6 +179,7 @@ def create_precision_ensemble(models: List, val_preds_matrix: np.ndarray,
         val_preds_matrix: Matrix of validation predictions (n_models x n_samples)
         ensemble_name: Name for the ensemble
         precision_weights: Optional list of precision values for weighted averaging
+        features_per_model: Optional list of feature indices per model for pruning
         
     Returns:
         Ensemble callable that takes X and returns predictions
@@ -192,17 +195,21 @@ def create_precision_ensemble(models: List, val_preds_matrix: np.ndarray,
     
     def ensemble_predict(X):
         predictions = []
-        for model in models:
+        for i, model in enumerate(models):
             try:
+                X_i = X[:, features_per_model[i]] if features_per_model is not None and i < len(features_per_model) and features_per_model[i] is not None else X
                 if hasattr(model, 'sklearn_model'):
-                    pred = model.predict_proba(X)[:, 1]
+                    pred = model.predict_proba(X_i)[:, 1]
                 elif hasattr(model, 'predict_proba'):
-                    pred = model.predict_proba(X)[:, 1]
+                    pred = model.predict_proba(X_i)[:, 1]
                 else:
-                    pred = model.predict(X).flatten()
+                    pred = model.predict(X_i).flatten()
                 predictions.append(pred)
             except Exception as e:
-                print(f"Warning: Model prediction failed: {e}")
+                if logger:
+                    logger(f"Warning: Model prediction failed: {e}", 'warning')
+                else:
+                    print(f"Warning: Model prediction failed: {e}")
                 continue
         
         if not predictions:

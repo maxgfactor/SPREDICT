@@ -5,6 +5,7 @@ Initial data loading and preprocessing phase
 
 import numpy as np
 from typing import Dict
+from chunk_01_config import DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
 
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
@@ -39,6 +40,7 @@ class Phase1_PipelineSetup(BasePhase):
         try:
             X, y, dates = self.data_manager.load_data()
             self.logger.log(f"Data loaded: {len(X)} samples, {X.shape[1]} features", 'info')
+            self.logger.log_temporal_coverage(dates)
         except FileNotFoundError as e:
             self.logger.log(f"critical: Data file not found - {e}", 'error')
             raise RuntimeError("Cannot proceed without valid fraud data file") from e
@@ -65,9 +67,9 @@ class Phase1_PipelineSetup(BasePhase):
                 if np.nanmax(raw_target) > 100:
                     self.logger.log(f"sanity check: Extreme target values detected (max={np.nanmax(raw_target):.2f})", 'warning')
                 # Class distribution for ENTIRE dataset at all thresholds (full detail)
-                first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
-                last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
-                thresh_step = self.config.get('THRESHOLD_STEP', -2.0)
+                first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
+                last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+                thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
                 thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
 
                 for thresh in thresholds:
@@ -93,9 +95,9 @@ class Phase1_PipelineSetup(BasePhase):
         }
         
         # Log full class distribution for ALL thresholds (synchronized with Phase 4)
-        first_thresh = self.config.get('FIRST_THRESHOLD', 20.0)
-        last_thresh = self.config.get('LAST_THRESHOLD', 0.0)
-        thresh_step = self.config.get('THRESHOLD_STEP', -2.0)
+        first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
+        last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+        thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
 
         for thresh in thresholds:
@@ -112,7 +114,6 @@ class Phase1_PipelineSetup(BasePhase):
             self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
             self.logger.log(f"  Imbalance ratio: {imbalance_ratio:.1f}:1", 'info')
         
-        self.logger.log_temporal_coverage(dates)
         self.logger.log_feature_quality_metrics(X)
         
         # Augment fraud cases if needed

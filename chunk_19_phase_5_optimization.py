@@ -81,7 +81,7 @@ class Phase5_PredictionOptimization(BasePhase):
         # =========================================================================
         # STEP 1: Load saved models and metadata from ./saved_models/
         # =========================================================================
-        from chunk_22_model_loader import load_models_with_metadata, load_preprocessing_params
+        from chunk_22_model_loader import load_models_with_metadata, load_preprocessing_params, load_scaler
         
         models_path = self.config.get('MODELS_PATH', './saved_models')
         data_path = self.config.get('DATA_PATH', 'for_train_x_2025_10_24_clean.csv')
@@ -179,6 +179,11 @@ class Phase5_PredictionOptimization(BasePhase):
         self.logger.log("", 'info')
         self.logger.log("Per-Architecture Results on Newest Data", 'info')
         
+        # Consolidated column set (same df_with_all_cols for all architectures)
+        fraud_output_cols = ['Market_Cap', '52W_Low', '52W_High', 'Change', 'ChangeY', 'Ticker_id']
+        available_cols = [c for c in fraud_output_cols if c in df_with_all_cols.columns] if df_with_all_cols is not None else []
+        all_pred_fraud_sets = []
+        
         for arch_name, model in models.items():
             # Get metadata for this architecture
             arch_metadata = metadata.get(arch_name, {})
@@ -201,6 +206,15 @@ class Phase5_PredictionOptimization(BasePhase):
                 'info'
             )
             
+            # Apply StandardScaler for NN architectures (Bug 2 fix: BN inference collapse)
+            nn_archs = ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']
+            if arch_name in nn_archs:
+                scaler = load_scaler(arch_name, models_path)
+                if scaler is not None:
+                    X_arch = scaler.transform(X_arch)
+                else:
+                    self.logger.log(f"   [warning] No scaler found for {arch_name} — predictions may be degraded", 'warning')
+
             # Run inference
             try:
                 predictions = model.predict(X_arch, verbose=0).flatten()
@@ -281,18 +295,12 @@ class Phase5_PredictionOptimization(BasePhase):
                 available_cols = [c for c in fraud_output_cols if c in df_with_all_cols.columns]
 
                 pred_fraud_indices = np.where(binary_predictions == 1)[0]
+                all_pred_fraud_sets.append(set(pred_fraud_indices))
                 if len(pred_fraud_indices) > 0:
-                    pred_fraud_rows = df_with_all_cols.iloc[pred_fraud_indices]
-                    fraud_rows_filtered = pred_fraud_rows[available_cols]
-
                     self.logger.log("", 'info')
                     self.logger.log(f"{arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows)", 'info')
                     self.logger.log(f"architecture: {arch_name} | precision: {metrics['precision']:.4f} | prediction_binary_split: {pred_threshold} | predicted: {len(pred_fraud_indices)}", 'info')
                     self.logger.log("Row," + ",".join(available_cols), 'info')
-
-                    for idx, (_, row) in enumerate(fraud_rows_filtered.iterrows(), 1):
-                        row_str = f"{idx}," + ",".join(str(v) for v in row.values)
-                        self.logger.log(row_str, 'info')
 
             # Store results with Inf_ prefix (16 metrics + 2 extras)
             architecture_results.append({
@@ -323,6 +331,20 @@ class Phase5_PredictionOptimization(BasePhase):
                 'Inf_PRAUC': inf_prauc,
                 'Inf_BalAcc': inf_balanced_acc,
             })
+        
+        # Consolidated intersection table (Ticker_id present in every architecture)
+        if df_with_all_cols is not None and len(all_pred_fraud_sets) > 1:
+            non_empty_sets = [s for s in all_pred_fraud_sets if s]
+            if len(non_empty_sets) == len(all_pred_fraud_sets):
+                common_indices = set.intersection(*all_pred_fraud_sets)
+                if common_indices:
+                    consensus_rows = df_with_all_cols.iloc[list(common_indices)]
+                    self.logger.log("", 'info')
+                    self.logger.log(f"Consolidated Predicted Fraud (intersection across {len(all_pred_fraud_sets)} architectures, Ticker_id present in every arch):", 'info')
+                    self.logger.log("Row," + ",".join(available_cols), 'info')
+                    for idx, (_, row) in enumerate(consensus_rows.iterrows(), 1):
+                        self.logger.log(f"{idx}," + ",".join(str(v) for v in row.values), 'info')
+                    self.logger.log(f"  Total consensus rows: {len(common_indices)}", 'info')
         
         # =========================================================================
         # STEP 7: Summary Table (NO confusion matrix)
@@ -439,10 +461,10 @@ def validate_phase5_output(context: Dict) -> bool:
     
     for result in results:
         assert 'architecture' in result, "Missing architecture name"
-        assert 'precision' in result, "Missing precision"
-        assert 'recall' in result, "Missing recall"
-        assert 'f1' in result, "Missing f1"
-        assert 'auc' in result, "Missing auc"
+        assert 'Inf_P' in result, "Missing precision"
+        assert 'Inf_R' in result, "Missing recall"
+        assert 'Inf_F1' in result, "Missing f1"
+        assert 'Inf_AUC' in result, "Missing auc"
     
     assert context['phase5_complete'] == True
     

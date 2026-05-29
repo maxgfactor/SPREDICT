@@ -1,6 +1,6 @@
 # Software Specification Requirements (SSR) - Fraud Detection Ensemble
 
-**Version**: 3.6  
+**Version**: 3.10  
 **Date**: 2026-05-25  
 **Status**: Living Document - Update After Each Run  
 
@@ -127,7 +127,7 @@ Example (current format with tag reorder):
 |--------------|-----|-----|-----|-----|------------|-------|
 
 ### Section 2: Threshold Optimization Results
-Logged for each of 11 thresholds (20.0 to 0.0, step -2.0):
+Logged for each of 3 thresholds (20.0, 10.0, 0.0):
 - Train metrics: 24 metrics (PRECISION, TRUE_POSITIVES, TRUE_NEGATIVES, FALSE_POSITIVES, FALSE_NEGATIVES, MAX_PREDICTION, MEAN_PREDICTION, RECALL, F1_SCORE, AUC, SPECIFICITY, FALSE_POSITIVE_RATE, F2_SCORE, MCC, PRAUC, BALANCED_ACCURACY, Brier, Kappa, Informedness, Markedness, Gini, OPTIMAL_THRESHOLD, STD_PREDICTION, PCT_ABOVE_THRESHOLD)
 - Val metrics: Same 24 metrics
 - Optimal threshold selection
@@ -164,8 +164,8 @@ Trial 1/30: n_estimators=500, num_leaves=31, learning_rate=0.05 → VALIDATION_P
 
 | Architecture | Best Trial# | Best Params | VALIDATION_Precision | VALIDATION_Recall | VALIDATION_AUC | Notes |
 |--------------|-------------|-------------|---------------|-----------|---------|-------|
-| CatBoost | 59+ | iterations=200, depth=6, lr=0.1, auto_class_weights=Balanced, l2_leaf_reg=10 | 0.5381 | — | — | Stagnant; Maximize phase needed |
-| LightGBM | 110+ | n_estimators=500, num_leaves=63, lr=0.1, scale_pos_weight=500, min_child_samples=100, reg_alpha=0.1, reg_lambda=1.0, subsample=0.8 | 0.1753 | — | — | Stagnant; wider search needed |
+| CatBoost | 59+ | iterations=200, depth=6, lr=0.1, auto_class_weights=SqrtBalanced, l2_leaf_reg=10 | 0.5381 | — | — | Stagnant; Maximize phase needed |
+| LightGBM | 110+ | n_estimators=500, num_leaves=63, lr=0.1, class_weight=balanced, min_child_samples=100, reg_alpha=0.1, reg_lambda=1.0, subsample=0.8 | 0.1753 | — | — | Stagnant; wider search needed |
 | XGBoost | — | n_estimators=500, max_depth=7, lr=0.1, scale_pos_weight=500, min_child_weight=50, reg_alpha=0.5, reg_lambda=5.0, subsample=0.7 | 0.2527 | — | 0.0000 | Severely overfit; Train AUC=0.8806 → Val AUC=0.0000 |
 | Dense | — | units=32, layers=2, dropout=0.3, lr=0.0005, epochs=15, alpha=1.0, gamma=3.0 | 0.3689 | — | — | HPO val P (from metadata); Phase 4 training failed |
 | CNN | — | filters=32, kernel_size=7, dropout=0.1, lr=0.001, epochs=20, alpha=0.75, gamma=3.0 | 1.0000 | — | — | ARTIFACT — all TP=0, MaxPred=0.0042 |
@@ -173,6 +173,26 @@ Trial 1/30: n_estimators=500, num_leaves=31, learning_rate=0.05 → VALIDATION_P
 | RNN | — | units=16, dropout=0.05, lr=0.001, epochs=10, alpha=1.0, gamma=3.0 | 0.4970 | — | — | From metadata; Phase 4 training failed |
 | VAE | — | latent_dim=64, lr=0.001, dropout=0.05, alpha=0.75, gamma=2.0 | 0.0000 | — | — | MaxPred<0.5, all trials rejected |
 | Transformer | — | dim=32, heads=2, dropout=0.02, lr=0.0005, alpha=1.0, gamma=3.0 | 0.3787 | — | — | From metadata; Phase 4 training failed |
+
+### Objective / Loss Functions Per Active Architecture
+
+| Architecture | Loss Function | Imbalance Handling | Source |
+|---|---|---|---|
+| CatBoost | Logloss | `auto_class_weights='SqrtBalanced'` | chunk_11 |
+| LightGBM | binary (log loss) | `class_weight='balanced'` | chunk_11 |
+| XGBoost | `binary:logistic` | `scale_pos_weight` (dynamic neg/pos) | chunk_11 |
+| DENSE | BCE / FocalLoss (via FOCAL_LOSS_CONFIG) | `class_weight` from trainer + optional FocalLoss | chunk_08 |
+| CNN | FocalLoss(α=0.75, γ=1.5) | Built-in FocalLoss + `class_weight` from trainer | chunk_08 |
+| RNN | BCE / FocalLoss (via FOCAL_LOSS_CONFIG) | `class_weight` from trainer + optional FocalLoss | chunk_08 |
+| LSTM | BCE / FocalLoss (via FOCAL_LOSS_CONFIG) | `class_weight` from trainer + optional FocalLoss | chunk_08 |
+| VAE | FocalLoss(α=0.75, γ=1.5) | Built-in FocalLoss + `class_weight` from trainer | chunk_08 |
+| Transformer | FocalLoss(α=0.75, γ=1.5) | Built-in FocalLoss + `class_weight` from trainer | chunk_09 |
+
+Notes:
+- All neural architectures receive `class_weight={0: weight, 1: weight}` at `.fit()` time via `chunk_14` trainer (`compute_class_weight('balanced')`)
+- FOCAL_LOSS_CONFIG enables per-architecture FocalLoss override at compile time (config key in `chunk_01_config.py:161-168`)
+- Architectures with FocalLoss as default: CNN, VAE, Transformer (α=0.75, γ=1.5), Dense (α=0.5, γ=1.0), RNN (α=0.5, γ=1.0), LSTM (α=0.75, γ=1.5)
+- Architectures with `loss_function` in HPO space: CNN, Dense, RNN, LSTM, VAE (Transformer has FocalLoss default but HPO only offers BCE)
 
 ### Phase 5 Results - Run #2026-05-11 (CRASHED at chunk_19 line 272)
 
@@ -550,7 +570,7 @@ The following features were removed during preprocessing:
 | Phase 1 | Data loading, preprocessing, split (train/val/inference) | X_train, X_val, X_inference in context | → See Section 1.1 |
 | Phase 2 | Threshold optimization | ❌ Removed - merged into Phase 4 | N/A |
 | Phase 3 | Temporal weighting generation | temporal_weights in context | → See Section 1.1 |
-| Phase Xa | Feature importance (11 thresholds, per-threshold pruning) | threshold_kept_indices dict, all 24 features kept in context['X'] | → Feature analysis |
+| Phase Xa | Feature importance (3 thresholds, per-threshold pruning) | threshold_kept_indices dict, all 24 features kept in context['X'] | → Feature analysis |
 | Phase 4a | Threshold optimization | optimal_threshold per architecture | → See Section 1.1.2, Section 1.3 |
 | Phase 4b | Hyperparameter optimization (Optuna) | best_hyperparams per architecture | → See Section 1.1.3, Section 1.3 |
 | Phase 4c | Ensemble creation | Combined predictions | → See Section 1.1.4, Section 1.3 |
@@ -567,11 +587,11 @@ The following features were removed during preprocessing:
 | ID | Requirement | Priority | Implementation | Logging Reference |
 |----|-------------|----------|----------------|----------------------|
 | FR-01 | Load and preprocess CSV data with validation | Required | chunk_05_data_manager.py | → See Section 1.1.1 |
-| FR-02 | Handle extreme class imbalance (259:1) using scale_pos_weight | Required | chunk_11_models_sklearn.py | → See Section 1.3 |
+| FR-02 | Handle extreme class imbalance (259:1) using class weights | Required | chunk_11_models_sklearn.py | → See Section 1.3 |
 | FR-03 | Implement train/validation split (70%/30% temporal) | Required | chunk_16_phase_1_setup.py | → See Section 1.1.1 |
 | FR-04 | Apply temporal weighting based on date | Required | chunk_07_data_temporal.py | → See Section 1.1.1 |
 | FR-05 | Train multiple architectures: LightGBM, XGBoost, CatBoost, VAE, Dense, CNN, RNN, LSTM, Transformer | Required | chunk_08-11_models_*.py, chunk_18_phase_4_ensemble.py | → See Section 1.1.5 |
-| FR-06 | Perform threshold optimization (11 thresholds: 20.0 to 0.0, step -2.0) | Required | chunk_12_evaluation_evaluator.py | → See Section 1.1.2, Section 1.3 |
+| FR-06 | Perform threshold optimization (3 thresholds: 20.0, 10.0, 0.0) | Required | chunk_12_evaluation_evaluator.py | → See Section 1.1.2, Section 1.3 |
 | FR-07 | Perform hyperparameter optimization (20 Optuna trials) | Required | chunk_21_hyperparam_optimizer.py | → See Section 1.1.3, Section 1.3 |
 | FR-08 | Create precision-weighted ensemble | Required | chunk_10_models_ensemble.py | → See Section 1.1.4, Section 1.3 |
 | FR-09 | Save trained models to `./saved_models/` | Required | chunk_18_phase_4_ensemble.py | → See Section 1.2 |
@@ -623,7 +643,7 @@ The following features were removed during preprocessing:
 |-----------|-------|-------------|
 | FIRST_THRESHOLD | 20.0 | Starting label threshold |
 | LAST_THRESHOLD | 0.0 | Ending label threshold |
-| THRESHOLD_STEP | -2.0 | Label threshold increment |
+| THRESHOLD_STEP | -10.0 | Label threshold increment (reduced to 3 steps: 20→10→0) |
 | PREDICTION_THRESHOLD | 0.5 | Binary classification threshold |
 
 ### Ensemble Configuration
@@ -639,7 +659,7 @@ The following features were removed during preprocessing:
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | ENABLE_HYPERPARAM_OPTIMIZATION | True | Enable HPO |
-| HYPERPARAM_OPTIMIZATION_EPOCHS | 20 | Epochs per HPO trial |
+| HYPERPARAM_OPTIMIZATION_EPOCHS | 5 | Epochs per HPO trial |
 | HPO_TRIALS | 20 | Number of Optuna trials |
 | ENABLE_POST_HPO_THRESHOLD_SEARCH | True | Run threshold search after HPO |
 
@@ -667,13 +687,12 @@ Root cause diagnosis: All 6 NNs produced **MaxPred << 0.5** (CNN: 0.0042, LSTM: 
 }
 ```
 
-### LightGBM (Iteration 1)
+### LightGBM (Iteration 1) — `scale_pos_weight` removed in 3.8 (uses `class_weight='balanced'`)
 ```python
 {
     'n_estimators': [300, 500, 800],    # was [200, 500]
     'num_leaves': [31, 63, 127],        # was [31, 63]
     'learning_rate': [0.03, 0.05, 0.08],  # added lower LR
-    'scale_pos_weight': [300, 400, 500, 700],  # was [400, 500]
     'min_child_samples': [50, 100, 200],  # was [100, 200]
     'reg_alpha': [0.01, 0.1, 0.5, 1.0],  # was [0.1, 0.5]
     'reg_lambda': [0.5, 1.0, 5.0, 10.0],  # was [1.0, 5.0]
@@ -793,7 +812,7 @@ Root cause diagnosis: All 6 NNs produced **MaxPred << 0.5** (CNN: 0.0042, LSTM: 
 | Parameter | Was | Now | Rationale |
 |-----------|-----|-----|-----------|
 | `HPO_STAGNATION_THRESHOLD` | 30 | **50** | More room for exploration in wider search spaces |
-| `HYPERPARAM_OPTIMIZATION_TRIALS` | 30 | **60** | 2x base trials per phase |
+| `HYPERPARAM_OPTIMIZATION_TRIALS` | 30 | **5** | Reduced from 30 to 5 for faster pipeline runs |
 | `max_trials` (safety cap in chunk_21) | 500 | **1000** | Allow deeper maximization phases |
 
 ---
@@ -815,7 +834,7 @@ Root cause diagnosis: All 6 NNs produced **MaxPred << 0.5** (CNN: 0.0042, LSTM: 
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Extreme class imbalance | Model bias | scale_pos_weight, focal loss |
+| Extreme class imbalance | Model bias | class_weight, auto_class_weights, focal loss |
 | Long training time | Cost overruns | GB models run first (faster) |
 | Overfitting | Poor generalization | Temporal weights, validation split |
 | Memory issues | Crashes | Chunked processing, memory utilities |
@@ -904,7 +923,10 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.3 | 2026-05-13 | GIS hyperparameter reconfiguration — all 9 search spaces expanded, HPO thresholds raised (stagnation 30→50, trials 30→60, cap 500→1000), Phase 4 results logged (CatBoost 0.5381 best, 6 NNs broken), Phase 5 crash documented in Section 4.7, fixes A-D applied | Phase 4: CatBoost 0.5381, LightGBM 0.2970, XGBoost 0.2527; 6 NNs all MaxPred<<0.5; Phase 5 crashed line 272 — df_with_all_cols None guard fix |
 | 3.4 | 2026-05-18 | GIS (Global Iteration Strategy) SUCCESS — CatBoost achieved 0.7204 inference precision (>0.60 target), Phase 5 fixes (KeyError: 'precision' → 'Inf_P' [now INFERENCE_PRECISION per Category A rename], shape mismatch handling, df_filtered→n_inference, inference_date→dates_inference[0]), sample size reduced 368816→184408 | CatBoost: 0.7204 INFERENCE_PRECISION; LightGBM: 0.2722; XGBoost: 0.2751; 5 NNs skipped (shape mismatch); sample reduced for faster runs |
 | 3.5 | 2026-05-19 | Logging standardization (tag reorder, terminology), per-threshold feature pruning architecture, feature importance logging overhaul, HPO logging improvements (best trial tracking, [BEST TRIAL] format, [OPTIMAL] expanded), Section 2 redundant logs removed with stale y_val_binarized fix | Tag reorder: [BASELINE] {arch_tag}→{arch_tag} [BASELINE]; Phase Xa stores threshold_kept_indices dict; Phase 4+5 per-threshold feature slicing; _log_top_features()→_log_all_features(); 13 redundant log lines removed; stale-variable bug identified (dropped_indices on lines 187-188) |
-| 3.6 | 2026-05-25 | `[diag]`→`[diagnostic]`, `[diag-hpo]`→`[diagnostic-hyperparameter_optimization]`, `[diag-ensemble]`→`[diagnostic-ensemble]`, `[post-hpo]`→`[post hyperparameter_optimization]`, `Percentiles:`→`percentiles:`, `Hist:`→`histogram:`, `PredBuckets:`→`prediction_buckets:`, inline prose lowercased (`best_prediction_threshold:`, `prediction_threshold_search:`, etc.), `[label_threshold_optimal]`→`[label_threshold_OPTIMAL]`, `Train:`→`train:`, `Val:`→`validation:`, `hpo:`→`hyperparameter_optimization:`, `label_threshold=`→`LABEL_THRESHOLD=` in chunk_12 (6×), `[HPO]`/`[PRE-HPO]`→`[HYPERPARAMETER_OPTIMIZATION]`/`[PRE-HYPERPARAMETER_OPTIMIZATION]`, all HPO/POST-HPO prose labels expanded, `Phase #:` prefix removed, `[pass] ... validation passed` deleted (8 print + 1 logger), `[time]` per-phase timing deleted, `Running`/`Starting` phase start lines deleted, POST-HPO comparison fixed (uses `hpo_val_precision` not `pre_hpo_val_precision`), threshold comparison labels renamed + ` search` suffix added | Expand all `diag` shorthand to full `diagnostic`, expand `hpo` to `hyperparameter_optimization` in bracket tags, standardize diagnostic string labels, lowercase all remaining cosmetic prose labels, fix POST-HPO logic to compare against HPO model precision, remove redundant phase logging |
+| 3.7 | 2026-05-25 | `[label_threshold_search]` block deleted (redundant with `[diagnostic]`), per-threshold diagnostic expanded to full 24-metric train+val set (matches section format), `pred_*`→`prediction_*` (pred_mean, pred_std, pred_min, pred_max), `val_stdpred`/`val_pctabovethresh` standardized → `validation_standard_deviation_prediction`/`validation_percentage_above_threshold` across all 4 sections, trailing comma removed from `LABEL_THRESHOLD=20.0,` | Remove redundant threshold search logging, standardize remaining shorthand metrics, match diagnostic format to section format |
+| 3.8 | 2026-05-25 | LightGBM: `scale_pos_weight`→`class_weight='balanced'` for auto class balancing; CatBoost: `auto_class_weights` default `'Balanced'`→`'SqrtBalanced'` for safer weight scaling on imbalanced data; LightGBM HPO space pruned (`scale_pos_weight` removed) | Eliminate manual weight calculation, reduce overfitting risk from extreme class weights |
+| 3.9 | 2026-05-25 | DENSE, RNN, LSTM builders: added `FOCAL_LOSS_CONFIG` checks for per-architecture FocalLoss support; Dense and LSTM HPO spaces: added `loss_function` param for BCE/FocalLoss toggle | Enable FocalLoss on remaining active neural architectures for precision-focused training |
+| 3.10 | 2026-05-25 | Reduced threshold search from 11 to 3 increments (20→10→0, step -10.0); centralized fallback constants in `chunk_01_config`; unified mismatched fallbacks across all phases; reduced HPO trials from 30 to 5 per architecture with `DEFAULT_HPO_TRIALS=10` fallback; reduced HPO epochs per trial from 20 to 5; moved `Label_Thresholds` log from analyzer to pipeline init for earlier log position; moved `Temporal Coverage` from 4 `print()` lines to single `self.log()` right after data loading; removed blank line from pipeline init; consolidated per-architecture predicted-fraud data rows into single intersection table (logged after all architectures, Ticker_id present in every arch); CSV Phase value `Val`→`Validation` | Faster pipeline runs, consistent defaults, cleaner log ordering |
 
 ---
 
@@ -915,7 +937,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | FR | Produces | Metrics/Logging |
 |----|----------|-----------------|
 | FR-01 (Data Loading) | Section 1.1.1 | Baseline diagnostics |
-| FR-02 (Class Imbalance) | Section 1.3 | Precision, Recall (affected by scale_pos_weight) |
+| FR-02 (Class Imbalance) | Section 1.3 | Precision, Recall (affected by class weight configuration) |
 | FR-03 (Train/Val Split) | Section 1.1.1 | Data loading logs |
 | FR-04 (Temporal Weighting) | Section 1.1.1 | Temporal feature logs |
 | FR-05 (Train Architectures) | Section 1.1.5 | Final model summary |
@@ -1126,7 +1148,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 | Parameter | Was | Now |
 |-----------|-----|-----|
 | `HPO_STAGNATION_THRESHOLD` | 30 | **50** |
-| `HYPERPARAM_OPTIMIZATION_TRIALS` | 30 | **60** |
+| `HYPERPARAM_OPTIMIZATION_TRIALS` | 30 | **5** |
 
 #### max_trials Raised (chunk_21_hyperparam_optimizer.py)
 | Parameter | Was | Now |
@@ -1192,7 +1214,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 - **DYNAMIC_CLASS_WEIGHTS**: True
 - **PREDICTION_THRESHOLD_SEARCH**: True (searches 0.1-0.5)
 - **CALIBRATE_PREDICTIONS**: False (available for future use)
-- **scale_pos_weight**: Wired for LightGBM, XGBoost, CatBoost
+- **class_weight**: LightGBM uses `'balanced'` (auto class balancing); **scale_pos_weight**: XGBoost (dynamic ratio), CatBoost (dynamic ratio, unused in constructor)
 
 ### Step 4: Feature Engineering
 - **WINSORIZE_FEATURES**: True (1%/99% percentile clipping)
@@ -1290,7 +1312,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 
 ### Architecture-Specific HPO Improvements (May 5, 2026)
 - HPO Trials: 20 → 30 for all architectures
-- LightGBM: scale_pos_weight [400,500], min_child [100,200], added reg_alpha/reg_lambda
+- LightGBM: class_weight='balanced', min_child [100,200], added reg_alpha/reg_lambda
 - XGBoost: scale_pos_weight [400,500], min_child [50,100,200], added reg_alpha/reg_lambda
 - CatBoost: iterations [100,200] (reduced), l2_leaf_reg [3,5,10] (extended)
 
@@ -1316,8 +1338,7 @@ Complete reference of all cosmetic log labels, section tags, metric keys, and ab
 | `[section_4_post_hyperparameter_optimization]` | Post-HPO evaluation | chunk_18 |
 | `[section_5_final]` | Final training summary | chunk_18 |
 | `[baseline]` | Baseline model evaluation | chunk_18 |
-| `[label_threshold_search]` | Label threshold search step | chunk_18 |
-| `[label_threshold_optimal]` | Optimal threshold found | chunk_18 |
+| `[label_threshold_OPTIMAL]` | Optimal threshold found | chunk_18 |
 | `[final]` | Final training step | chunk_18 |
 | `[post_hyperparameter_optimization]` | Post-HPO results | chunk_18 |
 | `[pre_hyperparameter_optimization]` | Pre-HPO results | chunk_18 |
@@ -1506,7 +1527,8 @@ Complete reference of all cosmetic log labels, section tags, metric keys, and ab
 | activation | Activation function | log:Dense trial lines | SPEC:713 |
 | n_estimators | Number of trees | log:XGB tree trials | SPEC:673,689 |
 | max_depth | Maximum tree depth | log:XGB tree trials | SPEC:690 |
-| scale_pos_weight | Positive class weight ratio | log:tree trial lines | SPEC:676,692 |
+| class_weight | Class weight mode (LightGBM, 'balanced') | log:LightGBM trial lines | SPEC:676 |
+| scale_pos_weight | Positive class weight ratio (XGBoost, CatBoost) | log:XGB trial lines | SPEC:692 |
 | min_child_weight | Min child weight (XGBoost) | log:XGB trial lines | SPEC:693 |
 | reg_alpha | L1 regularization on weights | log:tree trial lines | SPEC:678,694 |
 | reg_lambda | L2 regularization on weights | log:tree trial lines | SPEC:679,695 |
@@ -1591,7 +1613,8 @@ CI/CD, GPU, GNN, JSON, HTML, WSL, TF/TensorFlow, sklearn, FR, AC, SSR, SOP, GIS,
 | L | Standalone one-offs: `SAMPLES`→`samples`, `FEATURES`→`features` | ~20 | Unique per file |
 | M | Prose: `Class Distribution`→`class distribution` | ~25 | Initial caps → lowercase |
 | N | Abbreviation expansion: `[diag]`→`[diagnostic]`, `[diag-hpo]`→`[diagnostic-hyperparameter_optimization]`, `[diag-ensemble]`→`[diagnostic-ensemble]`, `[post-hpo]`→`[post hyperparameter_optimization]`, `PredBuckets:`→`prediction_buckets:`, `Percentiles:`→`percentiles:`, `Hist:`→`histogram:`, plus inline prose labels | 16 | chunk_04 (2), chunk_18 (14) |
-| O | HPO label expansion + Phase logging removal: `[HPO]`/`[PRE-HPO]`→`[HYPERPARAMETER_OPTIMIZATION]`/`[PRE-HYPERPARAMETER_OPTIMIZATION]`, `hpo:`→`hyperparameter_optimization:`, all HPO/POST-HPO prose expanded, `Phase #:` removed, `[pass]`/`[time]`/`Running`/`Starting` deleted, `label_threshold=`→`LABEL_THRESHOLD=` in chunk_12 (6×), `Skipping`→`skipping` (2×), `P=`→`precision=`, `%pos@0.5=`→`percent_positive_at_0_5=`, `Train:`→`train:`, `Val:`→`validation:`, `[label_threshold_optimal]`→`[label_threshold_OPTIMAL]` | ~45 | chunk_12 (11), chunk_16 (4), chunk_17 (3), chunk_18 (~25), chunk_19 (4), chunk_20 (10), chunk_01/02/05/07 (4 print deletions) |
+| O | HPO label expansion + Phase logging removal: `[HPO]`/`[PRE-HPO]`→`[HYPERPARAMETER_OPTIMIZATION]`/`[PRE-HYPERPARAMETER_OPTIMIZATION]`, `hpo:`→`hyperparameter_optimization:`, all HPO/POST-HPO prose expanded, `Phase #:` removed, `[pass]`/`[time]`/`Running`/`Starting` deleted, `label_threshold=`→`LABEL_THRESHOLD=` in chunk_12 (6×), `Skipping`→`skipping` (2×), `P=`→`precision=`, `%pos@0.5=`→`percent_positive_at_0_5=`, `Train:`→`train:`, `Val:`→`validation:`, `[label_threshold_optimal]`→`[label_threshold_OPTIMAL]` | ~49 | chunk_12 (11), chunk_16 (4), chunk_17 (3), chunk_18 (~25), chunk_19 (4), chunk_20 (10), chunk_01/02/05/07 (4 print deletions) |
+| P | Per-threshold diagnostic standardization: `pred_*`→`prediction_*`, lightweight (6) → full (24 train + 24 val), `[label_threshold_search]` block deleted (4 lines), `val_stdpred`/`val_pctabovethresh` standardization (4 sections × 2 labels each) | ~35 | chunk_12 (1 line replacement), chunk_18 (4 lines deleted + 8 labels expanded) |
 
 **Files affected**: 19 chunk files
 **Highest risk**: chunk_18 (~200 changes), chunk_19 (~50 changes), chunk_20 (~60 changes)

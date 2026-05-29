@@ -5,7 +5,22 @@ Base neural network architectures
 
 import numpy as np
 import tensorflow as tf
+import keras
 from typing import Dict, Optional
+
+
+@keras.saving.register_keras_serializable(package='VAE')
+class SamplingLayer(tf.keras.layers.Layer):
+    """Reparameterization sampling with KL regularization for VAE (Keras 3 compatible)."""
+    def call(self, inputs):
+        z_mean, z_log_var = inputs
+        z_log_var = tf.keras.ops.clip(z_log_var, -5.0, 2.0)
+        epsilon = tf.keras.random.normal(shape=tf.keras.ops.shape(z_mean))
+        z = z_mean + tf.keras.ops.exp(0.5 * z_log_var) * epsilon
+        kl_loss = -0.5 * tf.keras.ops.mean(tf.keras.ops.sum(
+            1 + z_log_var - tf.keras.ops.square(z_mean) - tf.keras.ops.exp(z_log_var), axis=-1))
+        self.add_loss(0.001 * kl_loss)
+        return z
 
 
 def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
@@ -41,17 +56,21 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
         x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Dropout(0.1)(x)
         
-        # Latent space
-        z_mean = tf.keras.layers.Dense(latent_dim, activation='relu', name='latent')(x)
+        # Latent space parameters
+        z_mean = tf.keras.layers.Dense(latent_dim, name='z_mean')(x)
+        z_log_var = tf.keras.layers.Dense(latent_dim, name='z_log_var')(x)
         
-        # Stronger classification head
-        clf = tf.keras.layers.Dense(64, activation='relu')(z_mean)
+        # Sampling with KL regularization (handled internally by SamplingLayer)
+        z = SamplingLayer(name='z')([z_mean, z_log_var])
+        
+        # Classification head from sampled latent
+        clf = tf.keras.layers.Dense(64, activation='relu')(z)
         clf = tf.keras.layers.Dropout(0.1)(clf)
         clf = tf.keras.layers.Dense(32, activation='relu')(clf)
         clf = tf.keras.layers.Dropout(0.1)(clf)
         classification_output = tf.keras.layers.Dense(1, activation='sigmoid')(clf)
         
-        # Create model
+        # Create model (KL loss handled inside SamplingLayer)
         vae = tf.keras.Model(encoder_inputs, classification_output)
         
         # Use focal loss if configured for this architecture (per-arch config)
@@ -145,7 +164,7 @@ def build_cnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     model = tf.keras.Model(inputs, outputs)
     
     # Use focal loss if configured for this architecture (per-arch config)
-    arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('Dense', {})
+    arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('CNN', {})
     if arch_config.get('enabled', False):
         try:
             from chunk_11_models_sklearn import FocalLoss
@@ -289,7 +308,17 @@ def build_rnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     
     model = tf.keras.Model(inputs, outputs)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+    
+    arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('RNN', {})
+    if arch_config.get('enabled', False):
+        try:
+            from chunk_11_models_sklearn import FocalLoss
+            clf_loss = FocalLoss(alpha=arch_config.get('alpha', 0.5), gamma=arch_config.get('gamma', 1.0))
+            model.compile(optimizer=optimizer, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+        except Exception:
+            model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+    else:
+        model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
     
     return model
 
@@ -324,7 +353,17 @@ def build_lstm_model(config: Dict, input_dim: int, loss: str = 'binary_crossentr
     
     model = tf.keras.Model(inputs, outputs)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+    
+    arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('LSTM', {})
+    if arch_config.get('enabled', False):
+        try:
+            from chunk_11_models_sklearn import FocalLoss
+            clf_loss = FocalLoss(alpha=arch_config.get('alpha', 0.5), gamma=arch_config.get('gamma', 1.0))
+            model.compile(optimizer=optimizer, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+        except Exception:
+            model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+    else:
+        model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
     
     return model
 
@@ -353,7 +392,19 @@ def build_dense_model(config: Dict, input_dim: int, loss: str = 'binary_crossent
     outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
     
     model = tf.keras.Model(inputs, outputs)
-    model.compile(optimizer='adam', loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+    
+    arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('Dense', {})
+    if arch_config.get('enabled', False):
+        try:
+            from chunk_11_models_sklearn import FocalLoss
+            clf_loss = FocalLoss(alpha=arch_config.get('alpha', 0.5), gamma=arch_config.get('gamma', 1.0))
+            opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', 0.001))
+            model.compile(optimizer=opt, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+        except Exception:
+            opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', 0.001))
+            model.compile(optimizer=opt, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+    else:
+        model.compile(optimizer='adam', loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
     
     return model
 

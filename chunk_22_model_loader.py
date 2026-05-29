@@ -6,8 +6,11 @@ Load trained models from disk for prediction
 import tensorflow as tf
 import os
 import json
+import joblib
 from typing import Dict, Optional, Tuple, Any
+from sklearn.preprocessing import StandardScaler
 from chunk_02_utils_logging import Logger
+from chunk_08_models_base import SamplingLayer
 
 
 def load_model(arch_name: str, models_path: str = './saved_models') -> tf.keras.Model:
@@ -25,6 +28,23 @@ def load_model(arch_name: str, models_path: str = './saved_models') -> tf.keras.
     # Load with safe_mode=False to allow Lambda layers (needed for Transformer)
     model = tf.keras.models.load_model(model_path, safe_mode=False)
     return model
+
+
+def load_scaler(arch_name: str, models_path: str = './saved_models') -> Optional[StandardScaler]:
+    """
+    Load a saved StandardScaler for a given architecture.
+    
+    Args:
+        arch_name: Architecture name (e.g., 'RNN', 'LSTM')
+        models_path: Path to saved models directory
+        
+    Returns:
+        Loaded StandardScaler or None if not found
+    """
+    scaler_path = os.path.join(models_path, f'{arch_name}_scaler.joblib')
+    if os.path.exists(scaler_path):
+        return joblib.load(scaler_path)
+    return None
 
 
 def load_preprocessing_params(models_path: str = './saved_models') -> Dict[str, Any]:
