@@ -1656,9 +1656,14 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Create fresh models directory
                 os.makedirs(models_path, exist_ok=True)
                 
-                # Save each trained model
+                # Save each trained model (only those meeting precision threshold — C3 fix)
                 for i, (model, arch_name) in enumerate(zip(trained_models, arch_names)):
                     if model is not None:
+                        # Skip low-precision models — they'd degrade Phase 5 consensus
+                        val_prec = best_val_precision_list[i] if i < len(best_val_precision_list) else 0.0
+                        if val_prec < ensemble_min_precision:
+                            self.logger.log(f"   Skipping {arch_name} (precision {val_prec:.4f} < {ensemble_min_precision})", 'info')
+                            continue
                         model_path = os.path.join(models_path, f'{arch_name}_model.keras')
                         model.save(model_path)
                         self.logger.log(f"   Saved {arch_name} model to {model_path}", 'info')
@@ -1707,6 +1712,10 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # This allows Phase 5 to load models and know which threshold/hyperparams to use
                 for i, arch_name in enumerate(arch_names):
                     if i < len(optimal_thresholds) and i < len(best_hyperparams_list) and i < len(final_thresholds):
+                        # Skip metadata for low-precision models (matching model save filter — C3 fix)
+                        val_prec = best_val_precision_list[i] if i < len(best_val_precision_list) else 0.0
+                        if val_prec < ensemble_min_precision:
+                            continue
                         metadata = {
                             'optimal_threshold': float(final_thresholds[i]),
                             'best_hyperparams': best_hyperparams_list[i] if best_hyperparams_list[i] else {},

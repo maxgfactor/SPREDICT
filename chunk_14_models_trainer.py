@@ -9,6 +9,22 @@ from typing import Dict, Tuple, Optional, Any, List
 from sklearn.model_selection import train_test_split
 
 
+class KLAnnealingCallback(tf.keras.callbacks.Callback):
+    """Ramp KL weight from near-zero to max over warmup epochs to prevent posterior collapse."""
+    def __init__(self, kl_weight_var, warmup_epochs=10, max_kl_weight=1.0):
+        super().__init__()
+        self.kl_weight_var = kl_weight_var
+        self.warmup_epochs = warmup_epochs
+        self.max_kl_weight = max_kl_weight
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch < self.warmup_epochs:
+            w = self.max_kl_weight * (epoch + 1) / self.warmup_epochs
+        else:
+            w = self.max_kl_weight
+        self.kl_weight_var.assign(w)
+
+
 class ModelTrainer:
     """Orchestrates model training and architecture building"""
     
@@ -103,8 +119,7 @@ class ModelTrainer:
         loss_fn = self.get_loss_function()
         
         if builder is None:
-            self.logger.log(f"Warning: Unknown architecture '{arch_name}', using fallback", 'warning')
-            return build_dense_model(self.config, input_dim, loss_fn)
+            raise ValueError(f"Unknown architecture '{arch_name}'")
         
         try:
             # Handle sklearn models differently
@@ -115,8 +130,7 @@ class ModelTrainer:
             else:
                 return builder(self.config, input_dim, loss_fn)
         except Exception as e:
-            self.logger.log(f"Warning: Failed to build {arch_name}: {e}, using fallback", 'warning')
-            return build_dense_model(self.config, input_dim, loss_fn)
+            raise RuntimeError(f"Failed to build {arch_name}: {e}") from e
     
     def build_architecture_with_params(self, arch_name: str, input_dim: int, 
                                        hyperparams: Dict) -> tf.keras.Model:
@@ -213,8 +227,7 @@ class ModelTrainer:
             else:
                 return builder(merged_config, input_dim, effective_loss_fn)
         except Exception as e:
-            self.logger.log(f"Warning: Failed to build {arch_name} with params {hyperparams}: {e}", 'warning')
-            return build_dense_model(self.config, input_dim, loss_fn)
+            raise RuntimeError(f"Failed to build {arch_name} with params {hyperparams}: {e}") from e
     
     def train_model(self, model: tf.keras.Model, X: np.ndarray, y: np.ndarray,
                    validation_data: Optional[Tuple] = None,
@@ -255,9 +268,28 @@ class ModelTrainer:
         class_weight_dict = dict(zip(classes, cw))
         
         # Handle models that expect 3D input
-        if len(model.input_shape) == 3:
+        model_input_shape = getattr(model, 'input_shape', None)
+        if model_input_shape is not None and len(model_input_shape) == 3:
             X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
             X_val = X_val.reshape(X_val.shape[0], X_val.shape[1], 1)
+        
+        # Build callbacks
+        callbacks = [
+            tf.keras.callbacks.TerminateOnNaN(),
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_loss',
+                patience=20,
+                restore_best_weights=True
+            )
+        ]
+        
+        # If VAE model (has SamplingLayer), inject KL annealing callback
+        from chunk_08_models_base import SamplingLayer
+        sampling_layer = next((l for l in model.layers if isinstance(l, SamplingLayer)), None)
+        if sampling_layer is not None:
+            callbacks.append(KLAnnealingCallback(
+                sampling_layer.kl_weight, warmup_epochs=10, max_kl_weight=1.0
+            ))
         
         # Train model with increased patience for better convergence
         history = model.fit(
@@ -267,14 +299,7 @@ class ModelTrainer:
             batch_size=batch_size,
             class_weight=class_weight_dict,
             verbose=verbose,
-            callbacks=[
-                tf.keras.callbacks.TerminateOnNaN(),
-                tf.keras.callbacks.EarlyStopping(
-                    monitor='val_loss',
-                    patience=20,
-                    restore_best_weights=True
-                )
-            ]
+            callbacks=callbacks,
         )
         
         return model, history.history

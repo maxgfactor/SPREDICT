@@ -182,6 +182,9 @@ class Phase5_PredictionOptimization(BasePhase):
         # Consolidated column set (same df_with_all_cols for all architectures)
         fraud_output_cols = ['Market_Cap', '52W_Low', '52W_High', 'Change', 'ChangeY', 'Ticker_id']
         available_cols = [c for c in fraud_output_cols if c in df_with_all_cols.columns] if df_with_all_cols is not None else []
+        # C1/C2: Use only high-precision models for consensus, with configurable vote threshold
+        ensemble_min_precision = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
+        ensemble_vote_threshold = self.config.get('ENSEMBLE_VOTE_THRESHOLD', 0.5)
         all_pred_fraud_sets = []
         
         for arch_name, model in models.items():
@@ -295,7 +298,9 @@ class Phase5_PredictionOptimization(BasePhase):
                 available_cols = [c for c in fraud_output_cols if c in df_with_all_cols.columns]
 
                 pred_fraud_indices = np.where(binary_predictions == 1)[0]
-                all_pred_fraud_sets.append(set(pred_fraud_indices))
+                # C1: Only include high-precision models in consensus voting
+                if best_val_prec > ensemble_min_precision:
+                    all_pred_fraud_sets.append(set(pred_fraud_indices))
                 if len(pred_fraud_indices) > 0:
                     self.logger.log("", 'info')
                     self.logger.log(f"{arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows)", 'info')
@@ -332,15 +337,21 @@ class Phase5_PredictionOptimization(BasePhase):
                 'Inf_BalAcc': inf_balanced_acc,
             })
         
-        # Consolidated intersection table (Ticker_id present in every architecture)
-        if df_with_all_cols is not None and len(all_pred_fraud_sets) > 1:
+        # Consolidated consensus table (vote-based, using only high-precision architectures — C1/C2 fix)
+        if df_with_all_cols is not None and len(all_pred_fraud_sets) > 0:
             non_empty_sets = [s for s in all_pred_fraud_sets if s]
-            if len(non_empty_sets) == len(all_pred_fraud_sets):
-                common_indices = set.intersection(*all_pred_fraud_sets)
+            if non_empty_sets:
+                # Vote-based consensus: ENSEMBLE_VOTE_THRESHOLD controls how many archs must agree
+                min_votes = max(1, int(len(all_pred_fraud_sets) * ensemble_vote_threshold))
+                all_votes = set.union(*non_empty_sets)
+                vote_counts = {}
+                for row_idx in all_votes:
+                    vote_counts[row_idx] = sum(1 for s in non_empty_sets if row_idx in s)
+                common_indices = {idx for idx, count in vote_counts.items() if count >= min_votes}
                 if common_indices:
                     consensus_rows = df_with_all_cols.iloc[list(common_indices)]
                     self.logger.log("", 'info')
-                    self.logger.log(f"Consolidated Predicted Fraud (intersection across {len(all_pred_fraud_sets)} architectures, Ticker_id present in every arch):", 'info')
+                    self.logger.log(f"Consolidated Predicted Fraud ({len(non_empty_sets)} architectures, min {min_votes} votes):", 'info')
                     self.logger.log("Row," + ",".join(available_cols), 'info')
                     for idx, (_, row) in enumerate(consensus_rows.iterrows(), 1):
                         self.logger.log(f"{idx}," + ",".join(str(v) for v in row.values), 'info')

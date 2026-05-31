@@ -11,7 +11,22 @@ from typing import Dict, Optional
 
 @keras.saving.register_keras_serializable(package='VAE')
 class SamplingLayer(tf.keras.layers.Layer):
-    """Reparameterization sampling with KL regularization for VAE (Keras 3 compatible)."""
+    """Reparameterization sampling with KL regularization for VAE (Keras 3 compatible).
+    
+    Uses an adjustable KL weight (kl_weight Variable) that a KLAnnealingCallback
+    can ramp from near-zero to 1.0 over warmup epochs.
+    """
+    def __init__(self, initial_kl_weight=1e-6, **kwargs):
+        super().__init__(**kwargs)
+        self.initial_kl_weight = initial_kl_weight
+        self.kl_weight = self.add_weight(
+            name='kl_weight',
+            shape=(),
+            initializer=tf.keras.initializers.Constant(initial_kl_weight),
+            trainable=False,
+            dtype=tf.float32,
+        )
+
     def call(self, inputs):
         z_mean, z_log_var = inputs
         z_log_var = tf.keras.ops.clip(z_log_var, -5.0, 2.0)
@@ -19,100 +34,199 @@ class SamplingLayer(tf.keras.layers.Layer):
         z = z_mean + tf.keras.ops.exp(0.5 * z_log_var) * epsilon
         kl_loss = -0.5 * tf.keras.ops.mean(tf.keras.ops.sum(
             1 + z_log_var - tf.keras.ops.square(z_mean) - tf.keras.ops.exp(z_log_var), axis=-1))
-        self.add_loss(0.001 * kl_loss)
+        self.add_loss(self.kl_weight * kl_loss)
         return z
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[0]
+
+    def get_config(self):
+        config = super().get_config()
+        config['initial_kl_weight'] = self.initial_kl_weight
+        return config
+
+
+@keras.saving.register_keras_serializable(package='VAE')
+class VAEClassifier(tf.keras.Model):
+    """VAE classifier with decoder + reconstruction loss and KL annealing.
+    
+    Architecture:
+    - Encoder (N layers, configurable via encoder_layers): 256 → 128 → 64
+    - Latent space: z_mean, z_log_var → sampling → z
+    - Classifier (from sampled z): 64 → 32 → 1 (sigmoid)
+    - Decoder (3 fixed layers): 64 → 128 → 256 → input_dim (linear)
+    - Total loss: classifier_loss + 0.1 * MSE_reconstruction + kl_weight * KL
+    """
+    
+    def __init__(self, config: Dict, input_dim: int, loss_fn: str = 'binary_crossentropy'):
+        super().__init__()
+        self.input_dim = input_dim
+        self.loss_fn = loss_fn
+        self.latent_dim = config.get('latent_dim', 64)
+        self.dropout_rate = config.get('dropout', 0.1)
+        
+        # Encoder - configurable depth via encoder_layers HPO param
+        self.num_encoder_layers = config.get('encoder_layers', 2)
+        dropout_rate = self.dropout_rate
+        num_encoder_layers = self.num_encoder_layers
+        encoder_widths = [256, 128, 64]
+        self.encoder_blocks = []
+        for i in range(min(num_encoder_layers, len(encoder_widths))):
+            self.encoder_blocks.append([
+                tf.keras.layers.Dense(encoder_widths[i], activation='relu', kernel_initializer='he_normal'),
+                tf.keras.layers.BatchNormalization(),
+                tf.keras.layers.Dropout(dropout_rate),
+            ])
+        
+        # Latent space
+        self.z_mean_dense = tf.keras.layers.Dense(self.latent_dim, name='z_mean')
+        self.z_log_var_dense = tf.keras.layers.Dense(self.latent_dim, name='z_log_var')
+        self.sampling = SamplingLayer(name='z')
+        
+        # Classifier head from sampled latent
+        self.clf_dense1 = tf.keras.layers.Dense(64, activation='relu')
+        self.clf_dropout1 = tf.keras.layers.Dropout(dropout_rate)
+        self.clf_dense2 = tf.keras.layers.Dense(32, activation='relu')
+        self.clf_dropout2 = tf.keras.layers.Dropout(dropout_rate)
+        self.clf_output = tf.keras.layers.Dense(1, activation='sigmoid', name='fraud_output')
+        
+        # Decoder (3 fixed layers: 64 → 128 → 256 → input_dim)
+        self.dec_dense1 = tf.keras.layers.Dense(64, activation='relu', kernel_initializer='he_normal')
+        self.dec_bn1 = tf.keras.layers.BatchNormalization()
+        self.dec_dropout1 = tf.keras.layers.Dropout(dropout_rate)
+        self.dec_dense2 = tf.keras.layers.Dense(128, activation='relu', kernel_initializer='he_normal')
+        self.dec_bn2 = tf.keras.layers.BatchNormalization()
+        self.dec_dropout2 = tf.keras.layers.Dropout(dropout_rate)
+        self.dec_dense3 = tf.keras.layers.Dense(256, activation='relu', kernel_initializer='he_normal')
+        self.dec_bn3 = tf.keras.layers.BatchNormalization()
+        self.dec_dropout3 = tf.keras.layers.Dropout(dropout_rate)
+        self.dec_output = tf.keras.layers.Dense(self.input_dim, activation='linear', name='reconstruction')
+    
+    def call(self, inputs):
+        # Encoder
+        x = inputs
+        for block in self.encoder_blocks:
+            x = block[0](x)
+            x = block[1](x)
+            x = block[2](x)
+        
+        # Latent space parameters
+        z_mean = self.z_mean_dense(x)
+        z_log_var = self.z_log_var_dense(x)
+        
+        # Sampling with KL regularization (loss added inside SamplingLayer.call)
+        z = self.sampling([z_mean, z_log_var])
+        
+        # Classifier head
+        c = self.clf_dense1(z)
+        c = self.clf_dropout1(c)
+        c = self.clf_dense2(c)
+        c = self.clf_dropout2(c)
+        classification = self.clf_output(c)
+        
+        # Decoder (reconstruction)
+        d = self.dec_dense1(z)
+        d = self.dec_bn1(d)
+        d = self.dec_dropout1(d)
+        d = self.dec_dense2(d)
+        d = self.dec_bn2(d)
+        d = self.dec_dropout2(d)
+        d = self.dec_dense3(d)
+        d = self.dec_bn3(d)
+        d = self.dec_dropout3(d)
+        reconstruction = self.dec_output(d)
+        
+        # Reconstruction loss (internal — not a model output)
+        recon_loss = tf.keras.ops.mean(tf.keras.ops.square(inputs - reconstruction))
+        self.add_loss(0.1 * recon_loss)
+        
+        return classification
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'input_dim': self.input_dim,
+            'loss_fn': self.loss_fn,
+            'latent_dim': self.latent_dim,
+            'dropout': self.dropout_rate,
+            'encoder_layers': self.num_encoder_layers,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            config={
+                'latent_dim': config.get('latent_dim', 64),
+                'dropout': config.get('dropout', 0.1),
+                'encoder_layers': config.get('encoder_layers', 2),
+            },
+            input_dim=config['input_dim'],
+            loss_fn=config['loss_fn'],
+        )
 
 
 def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
-    Build VAE-inspired classifier with deeper architecture.
+    Build VAE classifier with decoder + reconstruction loss and KL annealing.
     
-    Key improvements over original:
-    - Deeper encoder with more layers
-    - Larger latent space for better representation
-    - Stronger classification head
-    - Focal loss support for class imbalance
+    Architecture:
+    - Encoder (N layers, configurable via encoder_layers): 256 → 128 → 64
+    - Latent space: z_mean, z_log_var → sampling → z
+    - Classifier (from sampled z): 64 → 32 → 1 (sigmoid)
+    - Decoder (3 fixed layers): 64 → 128 → 256 → input_dim (linear)
+    - Total loss: classifier_loss + 0.1 * MSE_reconstruction + kl_weight * KL
     
     Args:
-        config: Configuration dictionary with 'latent_dim', 'USE_FOCAL_LOSS', 'FOCAL_LOSS_ALPHA', 'FOCAL_LOSS_GAMMA'
+        config: Configuration dictionary
         input_dim: Input dimension (number of features)
-        loss: Loss function (default: binary_crossentropy)
+        loss: Loss function for classifier (default: binary_crossentropy)
         
     Returns:
-        Compiled VAE model
+        Compiled VAE model (single-output: fraud prediction)
     """
-    try:
-        latent_dim = config.get('latent_dim', 64)
-        
-        # Encoder - processes input to latent representation
-        encoder_inputs = tf.keras.Input(shape=(input_dim,))
-        
-        # Deeper encoder with He initialization for better gradient flow
-        x = tf.keras.layers.Dense(256, activation='relu', kernel_initializer='he_normal')(encoder_inputs)
-        x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.Dropout(0.1)(x)
-        
-        x = tf.keras.layers.Dense(128, activation='relu', kernel_initializer='he_normal')(x)
-        x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.Dropout(0.1)(x)
-        
-        # Latent space parameters
-        z_mean = tf.keras.layers.Dense(latent_dim, name='z_mean')(x)
-        z_log_var = tf.keras.layers.Dense(latent_dim, name='z_log_var')(x)
-        
-        # Sampling with KL regularization (handled internally by SamplingLayer)
-        z = SamplingLayer(name='z')([z_mean, z_log_var])
-        
-        # Classification head from sampled latent
-        clf = tf.keras.layers.Dense(64, activation='relu')(z)
-        clf = tf.keras.layers.Dropout(0.1)(clf)
-        clf = tf.keras.layers.Dense(32, activation='relu')(clf)
-        clf = tf.keras.layers.Dropout(0.1)(clf)
-        classification_output = tf.keras.layers.Dense(1, activation='sigmoid')(clf)
-        
-        # Create model (KL loss handled inside SamplingLayer)
-        vae = tf.keras.Model(encoder_inputs, classification_output)
-        
-        # Use focal loss if configured for this architecture (per-arch config)
-        arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('VAE', {})
-        if arch_config.get('enabled', False):
-            try:
-                from chunk_11_models_sklearn import FocalLoss
-                alpha = arch_config.get('alpha', 0.5)
-                gamma = arch_config.get('gamma', 1.0)
-                clf_loss = FocalLoss(alpha=alpha, gamma=gamma)
-                optimizer = tf.keras.optimizers.Adam(
-                    learning_rate=config.get('learning_rate', 0.0001)
-                )
-                vae.compile(
-                    optimizer=optimizer,
-                    loss=clf_loss,
-                    metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
-                )
-            except Exception as e:
-                # Fallback to standard loss if focal loss fails
-                optimizer = tf.keras.optimizers.Adam(
-                    learning_rate=config.get('learning_rate', 0.0005)
-                )
-                vae.compile(
-                    optimizer=optimizer,
-                    loss=loss,
-                    metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
-                )
-        else:
+    model = VAEClassifier(config, input_dim, loss)
+    
+    # Build all sub-layers via dry-run forward pass on a symbolic input
+    dummy_input = tf.keras.Input(shape=(input_dim,))
+    model(dummy_input)
+    
+    # Use focal loss if configured for this architecture (per-arch config)
+    arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('VAE', {})
+    if arch_config.get('enabled', False):
+        try:
+            from chunk_11_models_sklearn import FocalLoss
+            alpha = arch_config.get('alpha', 0.5)
+            gamma = arch_config.get('gamma', 1.0)
+            clf_loss = FocalLoss(alpha=alpha, gamma=gamma)
+            optimizer = tf.keras.optimizers.Adam(
+                learning_rate=config.get('learning_rate', 0.0001)
+            )
+            model.compile(
+                optimizer=optimizer,
+                loss=clf_loss,
+                metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
+            )
+        except Exception as e:
             optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config.get('learning_rate', 0.0005)
             )
-            vae.compile(
+            model.compile(
                 optimizer=optimizer,
                 loss=loss,
                 metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
             )
-        
-        return vae
-    except Exception as e:
-        print(f"VAE creation failed: {e}, using fallback")
-        return build_dense_model(config, input_dim, loss)
+    else:
+        optimizer = tf.keras.optimizers.Adam(
+            learning_rate=config.get('learning_rate', 0.0005)
+        )
+        model.compile(
+            optimizer=optimizer,
+            loss=loss,
+            metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
+        )
+    
+    return model
 
 
 def build_cnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
