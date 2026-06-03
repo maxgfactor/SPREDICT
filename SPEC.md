@@ -1,7 +1,7 @@
 # Software Specification Requirements (SSR) - Fraud Detection Ensemble
 
-**Version**: 3.10  
-**Date**: 2026-05-25  
+**Version**: 3.17  
+**Date**: 2026-06-01  
 **Status**: Living Document - Update After Each Run  
 
 ---
@@ -120,6 +120,26 @@ Example (current format with tag reorder):
 | CatBoost | (baseline) | 0.5370 | 0.0 | **0.5381** | Yes |
 | LightGBM | (baseline) | 0.1802 | 4.0 | **0.1753** | No |
 | XGBoost | (baseline) | 0.2527 | 2.0 | **0.2484** | No |
+
+### ACTUAL RESULTS - Run #2026-06-01 (Iter 2 — Tier 2 active)
+
+**S5 Final Validation Precision:**
+
+| Architecture | VALIDATION_PRECISION | Source | Notes |
+|--------------|---------------|--------|-------|
+| CNN | **0.6537** | section4 | Dramatic improvement; learned meaningful predictions |
+| LightGBM | 0.5308 | section4 | HPO improved 0.1367→0.5306, post-HPO tuned t=0.0 |
+| Transformer | 0.5299 | section4 | hpo did NOT improve (0.0360 ≤ 0.0417) but post-HPO threshold search found t=0.0 |
+| Dense | 0.5285 | section4 | HPO improved 0.1571→0.3158, post-HPO tuned t=0.0 |
+| CatBoost | 0.5283 | section3 | hpo improved 0.5280→0.5306 but post-HPO did not improve further |
+| XGBoost | **0.4899** | section4* | **BUG**: S4→S5 model carry-forward. hpo NOT improved (0.0670 ≤ 0.0797) → threshold_opt_model used. Post-HPO found P=0.5629 for HPO model at t=0.0 but model is wrong. Post-fix estimate: 0.5629. |
+| LSTM | 0.4853 | section4 | hpo improved 0.0321→0.0536. Lower than S4 (0.5357) due to PREDICTION_THRESHOLD=0.55 vs S4's 0.5. Correct model used (hpo_best_model). |
+| VAE | 0.4838 | section4 | hpo improved 0.0000→0.0212. Lower than S4 (0.5270) due to PREDICTION_THRESHOLD=0.55 vs S4's 0.5. Correct model used (hpo_best_model). |
+| RNN | 0.0000 | section3 | Collapsed; all thresholds rejected |
+
+**Decision Gate**: Top 1 P = 0.6537 ≥ 0.56 → **ENTER OPTIMIZE PHASE** ✅
+
+**S4→S5 Bug**: Only XGBoost is affected. Section 4 finds HPO model achieves P=0.5629 at t=0.0, but Section 5 selects `threshold_opt_model` because `hpo_improved=False`. The pre-HPO model (trained at t=20.0) cannot generalize to t=0.0 labels. Applies to architectures where `hpo_improved=False` AND `optimal_threshold ≠ post_hpo_thresh`. Post-fix: 6/9 archs would pass 0.52 filter.
 
 ### ACTUAL RESULTS - Run #2026-05-11
 
@@ -644,15 +664,16 @@ The following features were removed during preprocessing:
 | FIRST_THRESHOLD | 20.0 | Starting label threshold |
 | LAST_THRESHOLD | 0.0 | Ending label threshold |
 | THRESHOLD_STEP | -10.0 | Label threshold increment (reduced to 3 steps: 20→10→0) |
-| PREDICTION_THRESHOLD | 0.5 | Binary classification threshold |
+| PREDICTION_THRESHOLD | 0.55 | Binary classification threshold (raised from 0.5 for GIS Tier 1) |
 
 ### Ensemble Configuration
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| ENSEMBLE_MIN_PRECISION | 0.60 | Minimum precision for ensemble |
-| ENSEMBLE_WEIGHTING | precision_weighted | Weighting method |
-| ENSEMBLE_VOTE_THRESHOLD | 0.5 | 2/4 models must agree |
+| ENSEMBLE_MIN_PRECISION | 0.53 | Minimum precision for ensemble (raised from 0.52 for GIS Tier 3 — tighter ensemble filter) |
+| ENSEMBLE_WEIGHTING | uniform | Weighting method (changed from precision_weighted to uniform for GIS Tier 1 — prevents CatBoost dominance) |
+| ENSEMBLE_VOTE_THRESHOLD | 0.67 | Models must agree threshold (raised from 0.5 for GIS Tier 1 — tighter consensus) |
+| FALLBACK_ARCHITECTURE | VAE | Highest val precision fallback (changed from RNN for GIS Tier 1) |
 
 ### HPO Configuration
 
@@ -662,6 +683,18 @@ The following features were removed during preprocessing:
 | HYPERPARAM_OPTIMIZATION_EPOCHS | 5 | Epochs per HPO trial |
 | HPO_TRIALS | 20 | Number of Optuna trials |
 | ENABLE_POST_HPO_THRESHOLD_SEARCH | True | Run threshold search after HPO |
+
+### Safe Guard Configuration
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| WINSORIZE_PERCENTILE_LOW | 2 | Lower percentile for winsorization (raised from 1 for GIS Tier 2) |
+| WINSORIZE_PERCENTILE_HIGH | 95 | Upper percentile for winsorization (lowered from 98 for GIS Tier 3 — tighter outlier removal) |
+| MIN_POSITIVE_PERCENTAGE | 0.01 | 1% of samples must be positive (raised from 0.5% for GIS Tier 2) |
+| MIN_POSITIVE_ABSOLUTE | 100 | Absolute floor for positive predictions (raised from 50 for GIS Tier 2) |
+| MIN_PRECISION_OVER_BASELINE | 0.02 | Precision must beat baseline by 2% (raised from 1% for GIS Tier 2) |
+| MIN_POS_PRED_RATIO | 0.001 | Min 0.1% of predictions must be positive (raised from 0.01% for GIS Tier 2) |
+| MAX_POS_PRED_RATIO | 0.60 | Max 60% of predictions can be positive (lowered from 70% for GIS Tier 2) |
 
 ### Validation Split
 
@@ -927,6 +960,13 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.8 | 2026-05-25 | LightGBM: `scale_pos_weight`→`class_weight='balanced'` for auto class balancing; CatBoost: `auto_class_weights` default `'Balanced'`→`'SqrtBalanced'` for safer weight scaling on imbalanced data; LightGBM HPO space pruned (`scale_pos_weight` removed) | Eliminate manual weight calculation, reduce overfitting risk from extreme class weights |
 | 3.9 | 2026-05-25 | DENSE, RNN, LSTM builders: added `FOCAL_LOSS_CONFIG` checks for per-architecture FocalLoss support; Dense and LSTM HPO spaces: added `loss_function` param for BCE/FocalLoss toggle | Enable FocalLoss on remaining active neural architectures for precision-focused training |
 | 3.10 | 2026-05-25 | Reduced threshold search from 11 to 3 increments (20→10→0, step -10.0); centralized fallback constants in `chunk_01_config`; unified mismatched fallbacks across all phases; reduced HPO trials from 30 to 5 per architecture with `DEFAULT_HPO_TRIALS=10` fallback; reduced HPO epochs per trial from 20 to 5; moved `Label_Thresholds` log from analyzer to pipeline init for earlier log position; moved `Temporal Coverage` from 4 `print()` lines to single `self.log()` right after data loading; removed blank line from pipeline init; consolidated per-architecture predicted-fraud data rows into single intersection table (logged after all architectures, Ticker_id present in every arch); CSV Phase value `Val`→`Validation` | Faster pipeline runs, consistent defaults, cleaner log ordering |
+| 3.11 | 2026-05-31 | VAE serialization fix: `@keras.saving.register_keras_serializable` decorator on `VAEClassifier`, `get_config()` expanded to save all 5 params, `from_config()` classmethod added | Keras 3 `load_model()` fails for Model subclass without proper serialization support |
+| 3.12 | 2026-05-31 | GIS Precision Lever Plan audit: 4 categories of proposed changes found ineffective or wrong. **Removed**: all 12 FOCAL_LOSS_CONFIG α/γ changes (zero effect — Section 2 uses BCE, HPO overrides from search space, Transformer has no focal loss option); MIN_ENSEMBLE_SIZE 5→4 (controls tree count, not ensemble filtering); HPO_MIN_POSITIVE_PERCENTAGE/ABSOLUTE dict changes (dead keys — defined but never read). **Corrected**: HIGHLY_SKEWED_FEATURES list (missed features 10/12). **Revised plan**: 14 changes across 3 tiers, all zero-runtime. Full audit documented in shortmemory.txt §GIS Precision Lever Action Plan — Revised. | Code audit revealed FOCAL_LOSS_CONFIG is a fallback-only value overridden by HPO search space — config changes had no pipeline effect |
+| 3.13 | 2026-06-01 | **Pipeline Iter 1 run completed** (Tier 1 applied). Best val P: LightGBM 0.5329 (+0.0179 vs baseline). Best inference P: CatBoost 0.7213 (+0.0120). 5 of 9 archs passed ensemble filter (0.52 threshold). **Decision gate**: improved but < 0.56 → proceed to Tier 2. **Tier 2 plan formulated**: 7 config changes from GIS Precision Lever audit. | Iter 1: 4/9 archs improved, best 0.5329 (LightGBM); XGBoost/RNN/LSTM collapsed (non-deterministic HPO); VAE regressed from 0.5416→0.4842. Tier 2 tightens safeguard gates + winsorization to raise precision floor. |
+| 3.14 | 2026-06-01 | **Tier 2 config applied + Iter 2 run + S4→S5 bug discovered**. Winsorization tightened (1→2, 99→98). Safeguard gates raised (MIN_POSITIVE_PERCENTAGE 0.005→0.01, MIN_POSITIVE_ABSOLUTE 50→100, MIN_PRECISION_OVER_BASELINE 0.01→0.02, MIN_POS_PRED_RATIO 0.0001→0.001, MAX_POS_PRED_RATIO 0.70→0.60). 3 of 7 structurally dead (overridden by SKLEARN/NEURAL_SAFEGUARDS). **Iter 2**: CNN dramatically improved to 0.6537 (best). 5/9 archs pass ensemble filter. **Decision gate**: CNN 0.6537 ≥ 0.56 → ENTER OPTIMIZE PHASE. **Bug discovered**: S4→S5 model carry-forward in `chunk_18_phase_4_ensemble.py:789-809`. Section 4 finds HPO model achieves better precision at a different label_threshold, but Section 5 selects `threshold_opt_model` (pre-HPO) when `hpo_improved=False`. Affects XGBoost (S5=0.4899, should be 0.5629). **Tier 3 partial**: WINSORIZE_PERCENTILE_HIGH 98→95, ENSEMBLE_MIN_PRECISION 0.52→0.53. **Plan**: apply Tier 4 code fix + remaining Tier 3 config. | Iter 2: 5/9 pass, CNN 0.6537 leads. XGBoost bugged. S4→S5 carry-forward analyzed per-architecture. RNN collapsed. Decision gate triggers optimization phase. Next: apply code fix + remaining config tweaks. |
+| 3.16 | 2026-06-01 | **Tier 3 FocalLoss alpha expansion + Section 1 all-thresholds-rejected bug fix**. Config: added `focal_loss` to Transformer HPO search space; expanded alpha ranges to include `[0.25, 0.5]` for all neural architectures (Dense, CNN, RNN, LSTM, VAE, Transformer); lowered static FOCAL_LOSS_CONFIG defaults to `alpha=0.25, gamma=2.0` for all neural archs except VAE (kept 0.75/1.5). Bug fix: `chunk_18_phase_4_ensemble.py` lines 412-461 — detected empty `all_results` from `find_optimal_threshold` (when all 3 label thresholds rejected), logs baseline metrics instead of all-zeros. Affected Dense/RNN/LSTM in Iter 3 (LN366/LN521/LN592). | Tier 3: lower alpha values (0.25, 0.5) enable FocalLoss to penalize false positives more aggressively in HPO. Bug fix: clean logging when baseline model predicts < 0.5 at highest threshold. |
+| 3.17 | 2026-06-01 | **Tier 7: temporal sample_weight added to model training**. `chunk_14_models_trainer.py`: `train_model()` accepts `sample_weight`, splits with train_test_split, passes to `model.fit()`. `_train_sklearn_model()` accepts `sample_weight`, passes to sklearn. `chunk_11_models_sklearn.py`: `SklearnModelWrapper.fit()` forwards `**kwargs` to underlying estimator. `chunk_18_phase_4_ensemble.py`: all 4 final training calls pass `sample_weight=np.sqrt(weights_train)`. Combined with existing sqrt feature scaling, total temporal multiplier = 9x (was 3x from features only). | Tier 7: temporal sample_weight closes the loop — `weights_train`/`weights_val` were computed but never passed to the loss function. Phase Xb showed 0/9 architectures had positive temporal gap at 3x. 9x aims to drive meaningful recency focus. |
+
 
 ---
 
@@ -1189,8 +1229,8 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 ---
 
 *Document generated: 2026-04-15*  
-*Last updated: 2026-05-22*  
-*Version: 3.6*
+*Last updated: 2026-06-01*  
+*Version: 3.17*
 
 ---
 

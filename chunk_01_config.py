@@ -45,8 +45,8 @@ CONFIG = {
     # FEATURE ENGINEERING CONFIGURATION - Step 4
     # ============================================================================
     'WINSORIZE_FEATURES': True,  # Clip features at percentiles
-    'WINSORIZE_PERCENTILE_LOW': 1,  # Lower percentile for winsorization
-    'WINSORIZE_PERCENTILE_HIGH': 99,  # Upper percentile for winsorization
+    'WINSORIZE_PERCENTILE_LOW': 2,  # Lower percentile for winsorization (GIS Tier 2 — more left-tail noise removal)
+    'WINSORIZE_PERCENTILE_HIGH': 95,  # Upper percentile for winsorization (GIS Tier 3 — even tighter right-tail noise removal)
     'ADD_RATIO_FEATURES': True,  # Create ratio features
     'LOG_TRANSFORM_FEATURES': True,  # Apply log1p to skewed features
     'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # Feature indices with high skew (from pipeline log)
@@ -77,7 +77,7 @@ CONFIG = {
     # - Model outputs probabilities (0-1) from model.predict()
     # - Binary predictions: (predictions >= 0.5).astype(int)
     # - This is the STANDARD threshold for probability outputs
-    'PREDICTION_THRESHOLD': 0.5,  # Threshold for converting predictions to binary (standard sigmoid threshold)
+    'PREDICTION_THRESHOLD': 0.55,  # Threshold for converting predictions to binary (raised from 0.5 for GIS Tier 1)
     
     # Model Architecture
     'latent_dim': 32,
@@ -110,11 +110,11 @@ CONFIG = {
     # Prevents precision gaming (predicting almost nothing → artificially high P)
     # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
     'MIN_POSITIVE_PREDICTIONS': 1000,  # Legacy (fixed value, deprecated)
-    'MIN_POSITIVE_PERCENTAGE': 0.005,  # 0.5% of samples (lowered for selective models)
-    'MIN_POSITIVE_ABSOLUTE': 50,       # Absolute floor (lowered from 100)
-    'MIN_PRECISION_OVER_BASELINE': 0.01,  # Precision must beat baseline by at least 1% (reduced from 5% to let weak-default models reach HPO)
-    'MIN_POS_PRED_RATIO': 0.0001,          # Min 0.01% of predictions must be positive
-    'MAX_POS_PRED_RATIO': 0.70,            # Max 70% of predictions can be positive
+    'MIN_POSITIVE_PERCENTAGE': 0.01,  # 1% of samples (GIS Tier 2 — raised from 0.5%)
+    'MIN_POSITIVE_ABSOLUTE': 100,       # Absolute floor (GIS Tier 2 — doubled from 50)
+    'MIN_PRECISION_OVER_BASELINE': 0.02,  # Precision must beat baseline by at least 2% (GIS Tier 2 — raised from 1%)
+    'MIN_POS_PRED_RATIO': 0.001,          # Min 0.1% of predictions must be positive (GIS Tier 2 — raised from 0.01%)
+    'MAX_POS_PRED_RATIO': 0.60,            # Max 60% of predictions can be positive (GIS Tier 2 — lowered from 70%)
     
     # HPO-specific thresholds (Apr 4, 2026)
     # Lower thresholds during HPO to allow more exploration for struggling architectures
@@ -166,11 +166,11 @@ CONFIG = {
     # Each architecture can have custom alpha/gamma or be disabled
     'FOCAL_LOSS_CONFIG': {
         'VAE': {'enabled': True, 'alpha': 0.75, 'gamma': 1.5},
-        'Dense': {'enabled': True, 'alpha': 0.5, 'gamma': 1.0},
-        'CNN': {'enabled': True, 'alpha': 0.75, 'gamma': 1.5},
-        'RNN': {'enabled': True, 'alpha': 0.5, 'gamma': 1.0},
-        'LSTM': {'enabled': True, 'alpha': 0.75, 'gamma': 1.5},
-        'Transformer': {'enabled': True, 'alpha': 0.75, 'gamma': 1.5},
+        'Dense': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
+        'CNN': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
+        'RNN': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
+        'LSTM': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
+        'Transformer': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
     },
     
     # Legacy focal loss parameters (deprecated in favor of per-arch config)
@@ -238,7 +238,7 @@ CONFIG = {
             'learning_rate': [0.0001, 0.0003, 0.0005, 0.001],  # finer granularity
             'epochs': [15, 20, 30, 40],          # was [8, 10, 12, 15, 20]
             'loss_function': ['binary_crossentropy', 'focal_loss'],
-            'alpha': [1.0, 1.25, 1.5],           # was [0.5, 0.75, 1.0, 1.25]
+            'alpha': [0.25, 0.5, 0.75, 1.0, 1.25, 1.5],  # expanded: Tier 3 FocalLoss
             'gamma': [2.0, 2.5, 3.0, 4.0],      # was [1.0, 2.0, 2.5, 3.0, 3.5]
             'batch_size': [32, 64, 128, 256],    # NEW
             'activation': ['relu', 'leaky_relu', 'selu'],  # NEW
@@ -251,7 +251,7 @@ CONFIG = {
             'dropout': [0.0, 0.05, 0.1, 0.2],   # allow no dropout
             'learning_rate': [0.0005, 0.001, 0.002, 0.005, 0.01],  # wider range
             'epochs': [30, 50, 80, 100],         # much more training
-            'alpha': [0.75, 1.0],
+            'alpha': [0.25, 0.5, 0.75, 1.0],
             'gamma': [2.0, 2.5, 3.0],
             'layers': [1, 2, 3],                # NEW — number of conv layers
             'pooling': ['max', 'avg', 'none'],   # NEW — pooling type
@@ -263,7 +263,7 @@ CONFIG = {
             'dropout': [0.0, 0.05, 0.1],        # allow no dropout
             'learning_rate': [0.0005, 0.001, 0.002, 0.005],
             'epochs': [20, 30, 50],             # was [10, 15, 20, 30]
-            'alpha': [0.75, 1.0, 1.25],
+            'alpha': [0.25, 0.5, 0.75, 1.0, 1.25],
             'gamma': [2.0, 2.5, 3.0, 3.5],
             'layers': [1, 2],                    # NEW — number of RNN layers
         },
@@ -274,7 +274,7 @@ CONFIG = {
             'learning_rate': [0.0005, 0.001, 0.002, 0.005],
             'epochs': [20, 30, 50],             # was [12, 15, 20, 25]
             'loss_function': ['binary_crossentropy', 'focal_loss'],
-            'alpha': [0.75, 1.0],
+            'alpha': [0.25, 0.5, 0.75, 1.0],
             'gamma': [2.0, 2.5, 3.0],
             'layers': [1, 2],                    # NEW — number of LSTM layers
             'bidirectional': [True, False],      # NEW
@@ -286,20 +286,20 @@ CONFIG = {
             'learning_rate': [0.0005, 0.001, 0.002, 0.005],  # higher LR options
             'dropout': [0.0, 0.02, 0.05, 0.1],  # allow no dropout
             'epochs': [30, 50, 80],             # NEW — training epochs
-            'alpha': [0.75, 1.0, 1.25],
+            'alpha': [0.25, 0.5, 0.75, 1.0, 1.25],
             'gamma': [2.0, 2.5, 3.0],
             'encoder_layers': [1, 2, 3],         # NEW — encoder depth
             'decoder_layers': [1, 2, 3],         # NEW — decoder depth
         },
         # Iteration 4: Transformer (MaxPred max 0.0443 — very narrow)
         'Transformer': {
-            'loss_function': ['binary_crossentropy'],  # keep (focal removed)
+            'loss_function': ['binary_crossentropy', 'focal_loss'],  # Tier 3: focal restored
             'dim': [64, 128, 256],             # was [32, 64] — 128 restored with lower LR
             'heads': [2, 4, 8],                 # was [1, 2]
             'dropout': [0.0, 0.05, 0.1, 0.2],  # allow no dropout
             'learning_rate': [0.00005, 0.0001, 0.0002],  # even lower for stability
             'epochs': [20, 30, 50],             # NEW — training epochs
-            'alpha': [0.75, 1.0, 1.25],
+            'alpha': [0.25, 0.5, 0.75, 1.0, 1.25],
             'gamma': [1.5, 2.0, 2.5, 3.0],
             'ff_dim': [64, 128, 256],           # NEW — feed-forward dimension
             'layers': [1, 2, 4],                 # NEW — transformer layers
@@ -307,10 +307,10 @@ CONFIG = {
     },
 
     # Ensemble Configuration (REVISED - March 2026)
-    'ENSEMBLE_MIN_PRECISION': 0.40,  # Architecture must have val_precision > 0.40
-    'ENSEMBLE_WEIGHTING': 'precision_weighted',  # weight = precision_i / sum(precision)
-    'ENSEMBLE_VOTE_THRESHOLD': 0.5,  # At least 2/4 agree to predict fraud
-    'FALLBACK_ARCHITECTURE': 'RNN',  # Highest Phase 5 precision
+    'ENSEMBLE_MIN_PRECISION': 0.53,  # Architecture must have val_precision > 0.53 (GIS Tier 3 — tighter ensemble filter)
+    'ENSEMBLE_WEIGHTING': 'uniform',  # weight = precision_i / sum(precision) (GIS Tier 1 — uniform to prevent CatBoost dominance)
+    'ENSEMBLE_VOTE_THRESHOLD': 0.67,  # At least 4/6 agree to predict fraud (GIS Tier 1 — tighter consensus)
+    'FALLBACK_ARCHITECTURE': 'VAE',  # Highest val precision (P=0.5416, GIS Tier 1)
 }
 
 # Required configuration keys for validation

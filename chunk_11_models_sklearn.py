@@ -60,7 +60,7 @@ class SklearnModelWrapper:
         """
         if hasattr(self.sklearn_model, 'fit'):
             if y is not None:
-                self.sklearn_model.fit(X, y)
+                self.sklearn_model.fit(X, y, **kwargs)
             else:
                 self.sklearn_model.fit(X)
         self._is_fitted = True

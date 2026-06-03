@@ -410,45 +410,26 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Log ALL results for each threshold - 4-line blocks per threshold
                 # Log optimal threshold (4-line [optimal] block matching per-threshold format)
                 optimal_result = next((r for r in all_results if r['threshold'] == optimal_threshold), None)
-                optimal_train = optimal_result.get('train', {}) if optimal_result else {}
-                optimal_val = optimal_result.get('val', {}) if optimal_result else {}
-                tr, v = optimal_train, optimal_val
-                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] LABEL_THRESHOLD={optimal_threshold:.1f}", 'info')
-                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] train_precision={tr.get('P', 0.0):.4f} train_true_positives={tr.get('TP', 0)} train_true_negatives={tr.get('TN', 0)} train_false_positives={tr.get('FP', 0)} train_false_negatives={tr.get('FN', 0)} train_max_prediction={tr.get('MaxPred', 0.0):.4f} train_mean_prediction={tr.get('MeanPred', 0.0):.4f} train_recall={tr.get('R', 0.0):.4f} train_f1={tr.get('F1', 0.0):.4f} train_auc={tr.get('AUC', 0.0):.4f} train_specificity={tr.get('Spec', 0.0):.4f} train_false_positive_rate={tr.get('FPR', 0.0):.4f} train_f2={tr.get('F2', 0.0):.4f} train_mcc={tr.get('MCC', 0.0):.4f} train_prauc={tr.get('PRAUC', 0.0):.4f} train_balanced_accuracy={tr.get('BalAcc', 0.0):.4f} train_brier={tr.get('Brier', 0.0):.4f} train_kappa={tr.get('Kappa', 0.0):.4f} train_informedness={tr.get('Informedness', 0.0):.4f} train_markedness={tr.get('Markedness', 0.0):.4f} train_gini={tr.get('Gini', 0.0):.4f} train_optimal_threshold={tr.get('OptThresh', 0.0):.4f} train_standard_deviation_prediction={tr.get('StdPred', 0.0):.4f} train_percentage_above_threshold={tr.get('PctAboveThresh', 0.0):.2f}", 'info')
-                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] VALIDATION_PRECISION={v.get('P', 0.0):.4f} VALIDATION_TRUE_POSITIVES={v.get('TP', 0)} VALIDATION_TRUE_NEGATIVES={v.get('TN', 0)} validation_false_positives={v.get('FP', 0)} validation_false_negatives={v.get('FN', 0)} validation_max_prediction={v.get('MaxPred', 0.0):.4f} validation_mean_prediction={v.get('MeanPred', 0.0):.4f} validation_recall={v.get('R', 0.0):.4f} validation_f1={v.get('F1', 0.0):.4f} validation_auc={v.get('AUC', 0.0):.4f} validation_specificity={v.get('Spec', 0.0):.4f} validation_false_positive_rate={v.get('FPR', 0.0):.4f} validation_f2={v.get('F2', 0.0):.4f} validation_mcc={v.get('MCC', 0.0):.4f} validation_prauc={v.get('PRAUC', 0.0):.4f} validation_balanced_accuracy={v.get('BalAcc', 0.0):.4f} validation_brier={v.get('Brier', 0.0):.4f} validation_kappa={v.get('Kappa', 0.0):.4f} validation_informedness={v.get('Informedness', 0.0):.4f} validation_markedness={v.get('Markedness', 0.0):.4f} validation_gini={v.get('Gini', 0.0):.4f} validation_optimal_threshold={v.get('OptThresh', 0.0):.4f} validation_standard_deviation_prediction={v.get('StdPred', 0.0):.4f} validation_percentage_above_threshold={v.get('PctAboveThresh', 0.0):.2f}", 'info')
-                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] prediction_binary_split=0.5", 'info')
+                all_thresholds_rejected = optimal_result is None and not all_results
                 
-                # Store pre-HPO precision for comparison
-                pre_hpo_val_precision = best_prec
-                
-                # Extract metrics from all_results at optimal_threshold for Section 2
-                section2_result = next((r for r in all_results if r['threshold'] == optimal_threshold), None)
-                section2_val = section2_result.get('val', {}) if section2_result else {}
-                section2_P = section2_val.get('P', 0.0)
-                section2_R = section2_val.get('R', 0.0)
-                
-                # Store pre-HPO recall for Section 5 fallback
-                pre_hpo_val_recall = section2_R
-                section2_AUC = section2_val.get('AUC', 0.0)
-                section2_F1 = section2_val.get('F1', 0.0)
-                section2_TP = section2_val.get('TP', 0)
-                section2_FP = section2_val.get('FP', 0)
-                section2_TN = section2_val.get('TN', 0)
-                section2_FN = section2_val.get('FN', 0)
-                
-                # Get predictions from threshold_opt_model for MaxPred/MeanPred
-                if threshold_opt_model is not None:
-                    section2_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
-                    section2_max_pred = section2_pred.max()
-                    section2_mean_pred = section2_pred.mean()
-                    if self.config.get('LOG_VERBOSITY', 0) >= 2:
-                        self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] " + format_diagnostic_string(section2_pred, ""), 'info')
-                else:
-                    section2_max_pred = 0.0
-                    section2_mean_pred = 0.0
-                
-                # If all thresholds rejected in Section 2, use Section 1 metrics
-                if pre_hpo_val_precision == 0.0:
+                if all_thresholds_rejected:
+                    self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] [warning] All label thresholds rejected — using baseline metrics at {thresholds[0]:.1f}", 'warning')
+                    optimal_threshold = thresholds[0]
+                    tr = {
+                        'P': baseline_precision, 'TP': baseline_cm['TP'], 'TN': baseline_cm['TN'],
+                        'FP': baseline_cm['FP'], 'FN': baseline_cm['FN'],
+                        'R': baseline_recall, 'AUC': baseline_auc, 'F1': baseline_f1,
+                        'MaxPred': float(baseline_pred.max()), 'MeanPred': float(baseline_pred.mean()),
+                        'Spec': baseline_spec, 'FPR': baseline_fpr, 'F2': baseline_f2, 'MCC': baseline_mcc,
+                        'PRAUC': baseline_prauc, 'BalAcc': baseline_balacc, 'Brier': baseline_brier,
+                        'Kappa': baseline_kappa, 'Informedness': baseline_informedness,
+                        'Markedness': baseline_markedness, 'Gini': baseline_gini,
+                        'OptThresh': baseline_opt_thresh, 'StdPred': float(baseline_pred.std()),
+                        'PctAboveThresh': float((baseline_pred >= 0.5).mean() * 100),
+                    }
+                    v = dict(tr)
+                    pre_hpo_val_precision = baseline_precision
+                    pre_hpo_val_recall = baseline_recall
                     section2_P = baseline_precision
                     section2_R = baseline_recall
                     section2_AUC = baseline_auc
@@ -457,8 +438,40 @@ class Phase4_NeuralEnsemble(BasePhase):
                     section2_FP = baseline_cm['FP']
                     section2_TN = baseline_cm['TN']
                     section2_FN = baseline_cm['FN']
-                    section2_max_pred = baseline_pred.max()
-                    section2_mean_pred = baseline_pred.mean()
+                    section2_max_pred = float(baseline_pred.max())
+                    section2_mean_pred = float(baseline_pred.mean())
+                    section2_pred = baseline_pred
+                else:
+                    tr, v = optimal_result['train'], optimal_result['val']
+                    pre_hpo_val_precision = best_prec
+                    
+                    section2_val = optimal_result.get('val', {})
+                    section2_P = section2_val.get('P', 0.0)
+                    section2_R = section2_val.get('R', 0.0)
+                    
+                    pre_hpo_val_recall = section2_R
+                    section2_AUC = section2_val.get('AUC', 0.0)
+                    section2_F1 = section2_val.get('F1', 0.0)
+                    section2_TP = section2_val.get('TP', 0)
+                    section2_FP = section2_val.get('FP', 0)
+                    section2_TN = section2_val.get('TN', 0)
+                    section2_FN = section2_val.get('FN', 0)
+                    
+                    if threshold_opt_model is not None:
+                        section2_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
+                        section2_max_pred = section2_pred.max()
+                        section2_mean_pred = section2_pred.mean()
+                        if self.config.get('LOG_VERBOSITY', 0) >= 2:
+                            self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] " + format_diagnostic_string(section2_pred, ""), 'info')
+                    else:
+                        section2_pred = np.zeros(len(X_val_opt))
+                        section2_max_pred = 0.0
+                        section2_mean_pred = 0.0
+                
+                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] LABEL_THRESHOLD={optimal_threshold:.1f}", 'info')
+                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] train_precision={tr.get('P', 0.0):.4f} train_true_positives={tr.get('TP', 0)} train_true_negatives={tr.get('TN', 0)} train_false_positives={tr.get('FP', 0)} train_false_negatives={tr.get('FN', 0)} train_max_prediction={tr.get('MaxPred', 0.0):.4f} train_mean_prediction={tr.get('MeanPred', 0.0):.4f} train_recall={tr.get('R', 0.0):.4f} train_f1={tr.get('F1', 0.0):.4f} train_auc={tr.get('AUC', 0.0):.4f} train_specificity={tr.get('Spec', 0.0):.4f} train_false_positive_rate={tr.get('FPR', 0.0):.4f} train_f2={tr.get('F2', 0.0):.4f} train_mcc={tr.get('MCC', 0.0):.4f} train_prauc={tr.get('PRAUC', 0.0):.4f} train_balanced_accuracy={tr.get('BalAcc', 0.0):.4f} train_brier={tr.get('Brier', 0.0):.4f} train_kappa={tr.get('Kappa', 0.0):.4f} train_informedness={tr.get('Informedness', 0.0):.4f} train_markedness={tr.get('Markedness', 0.0):.4f} train_gini={tr.get('Gini', 0.0):.4f} train_optimal_threshold={tr.get('OptThresh', 0.0):.4f} train_standard_deviation_prediction={tr.get('StdPred', 0.0):.4f} train_percentage_above_threshold={tr.get('PctAboveThresh', 0.0):.2f}", 'info')
+                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] VALIDATION_PRECISION={v.get('P', 0.0):.4f} VALIDATION_TRUE_POSITIVES={v.get('TP', 0)} VALIDATION_TRUE_NEGATIVES={v.get('TN', 0)} validation_false_positives={v.get('FP', 0)} validation_false_negatives={v.get('FN', 0)} validation_max_prediction={v.get('MaxPred', 0.0):.4f} validation_mean_prediction={v.get('MeanPred', 0.0):.4f} validation_recall={v.get('R', 0.0):.4f} validation_f1={v.get('F1', 0.0):.4f} validation_auc={v.get('AUC', 0.0):.4f} validation_specificity={v.get('Spec', 0.0):.4f} validation_false_positive_rate={v.get('FPR', 0.0):.4f} validation_f2={v.get('F2', 0.0):.4f} validation_mcc={v.get('MCC', 0.0):.4f} validation_prauc={v.get('PRAUC', 0.0):.4f} validation_balanced_accuracy={v.get('BalAcc', 0.0):.4f} validation_brier={v.get('Brier', 0.0):.4f} validation_kappa={v.get('Kappa', 0.0):.4f} validation_informedness={v.get('Informedness', 0.0):.4f} validation_markedness={v.get('Markedness', 0.0):.4f} validation_gini={v.get('Gini', 0.0):.4f} validation_optimal_threshold={v.get('OptThresh', 0.0):.4f} validation_standard_deviation_prediction={v.get('StdPred', 0.0):.4f} validation_percentage_above_threshold={v.get('PctAboveThresh', 0.0):.2f}", 'info')
+                self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] prediction_binary_split=0.5", 'info')
                 
                 # Define binary labels BEFORE hyperparameter optimization
                 y_train_optimal = (y_train_continuous >= optimal_threshold).astype(int)
@@ -698,6 +711,23 @@ class Phase4_NeuralEnsemble(BasePhase):
                     if post_hpo_prec > hpo_val_precision:
                         final_threshold = post_hpo_thresh
                         threshold_source = 'section4'
+                        # Re-slice features for the new final_threshold
+                        # Section 4's find_optimal_threshold evaluated internally
+                        # with threshold_feature_indices[post_hpo_thresh], so
+                        # Section 5 must use the same feature set
+                        new_thr_key = round(float(final_threshold), 1)
+                        new_kept = threshold_kept_indices.get(new_thr_key, list(range(X_train.shape[1])))
+                        new_kept = list(new_kept)
+                        if new_kept != opt_kept:
+                            X_train_opt = X_train[:, new_kept]
+                            X_val_opt = X_val[:, new_kept]
+                            opt_kept = new_kept
+                            arch_kept_indices[-1] = new_kept
+                            if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+                                scaler = StandardScaler()
+                                X_train_opt = scaler.fit_transform(X_train_opt)
+                                X_val_opt = scaler.transform(X_val_opt)
+                                arch_scalers[arch_name] = scaler
                         self.logger.log(f"   post hyperparameter_optimization improved: using LABEL_THRESHOLD={post_hpo_thresh:.1f}", 'info')
                     else:
                         self.logger.log(f"   post hyperparameter_optimization no improvement: keeping LABEL_THRESHOLD={optimal_threshold:.1f}", 'info')
@@ -730,39 +760,63 @@ class Phase4_NeuralEnsemble(BasePhase):
                         self.logger.log(f"[section 4] {arch_tag} [post hyperparameter_optimization] [diagnostic] " + format_diagnostic_string(s4_pred, ""), 'info')
                     s4_max_pred = s4_pred.max()
                     s4_mean_pred = s4_pred.mean()
+                    # Default auxiliary prediction source: the post-HPO model
+                    s4_aux_pred = s4_pred
                 else:
                     s4_max_pred = 0.0
                     s4_mean_pred = 0.0
+                    s4_aux_pred = np.array([])
                 
-                # If all thresholds rejected in Section 4, use Section 3 metrics
-                if post_hpo_prec == 0.0:
-                    s4_P = hpo_val_precision
-                    s4_R = hpo_R
-                    s4_AUC = hpo_AUC
-                    s4_F1 = hpo_F1
-                    s4_TP = hpo_TP
-                    s4_FP = hpo_FP
-                    s4_TN = hpo_TN
-                    s4_FN = hpo_FN
-                    s4_max_pred = hpo_val_pred.max() if len(hpo_val_pred) > 0 else 0.0
-                    s4_mean_pred = hpo_val_pred.mean() if len(hpo_val_pred) > 0 else 0.0
+                # If post-HPO model is not elected in S5, override metrics to match the actual elected model
+                if post_hpo_prec == 0.0 or not (
+                    model_for_post_hpo is not None
+                    and hpo_best_model is not None
+                    and threshold_source == 'section4'
+                    and post_hpo_prec > max(hpo_val_precision, pre_hpo_val_precision)
+                ):
+                    if hpo_best_model is not None and hpo_improved:
+                        # S5 will use HPO model — log its validation metrics
+                        s4_P = hpo_val_precision
+                        s4_R = hpo_R
+                        s4_AUC = hpo_AUC
+                        s4_F1 = hpo_F1
+                        s4_TP = hpo_TP
+                        s4_FP = hpo_FP
+                        s4_TN = hpo_TN
+                        s4_FN = hpo_FN
+                        s4_max_pred = hpo_val_pred.max() if len(hpo_val_pred) > 0 else 0.0
+                        s4_mean_pred = hpo_val_pred.mean() if len(hpo_val_pred) > 0 else 0.0
+                        s4_aux_pred = hpo_val_pred
+                    else:
+                        # S5 will use Section 1 threshold-opt model — log its validation metrics
+                        s4_P = pre_hpo_val_precision
+                        s4_R = pre_hpo_val_recall
+                        s4_AUC = section2_AUC
+                        s4_F1 = section2_F1
+                        s4_TP = section2_TP
+                        s4_FP = section2_FP
+                        s4_TN = section2_TN
+                        s4_FN = section2_FN
+                        s4_max_pred = section2_pred.max() if len(section2_pred) > 0 else 0.0
+                        s4_mean_pred = section2_pred.mean() if len(section2_pred) > 0 else 0.0
+                        s4_aux_pred = section2_pred
                 
-                s4_binary = (hpo_val_pred.flatten() >= 0.5).astype(int)
+                s4_binary = (s4_aux_pred.flatten() >= 0.5).astype(int)
                 s4_spec = self.evaluator.calculate_specificity(y_val_binarized, s4_binary)
                 s4_fpr = self.evaluator.calculate_fpr(y_val_binarized, s4_binary)
                 s4_f2 = self.evaluator.calculate_f2_score(y_val_binarized, s4_binary)
                 s4_mcc = self.evaluator.calculate_mcc(y_val_binarized, s4_binary)
-                s4_prauc = self.evaluator.calculate_average_precision(y_val_binarized, hpo_val_pred.flatten())
+                s4_prauc = self.evaluator.calculate_average_precision(y_val_binarized, s4_aux_pred.flatten())
                 s4_balacc = self.evaluator.calculate_balanced_accuracy(y_val_binarized, s4_binary)
-                s4_brier = self.evaluator.calculate_brier_score(y_val_binarized, hpo_val_pred.flatten())
+                s4_brier = self.evaluator.calculate_brier_score(y_val_binarized, s4_aux_pred.flatten())
                 s4_kappa = self.evaluator.calculate_kappa(y_val_binarized, s4_binary)
                 s4_informedness = self.evaluator.calculate_informedness(y_val_binarized, s4_binary)
                 s4_markedness = self.evaluator.calculate_markedness(y_val_binarized, s4_binary)
-                s4_gini = self.evaluator.calculate_gini(y_val_binarized, hpo_val_pred.flatten())
-                s4_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, hpo_val_pred.flatten())
+                s4_gini = self.evaluator.calculate_gini(y_val_binarized, s4_aux_pred.flatten())
+                s4_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, s4_aux_pred.flatten())
                 
-                s4_std_pred = float(hpo_val_pred.flatten().std()) if len(hpo_val_pred.flatten()) > 0 else 0.0
-                s4_pct_above = (hpo_val_pred.flatten() >= 0.5).mean() * 100 if len(hpo_val_pred.flatten()) > 0 else 0.0
+                s4_std_pred = float(s4_aux_pred.flatten().std()) if len(s4_aux_pred.flatten()) > 0 else 0.0
+                s4_pct_above = (s4_aux_pred.flatten() >= 0.5).mean() * 100 if len(s4_aux_pred.flatten()) > 0 else 0.0
                 self.logger.log(f"[section 4] {arch_tag} [post hyperparameter_optimization] LABEL_THRESHOLD={final_threshold:.1f},", 'info')
                 self.logger.log(f"[section 4] {arch_tag} [post hyperparameter_optimization] VALIDATION_PRECISION={s4_P:.4f} VALIDATION_TRUE_POSITIVES={s4_TP} VALIDATION_TRUE_NEGATIVES={s4_TN} validation_false_positives={s4_FP} validation_false_negatives={s4_FN} "
                              f"validation_max_prediction={s4_max_pred:.4f} validation_mean_prediction={s4_mean_pred:.4f} "
@@ -784,12 +838,35 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # 2. HPO didn't improve: Use pre-HPO threshold-optimized model
                 # 3. No hpo: Use default hyperparameters
                 #
+                # PLUS: Post-HPO threshold discovery: when Section 4 finds the HPO model
+                # performs better at a different label_threshold than optimal_threshold,
+                # use the HPO model regardless of hpo_improved status.
+                #
                 # Final model produces probabilities (0-1) from model.predict()
                 
-                # Use the best model: HPO only if it actually improved at optimal_threshold
-                use_hpo_model = hpo_best_model is not None and hpo_improved
+                # Check if post-HPO threshold search found a better operating point.
+                # When post_hpo_prec exceeds both HPO and pre-HPO precision, the HPO model
+                # generalizes better at the new threshold — use it even when hpo_improved=False.
+                use_post_hpo_model = (
+                    model_for_post_hpo is not None
+                    and hpo_best_model is not None
+                    and threshold_source == 'section4'
+                    and post_hpo_prec > max(hpo_val_precision, pre_hpo_val_precision)
+                )
                 
-                if use_hpo_model:
+                if use_post_hpo_model:
+                    # Use the HPO model evaluated at post_hpo_thresh
+                    trained_model = model_for_post_hpo
+                    train_epochs = best_hyperparams.get('epochs', 3) if best_hyperparams else 3
+                    training_history = {}
+                    self.logger.log(
+                        f"   Using post-HPO model at LABEL_THRESHOLD={final_threshold:.1f} "
+                        f"(post_hpo_prec={post_hpo_prec:.4f} > "
+                        f"hpo={hpo_val_precision:.4f}, pre_hpo={pre_hpo_val_precision:.4f})",
+                        'info'
+                    )
+                # Use the best model: HPO only if it actually improved at optimal_threshold
+                elif hpo_best_model is not None and hpo_improved:
                     # Use HPO model directly WITHOUT retraining
                     trained_model = hpo_best_model
                     train_epochs = best_hyperparams.get('epochs', 3) if best_hyperparams else 3
@@ -815,11 +892,14 @@ class Phase4_NeuralEnsemble(BasePhase):
                         # Use architecture-specific epochs if specified
                         train_epochs = best_hyperparams.get('epochs', 3)
                         if hasattr(model, 'sklearn_model'):
-                            trained_model, _ = self.model_trainer._train_sklearn_model(model, X_train_opt, y_train_optimal)
+                            trained_model, _ = self.model_trainer._train_sklearn_model(
+                                model, X_train_opt, y_train_optimal, sample_weight=np.sqrt(weights_train)
+                            )
                             training_history = {}
                         else:
                             trained_model, training_history = self.model_trainer.train_model(
-                                model, X_train_opt, y_train_optimal, epochs=train_epochs, verbose=0
+                                model, X_train_opt, y_train_optimal, epochs=train_epochs, verbose=0,
+                                sample_weight=np.sqrt(weights_train)
                             )
                     else:
                         model = self.model_trainer.build_architecture(arch_name, X_train_opt.shape[1], y_train_continuous)
@@ -827,11 +907,14 @@ class Phase4_NeuralEnsemble(BasePhase):
                         arch_epochs = {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20}
                         train_epochs = arch_epochs.get(arch_name, 3)
                         if hasattr(model, 'sklearn_model'):
-                            trained_model, _ = self.model_trainer._train_sklearn_model(model, X_train_opt, y_train_optimal)
+                            trained_model, _ = self.model_trainer._train_sklearn_model(
+                                model, X_train_opt, y_train_optimal, sample_weight=np.sqrt(weights_train)
+                            )
                             training_history = {}
                         else:
                             trained_model, training_history = self.model_trainer.train_model(
-                                model, X_train_opt, y_train_optimal, epochs=train_epochs, verbose=0
+                                model, X_train_opt, y_train_optimal, epochs=train_epochs, verbose=0,
+                                sample_weight=np.sqrt(weights_train)
                             )
                 
                 # Get predictions and final metrics
@@ -914,21 +997,25 @@ class Phase4_NeuralEnsemble(BasePhase):
                 if threshold_source == 'section3':
                     self.logger.log(f"   [info] Section 4 all rejected - using Section 3 results for Section 5", 'info')
                     # FIX: Use pre-HPO precision when HPO didn't improve (ensures best metrics)
+                    # FIX: val_cm moved inside each branch so P/R/F1 match TP/FP/TN/FN (Bug F1)
                     if not hpo_improved:
                         val_precision = pre_hpo_val_precision
                         val_recall = pre_hpo_val_recall
                         val_auc = section2_AUC
                         val_f1 = section2_F1
+                        val_cm = {'TP': section2_TP, 'FP': section2_FP, 'TN': section2_TN, 'FN': section2_FN}
                     else:
                         val_precision = hpo_val_precision
                         val_recall = hpo_R
                         val_auc = hpo_AUC
                         val_f1 = hpo_F1
-                    val_cm = {'TP': hpo_TP, 'FP': hpo_FP, 'TN': hpo_TN, 'FN': hpo_FN}
+                        val_cm = {'TP': hpo_TP, 'FP': hpo_FP, 'TN': hpo_TN, 'FN': hpo_FN}
                     # Also use pre-HPO predictions when HPO didn't improve
                     if not hpo_improved and threshold_opt_model is not None:
                         val_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
                         train_pred = threshold_opt_model.predict(X_train_opt, verbose=0).flatten()
+                        # FIX: Update val_binary to match swapped val_pred (Bug F2)
+                        val_binary = (val_pred >= pred_threshold).astype(int)
                         # Calculate train metrics from pre-HPO predictions
                         train_binary = (train_pred >= 0.5).astype(int)
                         train_cm = self.evaluator.calculate_confusion_matrix(y_train_optimal, train_binary)
@@ -936,16 +1023,10 @@ class Phase4_NeuralEnsemble(BasePhase):
                         train_recall = self.evaluator.calculate_recall(y_train_optimal, train_binary)
                         train_auc = self.evaluator.calculate_auc(y_train_optimal, train_pred)
                         train_f1 = self.evaluator.calculate_f1(y_train_optimal, train_binary)
-                        train_mcc = 0.0
-                        train_prauc = 0.0
-                        train_specificity = 0.0
-                        train_balanced_acc = 0.0
-                        val_mcc = 0.0
-                        val_prauc = 0.0
-                        val_specificity = 0.0
-                        val_balanced_acc = 0.0
                     else:
                         val_pred = hpo_val_pred if len(hpo_val_pred) > 0 else np.zeros(len(X_val))
+                        # FIX: Update val_binary to match swapped val_pred (Bug F2)
+                        val_binary = (val_pred >= pred_threshold).astype(int)
                         train_cm = self.evaluator.calculate_confusion_matrix(y_train_optimal, train_binary)
                         s5_max_pred = val_pred.max() if len(val_pred) > 0 else 0.0
                         s5_mean_pred = val_pred.mean() if len(val_pred) > 0 else 0.0
@@ -953,14 +1034,6 @@ class Phase4_NeuralEnsemble(BasePhase):
                         train_recall = self.evaluator.calculate_recall(y_train_optimal, train_binary)
                         train_auc = self.evaluator.calculate_auc(y_train_optimal, train_pred)
                         train_f1 = self.evaluator.calculate_f1(y_train_optimal, train_binary)
-                        train_mcc = 0.0
-                        val_mcc = 0.0
-                        train_prauc = 0.0
-                        val_prauc = 0.0
-                        train_specificity = 0.0
-                        val_specificity = 0.0
-                        train_balanced_acc = 0.0
-                        val_balanced_acc = 0.0
                 else:
                     # Calculate final metrics normally (original logic)
                     train_cm = self.evaluator.calculate_confusion_matrix(y_train_optimal, train_binary)

@@ -232,7 +232,8 @@ class ModelTrainer:
     def train_model(self, model: tf.keras.Model, X: np.ndarray, y: np.ndarray,
                    validation_data: Optional[Tuple] = None,
                    epochs: int = 50, batch_size: int = 32,
-                   verbose: int = 0) -> Tuple[tf.keras.Model, Dict]:
+                   verbose: int = 0,
+                   sample_weight: Optional[np.ndarray] = None) -> Tuple[tf.keras.Model, Dict]:
         """
         Train TensorFlow/Keras model
         
@@ -254,12 +255,19 @@ class ModelTrainer:
         
         # Create validation split if not provided
         if validation_data is None:
-            X_train, X_val, y_train, y_val = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y
-            )
+            if sample_weight is not None:
+                X_train, X_val, y_train, y_val, sw_train, sw_val = train_test_split(
+                    X, y, sample_weight, test_size=0.2, random_state=42, stratify=y
+                )
+            else:
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y
+                )
+                sw_train = None
         else:
             X_train, y_train = X, y
             X_val, y_val = validation_data
+            sw_train = sample_weight
         
         # Compute class weights for balanced training. Prevents (~99% negative) class bias.
         from sklearn.utils.class_weight import compute_class_weight
@@ -298,6 +306,7 @@ class ModelTrainer:
             epochs=epochs,
             batch_size=batch_size,
             class_weight=class_weight_dict,
+            sample_weight=sw_train,
             verbose=verbose,
             callbacks=callbacks,
         )
@@ -305,7 +314,8 @@ class ModelTrainer:
         return model, history.history
     
     def _train_sklearn_model(self, model_wrapper, X: np.ndarray, 
-                            y: np.ndarray) -> Tuple[Any, Dict]:
+                            y: np.ndarray,
+                            sample_weight: Optional[np.ndarray] = None) -> Tuple[Any, Dict]:
         """
         Train scikit-learn model
         
@@ -317,7 +327,10 @@ class ModelTrainer:
         Returns:
             Tuple of (trained_model, dummy_history)
         """
-        model_wrapper.fit(X, y)
+        if sample_weight is not None:
+            model_wrapper.fit(X, y, sample_weight=sample_weight)
+        else:
+            model_wrapper.fit(X, y)
         
         # Create dummy history for consistency
         history = {
