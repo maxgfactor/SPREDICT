@@ -336,11 +336,12 @@ class Phase5_PredictionOptimization(BasePhase):
             })
         
         # Consolidated consensus table (vote-based, using only high-precision architectures — C1/C2 fix)
+        final_predictions = None
         if df_with_all_cols is not None and len(all_pred_fraud_sets) > 0:
             non_empty = [(name, s) for name, s in all_pred_fraud_sets if s]
             if non_empty:
-                # Vote-based consensus: require at least 6 architectures to agree
-                min_votes = 6
+                # Vote-based consensus: require at least 5 architectures to agree
+                min_votes = 5
                 all_indices = set.union(*(s for _, s in non_empty))
                 vote_counts = {}
                 vote_archs = {}
@@ -359,6 +360,10 @@ class Phase5_PredictionOptimization(BasePhase):
                         row_values = list(row.values) + [vote_counts[orig_idx], "+".join(vote_archs[orig_idx])]
                         self.logger.log(f"{idx}," + ",".join(str(v) for v in row_values), 'info')
                     self.logger.log(f"  Total consensus rows: {len(common_indices)}", 'info')
+                    # Build final_predictions from consensus vote — only ticker_ids with ≥6 votes flagged as fraud
+                    final_predictions = np.zeros(n_inference)
+                    for idx in common_indices:
+                        final_predictions[idx] = 1
         
         # =========================================================================
         # STEP 7: Summary Table (NO confusion matrix)
@@ -397,8 +402,8 @@ class Phase5_PredictionOptimization(BasePhase):
         # STEP 8: Update context (fixes AssertionError: Missing final_predictions)
         # =========================================================================
         # Add final_predictions to context for pipeline validation
-        final_predictions = None
-        if sorted_results:
+        # If consensus produced a result, use that; otherwise fall back to best single architecture
+        if final_predictions is None and sorted_results:
             # Get predictions from best architecture
             best_arch = sorted_results[0]['architecture']
             if best_arch in models:

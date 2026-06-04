@@ -199,6 +199,95 @@ Each chunk has defined validation functions:
 | Phase 4d | Model persistence | ./saved_models/ |
 | Phase 5 | Final evaluation | Metrics, rankings |
 
+### Phase-to-Phase Model Propagation Logic
+
+Each architecture passes through 5 evaluation sections. At every gate the
+**better result propagates forward** — if a later phase doesn't improve, the
+prior phase's model+threshold is carried over unchanged.
+
+```
+Section 1 (threshold search across multiple label thresholds)
+  │  best threshold → threshold_opt_model + optimal_threshold
+  ▼
+Section 2 (HPO — Optuna Bayesian optimization)
+  │  best trial → hpo_best_model + hpo_val_precision
+  ▼
+Section 3 (election gate)
+  ├─ HPO improved → use HPO model           [HYPERPARAMETER_OPTIMIZATION]
+  └─ HPO did not improve → carry over S1    [PRE-HYPERPARAMETER_OPTIMIZATION]
+  │
+  ▼
+Section 4 (post-HPO threshold search)
+  ├─ post-HPO precision > S3 precision → adopt new threshold   [section4]
+  └─ post-HPO did not improve → carry over S3 threshold+model  [section3]
+  │
+  ▼
+Section 5 FINAL (uses Section 4's elected model+threshold)
+```
+
+#### Section 1 — Threshold Search
+- Train model with **default hyperparameters** at each label threshold (20→10→0)
+- Evaluate at prediction threshold 0.5 at each label threshold
+- **Output**: `optimal_threshold` (label threshold with best val precision),
+  `threshold_opt_model` (model trained at that threshold), all per-threshold
+  metrics stored in `all_results`
+
+#### Section 2 — Hyperparameter Optimization (HPO)
+- Run Optuna Bayesian optimization (5–30 trials) using the `optimal_threshold`
+  from Section 1 with the same 0.5 prediction threshold
+- **Output**: `hpo_best_model` + `hpo_val_precision` + `best_hyperparams`
+- HPO trials that fail MaxPred, TP, or min-precision gates are rejected
+  silently; the surviving best trial is the "HPO best"
+
+#### Section 3 — HPO Election Gate
+Compare HPO precision vs pre-HPO precision at prediction threshold 0.5:
+
+- **Branch 1** (HPO did NOT improve — 7 archs: CatBoost through Transformer):
+  The pre-HPO model (`threshold_opt_model`) is the best. Model and threshold
+  are identical to Section 1. **No re-evaluation** — copy all metrics from
+  Section 1's `section2_TP/FP/TN/FN/AUC/F1/R/pred` directly.
+  Tag: `[PRE-HYPERPARAMETER_OPTIMIZATION]`
+
+- **Branch 2** (HPO improved — 2 archs: LSTM, VAE):
+  The HPO model (`hpo_best_model`) is better. Re-evaluate on validation data
+  and compute precision from own TP/FP.
+  Tag: `[HYPERPARAMETER_OPTIMIZATION]`
+
+- **Branch 3** (all HPO trials rejected):
+  No HPO model exists. Use Section 1 baseline metrics; compute precision from
+  `baseline_cm` TP/FP.
+  Tag: `[PRE-HYPERPARAMETER_OPTIMIZATION]`
+
+- **Safety net**: `section3_precision = section3_TP / (section3_TP + section3_FP)`
+  recalculated after all branches to guarantee self-consistency.
+
+#### Section 4 — Post-HPO Threshold Search
+- `model_for_post_hpo` = the model elected in Section 3
+  (`threshold_opt_model` if HPO didn't improve, `hpo_best_model` if it did)
+- Run a second threshold search (same label thresholds) using `retrain_model=False`
+  (inference-only, no retraining per threshold)
+- **Decision**: if `post_hpo_prec > section3_precision`:
+    adopt `final_threshold = post_hpo_thresh`, `threshold_source = 'section4'`
+  Else:
+    keep `final_threshold = optimal_threshold` (Section 1) and the elected model
+- If post-HPO was not elected for S5, Section 4 overrides its own logged
+  metrics to match whatever model S5 will actually use (prevents
+  cross-contamination in the log)
+
+#### Section 5 — Final Evaluation
+- Use Section 4's elected model + `final_threshold`
+- Evaluate on validation data for the final log line
+- Evaluate on inference data (newest held-out date) for production predictions
+- The same model that produced Section 4's metrics must be used here —
+  silent model swaps between S4 and S5 are a functional failure
+
+#### Ensemble Assembly (after Section 5)
+- All architectures with `VAL_PRECISION ≥ ENSEMBLE_MIN_PRECISION` (0.40) are
+  eligible for the ensemble
+- Precision-weighted voting: each architecture's vote weight =
+  `precision_i / sum(precisions of all eligible archs)`
+- Fallback: if no architecture meets 0.40, use the highest-precision arch alone
+
 ## CI/CD Integration
 
 ### Sequential Testing Order

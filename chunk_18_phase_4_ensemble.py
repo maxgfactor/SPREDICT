@@ -441,6 +441,20 @@ class Phase4_NeuralEnsemble(BasePhase):
                     section2_max_pred = float(baseline_pred.max())
                     section2_mean_pred = float(baseline_pred.mean())
                     section2_pred = baseline_pred
+                    section2_spec = v.get('Spec', 0.0)
+                    section2_fpr = v.get('FPR', 0.0)
+                    section2_f2 = v.get('F2', 0.0)
+                    section2_mcc = v.get('MCC', 0.0)
+                    section2_prauc = v.get('PRAUC', 0.0)
+                    section2_balacc = v.get('BalAcc', 0.0)
+                    section2_brier = v.get('Brier', 0.0)
+                    section2_kappa = v.get('Kappa', 0.0)
+                    section2_informedness = v.get('Informedness', 0.0)
+                    section2_markedness = v.get('Markedness', 0.0)
+                    section2_gini = v.get('Gini', 0.0)
+                    section2_opt_thresh = v.get('OptThresh', 0.0)
+                    section2_std_pred = v.get('StdPred', float(baseline_pred.std()))
+                    section2_pct_above = v.get('PctAboveThresh', float((baseline_pred >= 0.5).mean() * 100))
                 else:
                     tr, v = optimal_result['train'], optimal_result['val']
                     pre_hpo_val_precision = best_prec
@@ -467,6 +481,20 @@ class Phase4_NeuralEnsemble(BasePhase):
                         section2_pred = np.zeros(len(X_val_opt))
                         section2_max_pred = 0.0
                         section2_mean_pred = 0.0
+                    section2_spec = v.get('Spec', 0.0)
+                    section2_fpr = v.get('FPR', 0.0)
+                    section2_f2 = v.get('F2', 0.0)
+                    section2_mcc = v.get('MCC', 0.0)
+                    section2_prauc = v.get('PRAUC', 0.0)
+                    section2_balacc = v.get('BalAcc', 0.0)
+                    section2_brier = v.get('Brier', 0.0)
+                    section2_kappa = v.get('Kappa', 0.0)
+                    section2_informedness = v.get('Informedness', 0.0)
+                    section2_markedness = v.get('Markedness', 0.0)
+                    section2_gini = v.get('Gini', 0.0)
+                    section2_opt_thresh = v.get('OptThresh', 0.0)
+                    section2_std_pred = v.get('StdPred', 0.0)
+                    section2_pct_above = v.get('PctAboveThresh', 0.0)
                 
                 self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] LABEL_THRESHOLD={optimal_threshold:.1f}", 'info')
                 self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] train_precision={tr.get('P', 0.0):.4f} train_true_positives={tr.get('TP', 0)} train_true_negatives={tr.get('TN', 0)} train_false_positives={tr.get('FP', 0)} train_false_negatives={tr.get('FN', 0)} train_max_prediction={tr.get('MaxPred', 0.0):.4f} train_mean_prediction={tr.get('MeanPred', 0.0):.4f} train_recall={tr.get('R', 0.0):.4f} train_f1={tr.get('F1', 0.0):.4f} train_auc={tr.get('AUC', 0.0):.4f} train_specificity={tr.get('Spec', 0.0):.4f} train_false_positive_rate={tr.get('FPR', 0.0):.4f} train_f2={tr.get('F2', 0.0):.4f} train_mcc={tr.get('MCC', 0.0):.4f} train_prauc={tr.get('PRAUC', 0.0):.4f} train_balanced_accuracy={tr.get('BalAcc', 0.0):.4f} train_brier={tr.get('Brier', 0.0):.4f} train_kappa={tr.get('Kappa', 0.0):.4f} train_informedness={tr.get('Informedness', 0.0):.4f} train_markedness={tr.get('Markedness', 0.0):.4f} train_gini={tr.get('Gini', 0.0):.4f} train_optimal_threshold={tr.get('OptThresh', 0.0):.4f} train_standard_deviation_prediction={tr.get('StdPred', 0.0):.4f} train_percentage_above_threshold={tr.get('PctAboveThresh', 0.0):.2f}", 'info')
@@ -602,21 +630,36 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 # Get predictions and metrics from appropriate model
                 if not hpo_improved and threshold_opt_model is not None:
-                    # HPO didn't improve - use pre-HPO model (threshold_opt_model) predictions
-                    section3_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
-                    section3_binary = (section3_pred >= 0.5).astype(int)
-                    section3_cm = self.evaluator.calculate_confusion_matrix(y_val_binarized, section3_binary)
-                    section3_R = self.evaluator.calculate_recall(y_val_binarized, section3_binary)
-                    section3_AUC = self.evaluator.calculate_auc(y_val_binarized, section3_pred)
-                    section3_F1 = self.evaluator.calculate_f1(y_val_binarized, section3_binary)
-                    section3_TP = section3_cm['TP']
-                    section3_FP = section3_cm['FP']
-                    section3_TN = section3_cm['TN']
-                    section3_FN = section3_cm['FN']
-                    section3_max_pred = section3_pred.max()
-                    section3_mean_pred = section3_pred.mean()
-                    # Use pre-HPO precision for reporting
+                    # HPO didn't improve - carry over Section 2 metrics (model+threshold unchanged)
+                    # Do NOT re-evaluate: model and threshold are identical to Section 1,
+                    # and re-evaluating produces different TP/FP counts (see longmemory.txt Pattern 10)
+                    section3_pred = section2_pred
+                    section3_R = section2_R
+                    section3_AUC = section2_AUC
+                    section3_F1 = section2_F1
+                    section3_TP = section2_TP
+                    section3_FP = section2_FP
+                    section3_TN = section2_TN
+                    section3_FN = section2_FN
+                    section3_max_pred = section2_max_pred
+                    section3_mean_pred = section2_mean_pred
                     section3_precision = pre_hpo_val_precision
+                    section3_binary = (section3_pred.flatten() >= 0.5).astype(int)
+                    section3_spec = section2_spec
+                    section3_fpr = section2_fpr
+                    section3_f2 = section2_f2
+                    section3_mcc = section2_mcc
+                    section3_prauc = section2_prauc
+                    section3_balacc = section2_balacc
+                    section3_brier = section2_brier
+                    section3_kappa = section2_kappa
+                    section3_informedness = section2_informedness
+                    section3_markedness = section2_markedness
+                    section3_gini = section2_gini
+                    section3_opt_thresh = section2_opt_thresh
+                    section3_std_pred = section2_std_pred
+                    section3_pct_above = section2_pct_above
+                    section3_metrics_carried = True
                 elif hpo_best_model is not None:
                     # HPO improved - use HPO model predictions
                     section3_pred = hpo_best_model.predict(X_val_opt, verbose=0).flatten()
@@ -632,6 +675,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     section3_max_pred = section3_pred.max()
                     section3_mean_pred = section3_pred.mean()
                     section3_precision = hpo_val_precision
+                    section3_metrics_carried = False
                 else:
                     # All HPO trials rejected - use pre-HPO (Section 2) baseline metrics
                     self.logger.log(f"   [warning] All HPO trials rejected for {arch_name} - using Section 2 metrics", 'warning')
@@ -646,20 +690,41 @@ class Phase4_NeuralEnsemble(BasePhase):
                     section3_max_pred = baseline_pred.max()
                     section3_mean_pred = baseline_pred.mean()
                     section3_precision = pre_hpo_val_precision
+                    section3_binary = (section3_pred.flatten() >= 0.5).astype(int)
+                    section3_spec = baseline_spec
+                    section3_fpr = baseline_fpr
+                    section3_f2 = baseline_f2
+                    section3_mcc = baseline_mcc
+                    section3_prauc = baseline_prauc
+                    section3_balacc = baseline_balacc
+                    section3_brier = baseline_brier
+                    section3_kappa = baseline_kappa
+                    section3_informedness = baseline_informedness
+                    section3_markedness = baseline_markedness
+                    section3_gini = baseline_gini
+                    section3_opt_thresh = baseline_opt_thresh
+                    section3_std_pred = float(section3_pred.flatten().std()) if len(section3_pred.flatten()) > 0 else 0.0
+                    section3_pct_above = (section3_pred.flatten() >= 0.5).mean() * 100 if len(section3_pred.flatten()) > 0 else 0.0
+                    section3_metrics_carried = True
+                
+                # Safety net: recalculate precision from own TP/FP (guarantees self-consistency)
+                if (section3_TP + section3_FP) > 0:
+                    section3_precision = section3_TP / (section3_TP + section3_FP)
                 
                 section3_binary = (section3_pred.flatten() >= 0.5).astype(int)
-                section3_spec = self.evaluator.calculate_specificity(y_val_binarized, section3_binary)
-                section3_fpr = self.evaluator.calculate_fpr(y_val_binarized, section3_binary)
-                section3_f2 = self.evaluator.calculate_f2_score(y_val_binarized, section3_binary)
-                section3_mcc = self.evaluator.calculate_mcc(y_val_binarized, section3_binary)
-                section3_prauc = self.evaluator.calculate_average_precision(y_val_binarized, section3_pred.flatten())
-                section3_balacc = self.evaluator.calculate_balanced_accuracy(y_val_binarized, section3_binary)
-                section3_brier = self.evaluator.calculate_brier_score(y_val_binarized, section3_pred.flatten())
-                section3_kappa = self.evaluator.calculate_kappa(y_val_binarized, section3_binary)
-                section3_informedness = self.evaluator.calculate_informedness(y_val_binarized, section3_binary)
-                section3_markedness = self.evaluator.calculate_markedness(y_val_binarized, section3_binary)
-                section3_gini = self.evaluator.calculate_gini(y_val_binarized, section3_pred.flatten())
-                section3_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, section3_pred.flatten())
+                if not section3_metrics_carried:
+                    section3_spec = self.evaluator.calculate_specificity(y_val_binarized, section3_binary)
+                    section3_fpr = self.evaluator.calculate_fpr(y_val_binarized, section3_binary)
+                    section3_f2 = self.evaluator.calculate_f2_score(y_val_binarized, section3_binary)
+                    section3_mcc = self.evaluator.calculate_mcc(y_val_binarized, section3_binary)
+                    section3_prauc = self.evaluator.calculate_average_precision(y_val_binarized, section3_pred.flatten())
+                    section3_balacc = self.evaluator.calculate_balanced_accuracy(y_val_binarized, section3_binary)
+                    section3_brier = self.evaluator.calculate_brier_score(y_val_binarized, section3_pred.flatten())
+                    section3_kappa = self.evaluator.calculate_kappa(y_val_binarized, section3_binary)
+                    section3_informedness = self.evaluator.calculate_informedness(y_val_binarized, section3_binary)
+                    section3_markedness = self.evaluator.calculate_markedness(y_val_binarized, section3_binary)
+                    section3_gini = self.evaluator.calculate_gini(y_val_binarized, section3_pred.flatten())
+                    section3_opt_thresh = self.evaluator.calculate_optimal_threshold(y_val_binarized, section3_pred.flatten())
                 
                 arch_tag = f"[{arch_name.upper()}]"
                 s3_label = f"[{model_label.upper()}]"
@@ -689,7 +754,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 post_hpo_results = []  # Default
                 
                 # Use the best model available: HPO model if exists, else threshold-optimized model
-                model_for_post_hpo = hpo_best_model if hpo_best_model is not None else threshold_opt_model
+                model_for_post_hpo = threshold_opt_model if not hpo_improved else (hpo_best_model if hpo_best_model is not None else threshold_opt_model)
                 
                 if enable_post_hpo and model_for_post_hpo is not None:
                     self.logger.log(f"   Running post hyperparameter_optimization threshold search for {arch_name}...", 'info')
@@ -708,7 +773,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     self.logger.log(f"   hyperparameter_optimization model threshold search: LABEL_THRESHOLD={optimal_threshold:.1f}, VALIDATION_PRECISION={hpo_val_precision:.4f}", 'info')
                     self.logger.log(f"   post hyperparameter_optimization threshold search: LABEL_THRESHOLD={post_hpo_thresh:.1f}, VALIDATION_PRECISION={post_hpo_prec:.4f}", 'info')
                     
-                    if post_hpo_prec > hpo_val_precision:
+                    if post_hpo_prec > section3_precision:
                         final_threshold = post_hpo_thresh
                         threshold_source = 'section4'
                         # Re-slice features for the new final_threshold
@@ -772,7 +837,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     model_for_post_hpo is not None
                     and hpo_best_model is not None
                     and threshold_source == 'section4'
-                    and post_hpo_prec > max(hpo_val_precision, pre_hpo_val_precision)
+                    and post_hpo_prec > section3_precision
                 ):
                     if hpo_best_model is not None and hpo_improved:
                         # S5 will use HPO model — log its validation metrics
@@ -845,13 +910,13 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Final model produces probabilities (0-1) from model.predict()
                 
                 # Check if post-HPO threshold search found a better operating point.
-                # When post_hpo_prec exceeds both HPO and pre-HPO precision, the HPO model
+                # When post_hpo_prec exceeds Section 3's elected precision, the HPO model
                 # generalizes better at the new threshold — use it even when hpo_improved=False.
                 use_post_hpo_model = (
                     model_for_post_hpo is not None
                     and hpo_best_model is not None
                     and threshold_source == 'section4'
-                    and post_hpo_prec > max(hpo_val_precision, pre_hpo_val_precision)
+                    and post_hpo_prec > section3_precision
                 )
                 
                 if use_post_hpo_model:
