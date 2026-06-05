@@ -88,7 +88,7 @@ class VAEClassifier(tf.keras.Model):
         self.clf_dropout1 = tf.keras.layers.Dropout(dropout_rate)
         self.clf_dense2 = tf.keras.layers.Dense(32, activation='relu')
         self.clf_dropout2 = tf.keras.layers.Dropout(dropout_rate)
-        self.clf_output = tf.keras.layers.Dense(1, activation='sigmoid', name='fraud_output')
+        self.clf_output = tf.keras.layers.Dense(1, activation='sigmoid', name='signal_output')
         
         # Decoder (3 fixed layers: 64 → 128 → 256 → input_dim)
         self.dec_dense1 = tf.keras.layers.Dense(64, activation='relu', kernel_initializer='he_normal')
@@ -183,7 +183,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
         loss: Loss function for classifier (default: binary_crossentropy)
         
     Returns:
-        Compiled VAE model (single-output: fraud prediction)
+        Compiled VAE model (single-output: signal prediction)
     """
     model = VAEClassifier(config, input_dim, loss)
     

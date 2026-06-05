@@ -3,7 +3,7 @@ Chunk 02: Utilities - Logging
 Logger class and formatting utilities
 
 ## Purpose
-Provides standardized logging across the fraud detection pipeline with automatic
+Provides standardized logging across the stock analysis pipeline with automatic
 source code references for easy troubleshooting.
 
 ## Source References
@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Any
 
 
 class Logger:
-    """Logging utility for fraud detection pipeline"""
+    """Logging utility for stock analysis pipeline"""
     
     log_count = 0
     
@@ -232,18 +232,18 @@ class Logger:
         if self.verbosity < 1:
             return
         
-        fraud_rate = float(np.mean(y))
+        signal_rate = float(np.mean(y))
         total_samples = len(y)
-        fraud_count = int(np.sum(y))
-        normal_count = total_samples - fraud_count
+        signal_count = int(np.sum(y))
+        normal_count = total_samples - signal_count
         
-        imbalance_ratio = (max(fraud_count, normal_count) / min(fraud_count, normal_count)
-                          if min(fraud_count, normal_count) > 0 else float('inf'))
+        imbalance_ratio = (max(signal_count, normal_count) / min(signal_count, normal_count)
+                          if min(signal_count, normal_count) > 0 else float('inf'))
         
         print("[class] Class Distribution:")
         print(f"  Total samples: {total_samples}")
-        print(f"  Fraud cases: {fraud_count} ({fraud_rate:.1%})")
-        print(f"  Normal cases: {normal_count} ({1-fraud_rate:.1%})")
+        print(f"  Signal cases: {signal_count} ({signal_rate:.1%})")
+        print(f"  Normal cases: {normal_count} ({1-signal_rate:.1%})")
         print(f"  Imbalance ratio: {imbalance_ratio:.1f}:1")
     
     def log_temporal_coverage(self, dates: np.ndarray):

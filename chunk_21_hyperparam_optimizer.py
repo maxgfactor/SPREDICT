@@ -7,7 +7,7 @@ import optuna
 import numpy as np
 from typing import Dict, Any, Callable, Optional, Tuple
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score
-from chunk_01_config import DEFAULT_HPO_TRIALS
+from chunk_01_config import DEFAULT_HPO_TRIALS, PREDICTION_THRESHOLD_DEFAULT
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -38,7 +38,7 @@ class HyperparameterOptimizer:
         y_val: np.ndarray,
         model_builder: Callable,
         train_func: Callable,
-        pred_threshold: float = 0.5,
+        pred_threshold: float = PREDICTION_THRESHOLD_DEFAULT,
         label_threshold: float = 20.0
     ) -> Tuple[Dict[str, Any], Any, float]:
         """
@@ -150,7 +150,7 @@ class HyperparameterOptimizer:
                     max_pred = float(y_pred.max())
                     mean_pred = float(y_pred.mean())
                     std_pred = float(y_pred.std())
-                    pct_above = float((y_pred >= 0.5).mean() * 100)
+                    pct_above = float((y_pred >= self.pred_threshold).mean() * 100)
                     
                     # Min TP constraint for RNN: reject trials with very low TP (< 100).
                     # TP=100 ensures statistically meaningful positive rate (~0.06% of val set).
@@ -179,7 +179,7 @@ class HyperparameterOptimizer:
                     trial_kappa = trial_informedness = trial_markedness = 0.0
                     trial_gini = trial_opt_thresh = 0.0
                     try:
-                        trial_binary = (y_pred.flatten() >= 0.5).astype(int)
+                        trial_binary = (y_pred.flatten() >= self.pred_threshold).astype(int)
                         from chunk_12_evaluation_evaluator import Evaluator
                         evaluator = Evaluator(self.config)
                         trial_spec = evaluator.calculate_specificity(self.y_val, trial_binary)

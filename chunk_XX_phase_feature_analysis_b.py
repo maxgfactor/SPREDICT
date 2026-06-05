@@ -1,14 +1,15 @@
 """
 Chunk XXb: Phase Xb - Temporal Precision Gap Analysis
-Analyzes which architectures best predict RECENT fraud vs OLDER fraud
+Analyzes which architectures best predict RECENT signals vs OLDER signals
 Compares precision on most recent dates vs older dates in validation set
-Goal: Measure temporal weighting effectiveness and identify architectures that excel at recent fraud prediction
+Goal: Measure temporal weighting effectiveness and identify architectures that excel at recent signal prediction
 Runs after Phase 4 (which stores validation predictions in context)
 """
 
 import numpy as np
 import pandas as pd
 from typing import Dict, Any
+from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
 
 import chunk_15_phase_base as phase_base
 
@@ -51,7 +52,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
             return context
         
         label_threshold = self.config.get('FIRST_THRESHOLD', 2.0)
-        pred_threshold = self.config.get('PREDICTION_THRESHOLD', 0.5)
+        pred_threshold = self.config.get('PREDICTION_THRESHOLD', PREDICTION_THRESHOLD_DEFAULT)
         
         # PRIORITY 1 FIX: Validate and Re-derive Dimensions (May 7, 2026)
         # Check if val_dates and val_y_raw have mismatched lengths
@@ -85,44 +86,44 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         is_recent = np.isin(val_dates, unique_dates[unique_dates >= recent_date_cutoff])
         is_older = np.isin(val_dates, unique_dates[unique_dates <= older_date_cutoff])
         
-        fraud_mask = (val_y_raw >= label_threshold).astype(int)
+        signal_mask = (val_y_raw >= label_threshold).astype(int)
         
-        n_recent_fraud_total = int(np.sum(fraud_mask[is_recent]))
-        n_older_fraud_total = int(np.sum(fraud_mask[is_older]))
+        n_recent_signal_total = int(np.sum(signal_mask[is_recent]))
+        n_older_signal_total = int(np.sum(signal_mask[is_older]))
         
         if self.logger:
             self.logger.log(f"Date split: {n_dates} unique dates", 'info')
-            self.logger.log(f"Recent dates (>={recent_date_cutoff}): {np.sum(is_recent):,} samples, {n_recent_fraud_total:,} fraud cases", 'info')
-            self.logger.log(f"Older dates (<={older_date_cutoff}): {np.sum(is_older):,} samples, {n_older_fraud_total:,} fraud cases", 'info')
+            self.logger.log(f"Recent dates (>={recent_date_cutoff}): {np.sum(is_recent):,} samples, {n_recent_signal_total:,} signal cases", 'info')
+            self.logger.log(f"Older dates (<={older_date_cutoff}): {np.sum(is_older):,} samples, {n_older_signal_total:,} signal cases", 'info')
         
         results = []
         for i, (arch_name, preds) in enumerate(zip(arch_names, val_predictions)):
             preds = np.asarray(preds).flatten()
             
-            recent_fraud = fraud_mask[is_recent] == 1
-            older_fraud = fraud_mask[is_older] == 1
+            recent_signal = signal_mask[is_recent] == 1
+            older_signal = signal_mask[is_older] == 1
             
             recent_preds = (preds[is_recent] >= pred_threshold).astype(int)
             older_preds = (preds[is_older] >= pred_threshold).astype(int)
             
-            n_rf = int(np.sum(recent_fraud))
-            n_of = int(np.sum(older_fraud))
+            n_rs = int(np.sum(recent_signal))
+            n_os = int(np.sum(older_signal))
             
             # Calculate all metrics for recent period
-            recent_tp = int(np.sum((recent_preds == 1) & (recent_fraud == 1)))
-            recent_fp = int(np.sum((recent_preds == 1) & (recent_fraud == 0)))
-            recent_tn = int(np.sum((recent_preds == 0) & (recent_fraud == 0)))
-            recent_fn = int(np.sum((recent_preds == 0) & (recent_fraud == 1)))
+            recent_tp = int(np.sum((recent_preds == 1) & (recent_signal == 1)))
+            recent_fp = int(np.sum((recent_preds == 1) & (recent_signal == 0)))
+            recent_tn = int(np.sum((recent_preds == 0) & (recent_signal == 0)))
+            recent_fn = int(np.sum((recent_preds == 0) & (recent_signal == 1)))
             
             recent_precision = recent_tp / (recent_tp + recent_fp) if (recent_tp + recent_fp) > 0 else 0.0
             recent_recall = recent_tp / (recent_tp + recent_fn) if (recent_tp + recent_fn) > 0 else 0.0
             recent_f1 = 2 * recent_precision * recent_recall / (recent_precision + recent_recall) if (recent_precision + recent_recall) > 0 else 0.0
             
             # Calculate all metrics for older period
-            older_tp = int(np.sum((older_preds == 1) & (older_fraud == 1)))
-            older_fp = int(np.sum((older_preds == 1) & (older_fraud == 0)))
-            older_tn = int(np.sum((older_preds == 0) & (older_fraud == 0)))
-            older_fn = int(np.sum((older_preds == 0) & (older_fraud == 1)))
+            older_tp = int(np.sum((older_preds == 1) & (older_signal == 1)))
+            older_fp = int(np.sum((older_preds == 1) & (older_signal == 0)))
+            older_tn = int(np.sum((older_preds == 0) & (older_signal == 0)))
+            older_fn = int(np.sum((older_preds == 0) & (older_signal == 1)))
             
             older_precision = older_tp / (older_tp + older_fp) if (older_tp + older_fp) > 0 else 0.0
             older_recall = older_tp / (older_tp + older_fn) if (older_tp + older_fn) > 0 else 0.0
@@ -131,8 +132,8 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
             # Calculate AUC (using raw predictions, not binary)
             try:
                 from sklearn.metrics import roc_auc_score
-                recent_auc = roc_auc_score(fraud_mask[is_recent], preds[is_recent]) if len(np.unique(fraud_mask[is_recent])) > 1 else 0.5
-                older_auc = roc_auc_score(fraud_mask[is_older], preds[is_older]) if len(np.unique(fraud_mask[is_older])) > 1 else 0.5
+                recent_auc = roc_auc_score(signal_mask[is_recent], preds[is_recent]) if len(np.unique(signal_mask[is_recent])) > 1 else 0.5
+                older_auc = roc_auc_score(signal_mask[is_older], preds[is_older]) if len(np.unique(signal_mask[is_older])) > 1 else 0.5
             except:
                 recent_auc = 0.0
                 older_auc = 0.0
@@ -171,8 +172,8 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
                 'older_tn': older_tn,
                 'older_fn': older_fn,
                 'gap': gap,
-                'n_recent_fraud': n_rf,
-                'n_older_fraud': n_of,
+                'n_recent_signal': n_rs,
+                'n_older_signal': n_os,
                 'interpretation': interpretation,
             })
         
@@ -195,15 +196,15 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         worst_arch = results_df.iloc[-1]
         
         if self.logger:
-            self.logger.log(f"BEST for recent fraud: {best_arch['architecture']} (Gap: {best_arch['gap']:+.4f})", 'info')
-            self.logger.log(f"WORST for recent fraud: {worst_arch['architecture']} (Gap: {worst_arch['gap']:+.4f})", 'info')
+            self.logger.log(f"BEST for recent signals: {best_arch['architecture']} (Gap: {best_arch['gap']:+.4f})", 'info')
+            self.logger.log(f"WORST for recent signals: {worst_arch['architecture']} (Gap: {worst_arch['gap']:+.4f})", 'info')
         
         positive_gap_count = int(np.sum(results_df['gap'] > 0.05))
         if self.logger:
             self.logger.log(f"{positive_gap_count}/{len(results_df)} architectures show positive temporal precision gap", 'info')
         
         if positive_gap_count == 0 and self.logger:
-            self.logger.log(f"warning: No architecture shows meaningful improvement on recent fraud", 'warning')
+            self.logger.log(f"warning: No architecture shows meaningful improvement on recent signals", 'warning')
             self.logger.log(f"Consider: stronger temporal weighting or different architectures", 'warning')
         
         context['temporal_precision_gap'] = results_df.to_dict('records')

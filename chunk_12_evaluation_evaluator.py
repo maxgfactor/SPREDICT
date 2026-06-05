@@ -12,6 +12,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import StandardScaler  # NN-only normalization (trees are scale-invariant)
+from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
 
 
 class Evaluator:
@@ -265,7 +266,7 @@ class Evaluator:
                 if self.logger: self.logger.log(f"Only one class present in y_true: {unique_true}", 'warning')
             
             # Use PREDICTION_THRESHOLD from config (default 0.5) for converting predictions to binary
-            pred_threshold = self.config.get('PREDICTION_THRESHOLD', 0.5)
+            pred_threshold = self.config.get('PREDICTION_THRESHOLD', PREDICTION_THRESHOLD_DEFAULT)
             y_pred_binary = (y_pred_proba >= pred_threshold).astype(int)
             
             # Calculate prediction distribution metrics

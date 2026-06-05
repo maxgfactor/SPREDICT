@@ -11,6 +11,7 @@ DEFAULT_FIRST_THRESHOLD = 20.0
 DEFAULT_LAST_THRESHOLD = 0.0
 DEFAULT_THRESHOLD_STEP = -2.0
 DEFAULT_HPO_TRIALS = 10
+PREDICTION_THRESHOLD_DEFAULT = 0.5  # fallback if config key is missing
 
 # Suppress TensorFlow/CUDA warnings for CPU-only execution
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
@@ -23,7 +24,7 @@ CONFIG = {
     'SAMPLE_SIZE': 184408,        # ~25 dates worth (~2.7% of dataset) - most recent dates (halved May 18, 2026)
     'FORCE_SAMPLING': True,       # Force this sample size
     'MIN_SAMPLES': 30,  # Reduced from 100 for clean dataset
-    'TARGET_TYPE': 'continuous',  # Continuous targets (price changes) for fraud detection
+    'TARGET_TYPE': 'continuous',  # Continuous targets (price changes) for stock analysis
     'LOG_TRANSFORM_TARGET': False,  # Disabled (May 5, 2026) - use raw ChangeY values, restore April 8 behavior
     'DATE_COLUMN_INDEX': -1,  # Auto-detect date column
     'TARGET_COLUMN_INDEX': -1,  # Auto-detect target column
@@ -35,7 +36,7 @@ CONFIG = {
     # IMBALANCE HANDLING CONFIGURATION - Step 3
     # ============================================================================
     'DYNAMIC_CLASS_WEIGHTS': True,  # Calculate scale_pos_weight from actual class ratio
-    'PREDICTION_THRESHOLD_SEARCH': False,  # Disabled - use fixed 0.5 for consistency
+    'PREDICTION_THRESHOLD_SEARCH': False,  # Disabled - use PREDICTION_THRESHOLD from config
     'PREDICTION_THRESHOLD_MIN': 0.1,  # Start of prediction threshold search
     'PREDICTION_THRESHOLD_MAX': 0.5,  # End of prediction threshold search
     'PREDICTION_THRESHOLD_STEP': 0.05,  # Step size for prediction threshold search
@@ -77,7 +78,7 @@ CONFIG = {
     # - Model outputs probabilities (0-1) from model.predict()
     # - Binary predictions: (predictions >= 0.5).astype(int)
     # - This is the STANDARD threshold for probability outputs
-    'PREDICTION_THRESHOLD': 0.55,  # Threshold for converting predictions to binary (raised from 0.5 for GIS Tier 1)
+    'PREDICTION_THRESHOLD': 0.5,  # Threshold for converting predictions to binary
     
     # Model Architecture
     'latent_dim': 32,
@@ -309,7 +310,7 @@ CONFIG = {
     # Ensemble Configuration (REVISED - March 2026)
     'ENSEMBLE_MIN_PRECISION': 0.53,  # Architecture must have val_precision > 0.53 (GIS Tier 3 — tighter ensemble filter)
     'ENSEMBLE_WEIGHTING': 'uniform',  # weight = precision_i / sum(precision) (GIS Tier 1 — uniform to prevent CatBoost dominance)
-    'ENSEMBLE_VOTE_THRESHOLD': 0.67,  # At least 4/6 agree to predict fraud (GIS Tier 1 — tighter consensus)
+    'ENSEMBLE_VOTE_THRESHOLD': 0.67,  # At least 4/6 agree to predict signal (GIS Tier 1 — tighter consensus)
     'FALLBACK_ARCHITECTURE': 'VAE',  # Highest val precision (P=0.5416, GIS Tier 1)
 }
 

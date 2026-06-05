@@ -23,7 +23,7 @@ the optimal thresholds found in Phase 4.
 - WHY opt_threshold for y, NOT 0.5?
 - - Phase 4 trained models using labels created with opt_threshold
 - - y_binary = (y >= opt_threshold) ensures consistent evaluation
-- - Using y >= 0.5 would treat ANY change >= $0.50 as fraud (wrong!)
+- - Using y >= 0.5 would treat ANY change >= $0.50 as signal (wrong!)
 -
 - Model outputs: probabilities (0-1) from model.predict()
 - Binary predictions: (predictions >= 0.5).astype(int)
@@ -33,6 +33,7 @@ import numpy as np
 import time
 from typing import Dict
 from collections import Counter
+from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
 
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
@@ -185,7 +186,7 @@ class Phase5_PredictionOptimization(BasePhase):
         # C1/C2: Use only high-precision models for consensus, with configurable vote threshold
         ensemble_min_precision = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
         ensemble_vote_threshold = self.config.get('ENSEMBLE_VOTE_THRESHOLD', 0.5)
-        all_pred_fraud_sets = []  # list of (arch_name, set(indices))
+        all_pred_signal_sets = []  # list of (arch_name, set(indices))
         arch_thresholds = {}  # arch_name -> opt_threshold
         
         for arch_name, model in models.items():
@@ -194,7 +195,7 @@ class Phase5_PredictionOptimization(BasePhase):
             opt_threshold = arch_metadata.get('optimal_threshold', 20.0)
             best_hyperparams = arch_metadata.get('best_hyperparams', {})
             best_val_prec = arch_metadata.get('best_val_precision', 0.0)
-            pred_threshold = self.config.get('PREDICTION_THRESHOLD', 0.5)
+            pred_threshold = self.config.get('PREDICTION_THRESHOLD', PREDICTION_THRESHOLD_DEFAULT)
             kept_idx = arch_metadata.get('kept_feature_indices')
             
             # Select features for this architecture's optimal threshold
@@ -281,7 +282,7 @@ class Phase5_PredictionOptimization(BasePhase):
             inf_fpr = self.evaluator.calculate_fpr(y_val_binarized, binary_predictions)
             inf_f2 = self.evaluator.calculate_f2_score(y_val_binarized, binary_predictions)
             inf_std_pred = float(predictions.std()) if len(predictions) > 0 else 0.0
-            inf_pct_above_thresh = (predictions >= 0.5).mean() * 100 if len(predictions) > 0 else 0.0
+            inf_pct_above_thresh = (predictions >= pred_threshold).mean() * 100 if len(predictions) > 0 else 0.0
             inf_brier = self.evaluator.calculate_brier_score(y_val_binarized, predictions.flatten())
             inf_kappa = self.evaluator.calculate_kappa(y_val_binarized, binary_predictions)
             inf_informedness = self.evaluator.calculate_informedness(y_val_binarized, binary_predictions)
@@ -297,15 +298,15 @@ class Phase5_PredictionOptimization(BasePhase):
             if df_with_all_cols is not None:
                 available_cols = list(df_with_all_cols.columns)
 
-                pred_fraud_indices = np.where(binary_predictions == 1)[0]
+                pred_signal_indices = np.where(binary_predictions == 1)[0]
                 # C1: Only include high-precision models in consensus voting
                 if best_val_prec > ensemble_min_precision:
-                    all_pred_fraud_sets.append((arch_name, set(pred_fraud_indices)))
+                    all_pred_signal_sets.append((arch_name, set(pred_signal_indices)))
                     arch_thresholds[arch_name] = opt_threshold
-                if len(pred_fraud_indices) > 0:
+                if len(pred_signal_indices) > 0:
                     self.logger.log("", 'info')
-                    self.logger.log(f"{arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows)", 'info')
-                    self.logger.log(f"architecture: {arch_name} | precision: {metrics['precision']:.4f} | prediction_binary_split: {pred_threshold} | predicted: {len(pred_fraud_indices)}", 'info')
+                    self.logger.log(f"{arch_name} MODEL PREDICTED SIGNAL ({len(pred_signal_indices)} rows)", 'info')
+                    self.logger.log(f"architecture: {arch_name} | precision: {metrics['precision']:.4f} | prediction_binary_split: {pred_threshold} | predicted: {len(pred_signal_indices)}", 'info')
                     self.logger.log("Row," + ",".join(available_cols), 'info')
 
             # Store results with Inf_ prefix (16 metrics + 2 extras)
@@ -349,7 +350,7 @@ class Phase5_PredictionOptimization(BasePhase):
             majority_archs = {name for name, t in arch_thresholds.items() if t == majority_threshold}
             excluded = set(arch_thresholds.keys()) - majority_archs
 
-            all_pred_fraud_sets = [(name, s) for name, s in all_pred_fraud_sets if name in majority_archs]
+            all_pred_signal_sets = [(name, s) for name, s in all_pred_signal_sets if name in majority_archs]
 
             self.logger.log(f"Majority label threshold: {majority_threshold} ({len(majority_archs)} archs)", 'info')
             if excluded:
@@ -357,8 +358,8 @@ class Phase5_PredictionOptimization(BasePhase):
 
         # Consolidated consensus table (vote-based, using only high-precision architectures — C1/C2 fix)
         final_predictions = None
-        if df_with_all_cols is not None and len(all_pred_fraud_sets) > 0:
-            non_empty = [(name, s) for name, s in all_pred_fraud_sets if s]
+        if df_with_all_cols is not None and len(all_pred_signal_sets) > 0:
+            non_empty = [(name, s) for name, s in all_pred_signal_sets if s]
             if non_empty:
                 # Vote-based consensus: dynamic min_votes based on majority group size
                 min_votes = max(3, len(majority_archs)) if majority_threshold is not None else 5
@@ -373,14 +374,14 @@ class Phase5_PredictionOptimization(BasePhase):
                 if common_indices:
                     consensus_rows = df_with_all_cols.iloc[list(common_indices)]
                     self.logger.log("", 'info')
-                    self.logger.log(f"Consolidated Predicted Fraud ({len(majority_archs)} architectures, min {min_votes} votes):", 'info')
+                    self.logger.log(f"Consolidated Predicted Signal ({len(majority_archs)} architectures, min {min_votes} votes):", 'info')
                     header_cols = list(df_with_all_cols.columns) + ['VoteCount', 'VotingArchs']
                     self.logger.log("Row," + ",".join(header_cols), 'info')
                     for idx, (orig_idx, row) in enumerate(consensus_rows.iterrows(), 1):
                         row_values = list(row.values) + [vote_counts[orig_idx], "+".join(vote_archs[orig_idx])]
                         self.logger.log(f"{idx}," + ",".join(str(v) for v in row_values), 'info')
                     self.logger.log(f"  Total consensus rows: {len(common_indices)}", 'info')
-                    # Build final_predictions from consensus vote — only ticker_ids with ≥min_votes votes flagged as fraud
+                    # Build final_predictions from consensus vote — only ticker_ids with ≥min_votes votes flagged as signal
                     final_predictions = np.zeros(n_inference)
                     for idx in common_indices:
                         final_predictions[idx] = 1

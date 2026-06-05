@@ -1,4 +1,4 @@
-# Software Specification Requirements (SSR) - Fraud Detection Ensemble
+# Software Specification Requirements (SSR) - Stock Analysis Ensemble
 
 **Version**: 3.17  
 **Date**: 2026-06-01  
@@ -9,7 +9,7 @@
 # QUICK START GUIDE
 
 ## What Is This Document?
-SPEC.md is a living document for the Fraud Detection Ensemble Pipeline. It records outputs (Section 1), documents the code (Section 2), maintains history (Section 3), and tracks permanent failures (Section 4).
+SPEC.md is a living document for the Stock Analysis Ensemble Pipeline. It records outputs (Section 1), documents the code (Section 2), maintains history (Section 3), and tracks permanent failures (Section 4).
 
 ## Document Structure
 
@@ -318,10 +318,10 @@ The pipeline calculates and reports the following metrics:
 
 | Component | Description | Actual Value | Run Date | Source File |
 |-----------|-------------|--------------|----------|------------|
-| TP | True Positives - Correctly predicted fraud | chunk_04_utils_metrics.py |
-| FP | False Positives - Normal predicted as fraud | chunk_04_utils_metrics.py |
+| TP | True Positives - Correctly predicted signal | chunk_04_utils_metrics.py |
+| FP | False Positives - Non-signal predicted as signal | chunk_04_utils_metrics.py |
 | TN | True Negatives - Correctly predicted normal | chunk_04_utils_metrics.py |
-| FN | False Negatives - Fraud predicted as normal | chunk_04_utils_metrics.py |
+| FN | False Negatives - Signal predicted as non-signal | chunk_04_utils_metrics.py |
 
 ### Prediction Statistics
 
@@ -521,16 +521,16 @@ Use this table to track changes between runs:
 
 ### Problem Statement
 
-Financial fraud results in billions of dollars in losses annually. Traditional rule-based systems miss complex fraud patterns. This project addresses the challenge of detecting fraudulent financial transactions in highly imbalanced datasets (259:1 ratio) using ensemble machine learning.
+Stock markets generate massive datasets spanning multiple regimes — bull/bear cycles, high/low volatility periods, sector rotations — each exhibiting different dynamics. Traditional single-model approaches miss regime-specific signals. This project addresses the challenge of identifying stock strength signals in highly imbalanced datasets (259:1 ratio) using ensemble machine learning.
 
 ### Project Details
 
 | Aspect | Specification |
 |--------|---------------|
-| **Project Name** | Fraud Detection Ensemble Pipeline |
+| **Project Name** | Stock Analysis Ensemble Pipeline |
 | **Project Type** | Machine Learning Pipeline |
-| **Core Functionality** | Detect fraudulent financial transactions using ensemble of neural networks and gradient boosting models |
-| **Target Domain** | Financial services / Fraud detection |
+| **Core Functionality** | Identify stock strength signals using ensemble of neural networks and gradient boosting models |
+| **Target Domain** | Financial markets / Stock analysis |
 | **Language** | Python 3.12 |
 
 ---
@@ -541,7 +541,7 @@ Financial fraud results in billions of dollars in losses annually. Traditional r
 |-----------|-------------|
 | **Input** | CSV file with financial features + date + target |
 | **Processing** | Data loading → Temporal weighting → Model training → Ensemble → Prediction |
-| **Output** | Fraud predictions (binary + probability), model files, evaluation metrics |
+| **Output** | Strength signal predictions (binary + probability), model files, evaluation metrics |
 | **Execution Mode** | CPU-only |
 | **Mode** | Training vs Inference |
 
@@ -561,11 +561,11 @@ Phase 4 (Training/Ensemble) → Phase 5 (Prediction/Output)
 |-----------|--------------|
 | **Input Format** | CSV with headers |
 | **Date Format** | YYYYMMDD (integer or string) |
-| **Target Column** | Binary fraud indicator (0/1) or continuous change value |
+| **Target Column** | Binary strength signal indicator (0/1) or continuous change value |
 | **Dataset Size** | Approximately 6.7 million records |
 | **Features** | 16-21 features (after pruning) |
 | **Date Range** | 2022-03-01 to 2025-10-23 |
-| **Class Imbalance** | 259:1 ratio (0.4% fraud) |
+| **Class Imbalance** | 259:1 ratio (0.4% signal) |
 
 ### Data Quality Requirements
 
@@ -959,7 +959,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.7 | 2026-05-25 | `[label_threshold_search]` block deleted (redundant with `[diagnostic]`), per-threshold diagnostic expanded to full 24-metric train+val set (matches section format), `pred_*`→`prediction_*` (pred_mean, pred_std, pred_min, pred_max), `val_stdpred`/`val_pctabovethresh` standardized → `validation_standard_deviation_prediction`/`validation_percentage_above_threshold` across all 4 sections, trailing comma removed from `LABEL_THRESHOLD=20.0,` | Remove redundant threshold search logging, standardize remaining shorthand metrics, match diagnostic format to section format |
 | 3.8 | 2026-05-25 | LightGBM: `scale_pos_weight`→`class_weight='balanced'` for auto class balancing; CatBoost: `auto_class_weights` default `'Balanced'`→`'SqrtBalanced'` for safer weight scaling on imbalanced data; LightGBM HPO space pruned (`scale_pos_weight` removed) | Eliminate manual weight calculation, reduce overfitting risk from extreme class weights |
 | 3.9 | 2026-05-25 | DENSE, RNN, LSTM builders: added `FOCAL_LOSS_CONFIG` checks for per-architecture FocalLoss support; Dense and LSTM HPO spaces: added `loss_function` param for BCE/FocalLoss toggle | Enable FocalLoss on remaining active neural architectures for precision-focused training |
-| 3.10 | 2026-05-25 | Reduced threshold search from 11 to 3 increments (20→10→0, step -10.0); centralized fallback constants in `chunk_01_config`; unified mismatched fallbacks across all phases; reduced HPO trials from 30 to 5 per architecture with `DEFAULT_HPO_TRIALS=10` fallback; reduced HPO epochs per trial from 20 to 5; moved `Label_Thresholds` log from analyzer to pipeline init for earlier log position; moved `Temporal Coverage` from 4 `print()` lines to single `self.log()` right after data loading; removed blank line from pipeline init; consolidated per-architecture predicted-fraud data rows into single intersection table (logged after all architectures, Ticker_id present in every arch); CSV Phase value `Val`→`Validation` | Faster pipeline runs, consistent defaults, cleaner log ordering |
+| 3.10 | 2026-05-25 | Reduced threshold search from 11 to 3 increments (20→10→0, step -10.0); centralized fallback constants in `chunk_01_config`; unified mismatched fallbacks across all phases; reduced HPO trials from 30 to 5 per architecture with `DEFAULT_HPO_TRIALS=10` fallback; reduced HPO epochs per trial from 20 to 5; moved `Label_Thresholds` log from analyzer to pipeline init for earlier log position; moved `Temporal Coverage` from 4 `print()` lines to single `self.log()` right after data loading; removed blank line from pipeline init; consolidated per-architecture predicted-signal data rows into single intersection table (logged after all architectures, Ticker_id present in every arch); CSV Phase value `Val`→`Validation` | Faster pipeline runs, consistent defaults, cleaner log ordering |
 | 3.11 | 2026-05-31 | VAE serialization fix: `@keras.saving.register_keras_serializable` decorator on `VAEClassifier`, `get_config()` expanded to save all 5 params, `from_config()` classmethod added | Keras 3 `load_model()` fails for Model subclass without proper serialization support |
 | 3.12 | 2026-05-31 | GIS Precision Lever Plan audit: 4 categories of proposed changes found ineffective or wrong. **Removed**: all 12 FOCAL_LOSS_CONFIG α/γ changes (zero effect — Section 2 uses BCE, HPO overrides from search space, Transformer has no focal loss option); MIN_ENSEMBLE_SIZE 5→4 (controls tree count, not ensemble filtering); HPO_MIN_POSITIVE_PERCENTAGE/ABSOLUTE dict changes (dead keys — defined but never read). **Corrected**: HIGHLY_SKEWED_FEATURES list (missed features 10/12). **Revised plan**: 14 changes across 3 tiers, all zero-runtime. Full audit documented in shortmemory.txt §GIS Precision Lever Action Plan — Revised. | Code audit revealed FOCAL_LOSS_CONFIG is a fallback-only value overridden by HPO search space — config changes had no pipeline effect |
 | 3.13 | 2026-06-01 | **Pipeline Iter 1 run completed** (Tier 1 applied). Best val P: LightGBM 0.5329 (+0.0179 vs baseline). Best inference P: CatBoost 0.7213 (+0.0120). 5 of 9 archs passed ensemble filter (0.52 threshold). **Decision gate**: improved but < 0.56 → proceed to Tier 2. **Tier 2 plan formulated**: 7 config changes from GIS Precision Lever audit. | Iter 1: 4/9 archs improved, best 0.5329 (LightGBM); XGBoost/RNN/LSTM collapsed (non-deterministic HPO); VAE regressed from 0.5416→0.4842. Tier 2 tightens safeguard gates + winsorization to raise precision floor. |
@@ -1055,7 +1055,7 @@ Discovery sequence for dataset understanding and precision optimization:
 | legacy files/chunk_03_utils_memory.py | Memory management utilities | → All FRs (memory mgmt, moved to legacy) |
 | chunk_04_utils_metrics.py | Metric calculation utilities | → FR-06, FR-11 |
 | chunk_05_data_manager.py | Data loading and management | → FR-01 |
-| legacy files/chunk_06_data_augmentation.py | Fraud case augmentation | → FR-01 (moved to legacy) |
+| legacy files/chunk_06_data_augmentation.py | Signal case augmentation | → FR-01 (moved to legacy) |
 | chunk_07_data_temporal.py | Temporal feature extraction | → FR-04 |
 | chunk_08_models_base.py | Base neural architectures (VAE, Dense, CNN) | → FR-05 |
 | chunk_09_models_advanced.py | Advanced architectures (Transformer, GNN, etc.) | → FR-05 |
@@ -1161,7 +1161,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 | **Location** | chunk_19_phase_5_optimization.py line 272 |
 | **Error** | `AttributeError: 'NoneType' object has no attribute 'columns'` |
 | **Cause** | `df_with_all_cols = context.get('df_with_all_cols')` returned None; no guard around usage |
-| **Fix Applied** | Added `if df_with_all_cols is not None` guard + `sorted_results = []` init before block (Fix A), added pruned_feature_indices lookup (Fix B), added SklearnModelWrapper in loader (Fix C), wrapped fraud output in None guard (Fix D) |
+| **Fix Applied** | Added `if df_with_all_cols is not None` guard + `sorted_results = []` init before block (Fix A), added pruned_feature_indices lookup (Fix B), added SklearnModelWrapper in loader (Fix C), wrapped prediction output in None guard (Fix D) |
 | **Evidence** | pipeline_cpu.log lines 1518-1527 |
 | **Status** | Fixes A-D applied to chunk_19 and chunk_22; pipeline not yet re-run |
 
@@ -1201,7 +1201,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 - **Fix A**: initialized `sorted_results = []` before `if architecture_results:` block (chunk_19 line 328)
 - **Fix B**: added pruned_feature_indices lookup for 24→19 pruning in Phase 5 (chunk_19 line 131)
 - **Fix C**: patched model loader to detect sklearn archs and load via joblib + SklearnModelWrapper (chunk_22 lines 113-122)
-- **Fix D**: wrapped fraud output section in `if df_with_all_cols is not None` guard (chunk_19 line 272)
+- **Fix D**: wrapped prediction output section in `if df_with_all_cols is not None` guard (chunk_19 line 272)
 
 ### Files Modified
 | File | Changes |
@@ -1480,7 +1480,7 @@ Complete reference of all cosmetic log labels, section tags, metric keys, and ab
 |-------|-------------|---------|
 | `data_loaded:` | Dataset load confirmation | chunk_16, chunk_05 |
 | `total_samples:` | Total sample count | chunk_16, chunk_02 |
-| `fraud_cases:` | Fraud case count | chunk_16, chunk_02 |
+| `signal_cases:` | Signal case count | chunk_16, chunk_02 |
 | `normal_cases:` | Normal case count | chunk_16, chunk_02 |
 | `imbalance_ratio:` | Class imbalance ratio | chunk_16, chunk_02 |
 | `data_concentration:` | Post-concentration sample count | chunk_16 |
@@ -1548,7 +1548,7 @@ Complete reference of all cosmetic log labels, section tags, metric keys, and ab
 | `final prediction results (sorted by precision)` | Final results header | chunk_19 |
 | `features:` / `samples:` | Feature importance input dimensions | chunk_XX |
 | `borderline:` | Features pruned in some thresholds | chunk_XX |
-| `best_for_recent_fraud:` / `worst_for_recent_fraud:` / `gap:` | Temporal precision gap analysis | chunk_XX |
+| `best_for_recent_signals:` / `worst_for_recent_signals:` / `gap:` | Temporal precision gap analysis | chunk_XX |
 
 ### G7: Hyperparameter Names
 

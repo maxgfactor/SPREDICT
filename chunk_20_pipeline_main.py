@@ -1,6 +1,6 @@
 """
 Chunk 20: Pipeline Main
-Main orchestrator for the fraud detection pipeline
+Main orchestrator for the stock analysis pipeline
 """
 
 import os
@@ -29,7 +29,7 @@ from chunk_XX_phase_feature_analysis_b import PhaseXb_TemporalCorrelation
 
 
 class PipelineOrchestrator:
-    """Orchestrates the complete fraud detection pipeline"""
+    """Orchestrates the complete stock analysis pipeline"""
     
     def __init__(self, config: Dict):
         """
@@ -53,8 +53,18 @@ class PipelineOrchestrator:
         """
         start_time = time.time()
         
-        self.logger.log("[running] Starting Fraud Detection Pipeline...", 'info')
+        self.logger.log("[running] Starting Stock Analysis Pipeline...", 'info')
         self.logger.log(f"   Data path: {self.config['DATA_PATH']}", 'info')
+        try:
+            data_path = self.config['DATA_PATH']
+            with open(data_path) as f:
+                num_cols = len(f.readline().split(','))
+                f.seek(0)
+                num_rows = sum(1 for _ in f) - 1
+            file_size_mb = os.path.getsize(data_path) / 1024 / 1024
+            self.logger.log(f"   Dataset shape: {num_rows:,} rows x {num_cols} columns ({file_size_mb:.1f} MB)", 'info')
+        except Exception as e:
+            self.logger.log(f"   Could not read dataset: {e}", 'warning')
         self.logger.log(f"   Sampling: size={self.config['SAMPLE_SIZE']}, enabled={self.config['USE_SAMPLING']}, forced={self.config['FORCE_SAMPLING']}", 'info')
         self.logger.log(f"   hyperparameter_optimization: trials={self.config['HYPERPARAM_OPTIMIZATION_TRIALS']}, continue_until_target={self.config['HPO_CONTINUE_UNTIL_TARGET']}, epochs_per_trial={self.config['HYPERPARAM_OPTIMIZATION_EPOCHS']}, stagnation_threshold={self.config['HPO_STAGNATION_THRESHOLD']}", 'info')
         first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
@@ -350,7 +360,6 @@ class PipelineOrchestrator:
                 self.logger.log(line, 'info')
             
             # Save to file
-            import os
             csv_filename = 'metrics_summary.csv'
             with open(csv_filename, 'w') as f:
                 f.write('\n'.join(csv_lines))
@@ -393,7 +402,6 @@ class PipelineOrchestrator:
             
             # Save backup of current config
             import json
-            import os
             from datetime import datetime
             
             config_backup_file = 'config_backup_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.json'
@@ -629,12 +637,12 @@ if __name__ == "__main__":
     # Run pipeline with default configuration
     try:
         result = main()
-        print("Fraud Detection Pipeline completed successfully!")
+        print("Stock Analysis Pipeline completed successfully!")
         
     except FileNotFoundError as e:
         print(f"\n[error] critical error: Data file not found")
         print(f"{e}")
-        print("\n[fix] solution: Please ensure your fraud data CSV file exists.")
+        print("\n[fix] solution: Please ensure your stock data CSV file exists.")
         import sys
         sys.exit(1)
         

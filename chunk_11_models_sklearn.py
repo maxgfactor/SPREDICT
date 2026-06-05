@@ -114,10 +114,10 @@ class SklearnModelWrapper:
             # Handle IsolationForest (-1 for outliers, 1 for inliers)
             if isinstance(self.sklearn_model, IsolationForest):
                 # Convert to [0, 1] probabilities
-                # -1 (outlier/fraud) -> high probability
+                # -1 (outlier/signal) -> high probability
                 # 1 (inlier/normal) -> low probability
                 proba = np.zeros((len(preds), 2))
-                proba[:, 1] = (preds == -1).astype(float)  # Fraud probability
+                proba[:, 1] = (preds == -1).astype(float)  # Signal probability
                 proba[:, 0] = 1 - proba[:, 1]  # Normal probability
                 return proba
             else:
@@ -471,7 +471,7 @@ class FocalLoss:
         Initialize Focal Loss.
         
         Args:
-            alpha: Weight for positive class (fraud)
+            alpha: Weight for positive class (signal)
             gamma: Focusing parameter (reduces loss for easy samples)
         """
         self.alpha = alpha

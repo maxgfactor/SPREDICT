@@ -43,7 +43,7 @@ class Phase1_PipelineSetup(BasePhase):
             self.logger.log_temporal_coverage(dates)
         except FileNotFoundError as e:
             self.logger.log(f"critical: Data file not found - {e}", 'error')
-            raise RuntimeError("Cannot proceed without valid fraud data file") from e
+            raise RuntimeError("Cannot proceed without valid stock data file") from e
         except ValueError as e:
             self.logger.log(f"data validation error: {e}", 'error')
             raise RuntimeError("Data validation failed") from e
@@ -74,21 +74,21 @@ class Phase1_PipelineSetup(BasePhase):
 
                 for thresh in thresholds:
                     y_binary = (raw_target >= thresh).astype(int)
-                    fraud_count = int(np.sum(y_binary))
-                    normal_count = len(y_binary) - fraud_count
+                    signal_count = int(np.sum(y_binary))
+                    normal_count = len(y_binary) - signal_count
                     total = len(y_binary)
-                    fraud_rate = fraud_count / total
-                    imbalance_ratio = max(fraud_count, normal_count) / min(fraud_count, normal_count) if min(fraud_count, normal_count) > 0 else float('inf')
+                    signal_rate = signal_count / total
+                    imbalance_ratio = max(signal_count, normal_count) / min(signal_count, normal_count) if min(signal_count, normal_count) > 0 else float('inf')
                     
                     self.logger.log(f"[class] Class Distribution (LABEL_THRESHOLD={thresh:>4.1f}):", 'info')
                     self.logger.log(f"  Total samples: {total:,}", 'info')
-                    self.logger.log(f"  Fraud cases: {fraud_count:,} ({fraud_rate:.1%})", 'info')
+                    self.logger.log(f"  Signal cases: {signal_count:,} ({signal_rate:.1%})", 'info')
                     self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
                     self.logger.log(f"  Imbalance ratio: {imbalance_ratio:.1f}:1", 'info')
         
         # Calculate data statistics
         stats = {
-            'fraud_rate': float(y.mean()),
+            'signal_rate': float(y.mean()),
             'missing_values': 0,  # Already handled in load_data
             'n_samples': len(X),
             'n_features': X.shape[1]
@@ -102,29 +102,29 @@ class Phase1_PipelineSetup(BasePhase):
 
         for thresh in thresholds:
             y_binary = (y >= thresh).astype(int)
-            fraud_count = int(np.sum(y_binary))
-            normal_count = len(y_binary) - fraud_count
+            signal_count = int(np.sum(y_binary))
+            normal_count = len(y_binary) - signal_count
             total = len(y_binary)
-            fraud_rate = fraud_count / total
-            imbalance_ratio = max(fraud_count, normal_count) / min(fraud_count, normal_count) if min(fraud_count, normal_count) > 0 else float('inf')
+            signal_rate = signal_count / total
+            imbalance_ratio = max(signal_count, normal_count) / min(signal_count, normal_count) if min(signal_count, normal_count) > 0 else float('inf')
             
             self.logger.log(f"[class] Class Distribution (LABEL_THRESHOLD={thresh:>4.1f}):", 'info')
             self.logger.log(f"  Total samples: {total:,}", 'info')
-            self.logger.log(f"  Fraud cases: {fraud_count:,} ({fraud_rate:.1%})", 'info')
+            self.logger.log(f"  Signal cases: {signal_count:,} ({signal_rate:.1%})", 'info')
             self.logger.log(f"  Normal cases: {normal_count:,} ({normal_count/total:.1%})", 'info')
             self.logger.log(f"  Imbalance ratio: {imbalance_ratio:.1f}:1", 'info')
         
         self.logger.log_feature_quality_metrics(X)
         
-        # Augment fraud cases if needed
-        original_fraud_rate = y.mean()
-        X, y, dates = self.data_manager.augment_fraud_cases(X, y, dates)
-        augmented_fraud_rate = y.mean()
-        if augmented_fraud_rate > original_fraud_rate:
-            self.logger.log(f"Fraud augmentation: {original_fraud_rate:.4f} → {augmented_fraud_rate:.4f}", 'info')
+        # Augment signal cases if needed
+        original_signal_rate = y.mean()
+        X, y, dates = self.data_manager.augment_signal_cases(X, y, dates)
+        augmented_signal_rate = y.mean()
+        if augmented_signal_rate > original_signal_rate:
+            self.logger.log(f"Signal augmentation: {original_signal_rate:.4f} → {augmented_signal_rate:.4f}", 'info')
         
-        # Concentrate on periods with fraud
-        X, y, dates = self.data_manager.concentrate_fraud_cases(X, y, dates)
+        # Concentrate on periods with signal
+        X, y, dates = self.data_manager.concentrate_signal_cases(X, y, dates)
         self.logger.log(f"Data concentration: {len(X)} samples retained", 'info')
         
         # Prepare data
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         print(f"   X shape: {result['X'].shape}")
         print(f"   y shape: {result['y'].shape}")
         print(f"   dates shape: {result['dates'].shape}")
-        print(f"   fraud rate: {result['y'].mean():.4f}")
+        print(f"   signal rate: {result['y'].mean():.4f}")
         
         # Validate output
         validate_phase1_output(result)

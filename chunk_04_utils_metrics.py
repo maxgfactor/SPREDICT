@@ -6,6 +6,7 @@ Metric calculation utilities with defensive programming
 import numpy as np
 import warnings
 from typing import List, Optional, Dict, Any, Callable
+from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
 
 
 def safe_average_precision_score(y_true: np.ndarray, y_pred: np.ndarray,
@@ -250,7 +251,7 @@ def calculate_temporal_drift(segment_metrics: Dict[str, Dict[str, float]]) -> Di
 def calculate_permutation_importance(model: Any, X: np.ndarray, y_true: np.ndarray,
                                      scoring_metric: str = 'precision',
                                      n_iterations: int = 5,
-                                     pred_threshold: float = 0.5,
+                                     pred_threshold: float = PREDICTION_THRESHOLD_DEFAULT,
                                      logger: Callable = None) -> Dict[int, float]:
     """
     Calculate permutation importance for each feature.
@@ -455,7 +456,7 @@ def calculate_snr(predictions: np.ndarray, dates: np.ndarray) -> Dict[str, float
         return {'early': 0.0, 'mid': 0.0, 'late': 0.0, 'overall': 0.0}
 
 
-def calculate_mutual_information(predictions: np.ndarray, y_true: np.ndarray) -> float:
+def calculate_mutual_information(predictions: np.ndarray, y_true: np.ndarray, threshold: float = PREDICTION_THRESHOLD_DEFAULT) -> float:
     """
     Calculate mutual information between predictions and true labels.
     
@@ -468,7 +469,7 @@ def calculate_mutual_information(predictions: np.ndarray, y_true: np.ndarray) ->
     """
     try:
         from sklearn.metrics import mutual_info_score
-        pred_binned = (predictions > 0.5).astype(int)
+        pred_binned = (predictions > threshold).astype(int)
         mi = mutual_info_score(y_true, pred_binned)
         return float(mi)
     except Exception as e:

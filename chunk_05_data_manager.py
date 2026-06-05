@@ -28,7 +28,7 @@ class DataManager:
     
     def load_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Load and comprehensively validate fraud data CSV file
+        Load and comprehensively validate stock data CSV file
         
         Returns:
             Tuple of (X, y, dates) where:
@@ -40,15 +40,15 @@ class DataManager:
             FileNotFoundError: If data file not found
             ValueError: If data validation fails
         """
-        data_path = self.config.get('DATA_PATH', 'fraud_data.csv')
+        data_path = self.config.get('DATA_PATH', 'stock_data.csv')
         
         # Strict requirement: file must exist
         if not os.path.exists(data_path):
             raise FileNotFoundError(
-                f"CRITICAL: Fraud data file not found at '{data_path}'\n"
-                f"This file is required for the fraud detection system to operate.\n"
+                f"CRITICAL: Stock data file not found at '{data_path}'\n"
+                f"This file is required for the stock analysis system to operate.\n"
                 f"Please ensure the CSV file exists at the specified path.\n"
-                f"Expected format: CSV with columns including date and target (fraud indicator)"
+                f"Expected format: CSV with columns including date and target (signal indicator)"
             )
         
         # Load and validate CSV structure
@@ -236,7 +236,7 @@ class DataManager:
     def _apply_stratified_sampling(self, X: np.ndarray, y: np.ndarray, 
                                   dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Apply stratified sampling to maintain fraud rate distribution
+        Apply stratified sampling to maintain signal rate distribution
         
         Args:
             X: Feature matrix
@@ -261,10 +261,10 @@ class DataManager:
         
         return X[sampled_indices], y[sampled_indices], dates[sampled_indices]
     
-    def augment_fraud_cases(self, X: np.ndarray, y: np.ndarray, 
-                           dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def augment_signal_cases(self, X: np.ndarray, y: np.ndarray, 
+                            dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Augment fraud cases to balance dataset
+        Augment signal cases to balance dataset
         
         Args:
             X: Feature matrix
@@ -274,30 +274,30 @@ class DataManager:
         Returns:
             Augmented (X, y, dates)
         """
-        fraud_rate = y.mean()
+        signal_rate = y.mean()
         
-        # If fraud rate is acceptable, return as-is
-        if fraud_rate >= 0.001:  # At least 0.1% fraud
+        # If signal rate is acceptable, return as-is
+        if signal_rate >= 0.001:  # At least 0.1% signal
             return X, y, dates
         
-        # Augment fraud cases
-        fraud_indices = np.where(y == 1)[0]
-        if len(fraud_indices) == 0:
+        # Augment signal cases
+        signal_indices = np.where(y == 1)[0]
+        if len(signal_indices) == 0:
             return X, y, dates
         
         max_samples = self.config.get('AUGMENTATION_MAX_SAMPLES', 50000)
-        target_fraud_rate = 0.005  # 0.5% fraud rate
+        target_signal_rate = 0.005  # 0.5% signal rate
         
-        current_fraud_count = len(fraud_indices)
-        target_total = int(current_fraud_count / target_fraud_rate)
+        current_signal_count = len(signal_indices)
+        target_total = int(current_signal_count / target_signal_rate)
         target_total = min(target_total, max_samples)
         
         if target_total <= len(y):
             return X, y, dates
         
-        # Create augmented fraud samples with small noise
+        # Create augmented signal samples with small noise
         n_augment = target_total - len(y)
-        n_repeats = (n_augment // len(fraud_indices)) + 1
+        n_repeats = (n_augment // len(signal_indices)) + 1
         
         augmented_X = []
         augmented_y = []
@@ -307,10 +307,10 @@ class DataManager:
             if len(augmented_X) >= n_augment:
                 break
             
-            noise = np.random.normal(0, 0.01, X[fraud_indices].shape)
-            augmented_X.append(X[fraud_indices] + noise)
-            augmented_y.append(y[fraud_indices])
-            augmented_dates.append(dates[fraud_indices])
+            noise = np.random.normal(0, 0.01, X[signal_indices].shape)
+            augmented_X.append(X[signal_indices] + noise)
+            augmented_y.append(y[signal_indices])
+            augmented_dates.append(dates[signal_indices])
         
         augmented_X = np.vstack(augmented_X)[:n_augment]
         augmented_y = np.hstack(augmented_y)[:n_augment]
@@ -323,37 +323,37 @@ class DataManager:
         
         return X, y, dates
     
-    def concentrate_fraud_cases(self, X: np.ndarray, y: np.ndarray, 
-                               dates: np.ndarray, min_fraud_per_date: int = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def concentrate_signal_cases(self, X: np.ndarray, y: np.ndarray, 
+                                dates: np.ndarray, min_signal_per_date: int = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Concentrate on periods with fraud activity
+        Concentrate on periods with signal activity
         
         Args:
             X: Feature matrix
             y: Labels
             dates: Temporal data
-            min_fraud_per_date: Minimum fraud cases per date (0 = no filtering)
+            min_signal_per_date: Minimum signal cases per date (0 = no filtering)
             
         Returns:
             Filtered (X, y, dates)
         """
-        if min_fraud_per_date == 0:
+        if min_signal_per_date == 0:
             return X, y, dates
         
-        # Count fraud per date
+        # Count signal per date
         unique_dates = np.unique(dates)
-        dates_with_fraud = []
+        dates_with_signal = []
         
         for date in unique_dates:
             mask = dates == date
-            if np.sum(y[mask]) >= min_fraud_per_date:
-                dates_with_fraud.append(date)
+            if np.sum(y[mask]) >= min_signal_per_date:
+                dates_with_signal.append(date)
         
-        if len(dates_with_fraud) == 0:
+        if len(dates_with_signal) == 0:
             return X, y, dates
         
-        # Filter to dates with sufficient fraud
-        mask = np.isin(dates, dates_with_fraud)
+        # Filter to dates with sufficient signal
+        mask = np.isin(dates, dates_with_signal)
         return X[mask], y[mask], dates[mask]
     
     def prepare_data(self, X: np.ndarray) -> np.ndarray:
@@ -503,7 +503,7 @@ if __name__ == "__main__":
         X, y, dates = data_manager.load_data()
         
         print(f"[pass] Data loaded: X={X.shape}, y={y.shape}, dates={dates.shape}")
-        print(f"   Fraud rate: {y.mean():.3f}")
+        print(f"   Signal rate: {y.mean():.3f}")
         print(f"   Date range: {dates.min()} to {dates.max()}")
         
         # Validate output
