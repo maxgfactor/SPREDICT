@@ -88,62 +88,6 @@ Depends on: All phases
 - `chunk_20_pipeline_main.py` - Main orchestrator
 - `chunk_21_hyperparam_optimizer.py` - Hyperparameter optimization (Optuna)
 
-## Usage
-
-### Testing Individual Chunks
-
-Each chunk can be tested independently:
-
-```bash
-python 01_config.py          # Test configuration
-python 08_models_base.py     # Test base models
-python 16_phase_1_setup.py   # Test Phase 1
-```
-
-### Running Complete Pipeline
-
-```bash
-# Activate virtual environment (recommended)
-./tf_venv/bin/python chunk_20_pipeline_main.py
-
-# Or run directly
-python chunk_20_pipeline_main.py  # Requires pip install of dependencies
-```
-
-### Virtual Environment
-
-A TensorFlow virtual environment is provided in `tf_venv/`:
-- TensorFlow 2.18.1
-- Includes all required dependencies (pandas, scikit-learn, scipy, optuna)
-
-### Using in Custom Code
-
-```python
-from chunk_20_pipeline_main import main, PipelineOrchestrator
-from chunk_01_config import CONFIG, update_config
-
-# Run with default config
-results = main()
-
-# Run with custom config
-custom_config = update_config({'SAMPLE_SIZE': 50000})
-results = main(custom_config)
-
-# Use orchestrator directly
-orchestrator = PipelineOrchestrator(CONFIG)
-context = orchestrator.run()
-```
-
-## Input/Output Contracts
-
-Each chunk has defined validation functions:
-
-- `validate_phase1_output(context)` - Validates Phase 1 output
-- `validate_phase3_output(context)` - Validates Phase 3 output
-- `validate_phase4_output(context)` - Validates Phase 4 output
-- `validate_phase5_output(context)` - Validates Phase 5 output
-- `validate_pipeline_execution(context)` - Validates complete pipeline
-
 ## Pipeline Architecture
 
 ```
@@ -288,7 +232,63 @@ Compare HPO precision vs pre-HPO precision at prediction threshold 0.5:
   `precision_i / sum(precisions of all eligible archs)`
 - Fallback: if no architecture meets 0.40, use the highest-precision arch alone
 
-## CI/CD Integration
+## Usage
+
+### Testing Individual Chunks
+
+Each chunk can be tested independently:
+
+```bash
+python 01_config.py          # Test configuration
+python 08_models_base.py     # Test base models
+python 16_phase_1_setup.py   # Test Phase 1
+```
+
+### Running Complete Pipeline
+
+```bash
+# Activate virtual environment (recommended)
+./tf_venv/bin/python chunk_20_pipeline_main.py
+
+# Or run directly
+python chunk_20_pipeline_main.py  # Requires pip install of dependencies
+```
+
+### Virtual Environment
+
+A TensorFlow virtual environment is provided in `tf_venv/`:
+- TensorFlow 2.18.1
+- Includes all required dependencies (pandas, scikit-learn, scipy, optuna)
+
+### Using in Custom Code
+
+```python
+from chunk_20_pipeline_main import main, PipelineOrchestrator
+from chunk_01_config import CONFIG, update_config
+
+# Run with default config
+results = main()
+
+# Run with custom config
+custom_config = update_config({'SAMPLE_SIZE': 50000})
+results = main(custom_config)
+
+# Use orchestrator directly
+orchestrator = PipelineOrchestrator(CONFIG)
+context = orchestrator.run()
+```
+
+## Input/Output Contracts
+
+Each chunk has defined validation functions:
+
+- `validate_phase1_output(context)` - Validates Phase 1 output
+- `validate_phase3_output(context)` - Validates Phase 3 output
+- `validate_phase4_output(context)` - Validates Phase 4 output
+- `validate_phase5_output(context)` - Validates Phase 5 output
+- `validate_pipeline_execution(context)` - Validates complete pipeline
+
+## Continuous Integration/Continuous Deployment
 
 ### Sequential Testing Order
 
