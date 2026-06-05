@@ -1,8 +1,10 @@
-# Fraud Detection Ensemble Pipeline
+# Stock Analysis Ensemble Pipeline
 
-**Vision**: Build the most precise fraud detection system that minimizes false positives while maximizing true positives, enabling confident fraud detection without disrupting legitimate transactions.
+**Vision**: Use machine learning on technical indicators to identify stocks with
+signals of strength — serving as a starting point for deciding which stocks
+might be worth deep-dive fundamental analysis.
 
-**Mission**: Orchestrate an automated ML pipeline that loads financial transaction data, engineers temporal features, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), ensembles 9 architectures (CatBoost, LightGBM, XGBoost + 6 neural networks), and evaluates final predictions with comprehensive metrics.
+**Mission**: A foundational **flywheel effect** drives this pipeline: each ML train/validate loop produces a comprehensive set of performance metrics, and the consolidation of all iterations yields a massive set of pipeline-wide metrics that AI has the capacity to analyze — drawing on **breadth and depth of knowledge** to generate **actionable insight** that compounds improvements over time. This foundational loop drives the automated ML pipeline which orchestrates loading market data, engineering temporal features to account for recency bias and breaking the entire dataset into sections based on differences in market dynamics, optimizing classification thresholds, tuning hyperparameters via Bayesian optimization (Optuna), and ensembling **9 diverse architectures** to produce **more reliable** strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (VAE, CNN, RNN, LSTM, Transformer, GNN) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class.
 
 This directory contains the decomposed pipeline broken into 21 individually testable chunks.
 
@@ -146,7 +148,7 @@ Each chunk has defined validation functions:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    FRAUD DETECTION PIPELINE                              │
+│                    STOCK ANALYSIS PIPELINE                              │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              │
