@@ -147,46 +147,24 @@ Each chunk has defined validation functions:
 ## Pipeline Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    STOCK ANALYSIS PIPELINE                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              │
-│  │  Phase 1     │    │  Phase 3     │    │  Phase 4     │              │
-│  │  Setup       │───▶│  Temporal    │───▶│  Training    │              │
-│  │              │    │  Weighting   │    │              │              │
-│  └──────────────┘    └──────────────┘    └──────┬───────┘              │
-│                                                  │                       │
-│  Input: CSV                              ┌──────▼───────┐              │
-│  Output: X, y, dates                    │ 4a. Threshold │              │
-│                                         │     Search    │              │
-│                                         └──────┬───────┘              │
-│                                                │                       │
-│                                         ┌──────▼───────┐              │
-│                                         │ 4b. HPO       │              │
-│                                         │ (Optuna)      │              │
-│                                         └──────┬───────┘              │
-│                                                │                       │
-│                                         ┌──────▼───────┐              │
-│                                         │ 4c. Ensemble │              │
-│                                         │    Creation  │              │
-│                                         └──────┬───────┘              │
-│                                                │                       │
-│                                         ┌──────▼───────┐              │
-│                                         │ 4d. Model    │              │
-│                                         │    Save      │              │
-│                                         └──────┬───────┘              │
-│                                                │                       │
-│  ┌─────────────────────────────────────────────▼──────────┐            │
-│  │                   Phase 5                           │            │
-│  │           Final Predictions & Evaluation             │            │
-│  │  - Per-architecture metrics (P, R, F1, AUC)         │            │
-│  │  - Confusion matrix                                 │            │
-│  │  - Best architecture selection                      │            │
-│  └──────────────────────────────────────────────────────┘            │
-│                                                                          │
-│  Output: Predictions, metrics, saved models                             │
-└─────────────────────────────────────────────────────────────────────────┘
+          Phase 1  -->  Phase 3  -->  Phase 4  -->  Phase 5
+          Setup         Temporal       Training/    Inference &
+                        Segmentation     Validation  Evaluation
+                        & Weighting
+                                       |
+                                       +-- 4a. Threshold Search
+                                       +-- 4b. HyperParameter Optimization (HPO)
+                                       +-- 4c. Post-HPO Threshold Search/Re-Evaluation
+                                       +-- 4d. Ensemble Assembly
+                                       +-- 4e. Model Persistence
+                                                       |
+                                                       +-- Load saved models
+                                                       +-- Run inference on newest date
+                                                       +-- Per-arch metrics
+                                                       +-- Best architecture selection
+
+          Input: CSV  -->  Output: X, y, dates
+                             Output: Predictions, metrics, saved models
 ```
 
 ### Phase Details
@@ -194,12 +172,31 @@ Each chunk has defined validation functions:
 | Phase | Description | Key Outputs |
 |-------|-------------|-------------|
 | Phase 1 | Data loading, preprocessing | X, y (continuous), dates |
-| Phase 3 | Temporal feature engineering | temporal_weights |
-| Phase 4a | Threshold optimization | optimal_threshold per architecture |
-| Phase 4b | Hyperparameter optimization | best_hyperparams per architecture |
-| Phase 4c | Ensemble creation | Combined predictions |
-| Phase 4d | Model persistence | ./saved_models/ |
-| Phase 5 | Final evaluation | Metrics, rankings |
+| Phase 3 | Temporal segmentation + weighting | temporal_weights, date segments |
+| Phase 4a | Threshold Search | optimal_threshold per architecture |
+| Phase 4b | HyperParameter Optimization | best_hyperparams per architecture |
+| Phase 4d | Ensemble Assembly | Precision-weighted predictions |
+| Phase 4e | Model Persistence | ./saved_models/ |
+| Phase 5 | Inference on newest date | Predictions, per-arch metrics, rankings |
+
+### Temporal Segmentation & Recency Bias
+
+The dataset spans multiple market regimes — bull/bear cycles, high/low volatility
+periods, sector rotations — each exhibiting different dynamics. A single model
+trained uniformly across all regimes would dilute regime-specific signals and
+miss the patterns most relevant to the current market.
+
+Phase 3 addresses this by:
+
+- **Breaking the dataset into temporal sections** based on differences in market
+  dynamics, allowing feature engineering and weighting to account for each
+  regime's unique characteristics
+- **Applying time-weighted sampling** that prioritizes recent dates over older
+  ones — the most predictive patterns for tomorrow are the ones that emerged
+  most recently
+
+This recency bias is intentional: market micro-structures evolve, and yesterday's
+regime tells you more about today than a regime from six months ago.
 
 ### Phase-to-Phase Model Propagation Logic
 
