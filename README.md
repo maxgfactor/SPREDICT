@@ -8,86 +8,6 @@ might be worth deep-dive fundamental analysis.
 
 This directory contains the decomposed pipeline broken into 21 individually testable chunks.
 
-## Directory Structure
-
-```
-cicd/
-├── chunk_01_config.py                  # Configuration and constants
-├── chunk_02_utils_logging.py           # Logger class and formatting
-├── chunk_04_utils_metrics.py           # Metric calculation utilities
-├── chunk_05_data_manager.py            # Data loading and management
-├── chunk_07_data_temporal.py           # Temporal feature extraction
-├── chunk_08_models_base.py             # Base neural architectures (VAE, CNN, RNN)
-├── chunk_09_models_advanced.py         # Advanced architectures (Transformer, GNN)
-├── chunk_10_models_ensemble.py         # Ensemble builders and aggregators
-├── chunk_11_models_sklearn.py          # Scikit-learn model wrappers
-├── chunk_12_evaluation_evaluator.py    # Model evaluation utilities
-├── chunk_13_state_manager.py           # Pipeline state management
-├── chunk_14_models_trainer.py          # Model training orchestration
-├── chunk_15_phase_base.py              # Abstract base phase class
-├── chunk_16_phase_1_setup.py           # Phase 1: Pipeline setup
-├── chunk_17_phase_3_temporal.py        # Phase 3: Temporal weighting
-├── chunk_18_phase_4_ensemble.py        # Phase 4: Neural ensemble
-├── chunk_19_phase_5_optimization.py    # Phase 5: Prediction optimization
-├── chunk_20_pipeline_main.py           # Main orchestrator
-├── chunk_21_hyperparam_optimizer.py    # Hyperparameter optimization (Optuna)
-├── chunk_22_model_loader.py            # Model loading for predictions
-├── chunk_XX_feature_importance.py      # 6-method feature importance engine
-├── chunk_XX_phase_feature_analysis_a.py # Phase Xa: Raw feature analysis
-├── chunk_XX_phase_feature_analysis_b.py # Phase Xb: Temporal precision gap
-├── legacy files/                       # Moved non-functional/legacy code and logs
-├── for_train_x_2025_10_24_clean.csv    # Input data (~938 MB)
-└── ... (output artifacts, config backups, documentation)
-```
-
-## Dependency Layers
-
-### Phase 1: Foundation (00-04)
-Independent chunks with no dependencies.
-- `00_validation_framework.py` - Validation utilities
-- `01_config.py` - Configuration constants
-- `02_utils_logging.py` - Logging utilities
-- `03_utils_memory.py` - Memory utilities
-- `04_utils_metrics.py` - Metric utilities
-
-### Phase 2: Data Layer (05-07)
-Depends on: Phase 1
-- `05_data_manager.py` - Data loading and validation
-- `06_data_augmentation.py` - Data augmentation
-- `07_data_temporal.py` - Temporal features
-
-### Phase 3: Model Architecture (08-11)
-Depends on: Phase 1
-- `08_models_base.py` - Basic neural models
-- `09_models_advanced.py` - Advanced neural models
-- `10_models_ensemble.py` - Ensemble models
-- `11_models_sklearn.py` - Sklearn models
-
-### Phase 4: Training & Evaluation (12-14)
-Depends on: Phase 1-3
-- `12_evaluation_evaluator.py` - Evaluation utilities
-- `13_state_manager.py` - State management
-- `14_models_trainer.py` - Training orchestration
-
-### Phase 5: Pipeline Phases (15-19)
-Depends on: Phase 1-4
-- `15_phase_base.py` - Base phase class
-- `16_phase_1_setup.py` - Phase 1 implementation
-- `17_phase_3_temporal.py` - Phase 3 implementation (Phase 2 removed)
-- `18_phase_4_ensemble.py` - Phase 4 implementation:
-  - 4a. Threshold Optimization (find best threshold for each architecture)
-  - 4b. Hyperparameter Optimization (Optuna Bayesian search)
-  - 4c. Ensemble Creation (combine model predictions)
-  - 4d. Model Persistence (save to ./saved_models/)
-- `19_phase_5_optimization.py` - Phase 5 implementation (final predictions)
-
-**Note**: Phase 2 was intentionally removed - threshold optimization was moved into Phase 4
-
-### Phase 6: Orchestration (20-21)
-Depends on: All phases
-- `chunk_20_pipeline_main.py` - Main orchestrator
-- `chunk_21_hyperparam_optimizer.py` - Hyperparameter optimization (Optuna)
-
 ## Pipeline Architecture
 
 ```
@@ -231,6 +151,86 @@ Compare HPO precision vs pre-HPO precision at prediction threshold 0.5:
 - Precision-weighted voting: each architecture's vote weight =
   `precision_i / sum(precisions of all eligible archs)`
 - Fallback: if no architecture meets 0.40, use the highest-precision arch alone
+
+## Directory Structure
+
+```
+cicd/
+├── chunk_01_config.py                  # Configuration and constants
+├── chunk_02_utils_logging.py           # Logger class and formatting
+├── chunk_04_utils_metrics.py           # Metric calculation utilities
+├── chunk_05_data_manager.py            # Data loading and management
+├── chunk_07_data_temporal.py           # Temporal feature extraction
+├── chunk_08_models_base.py             # Base neural architectures (VAE, CNN, RNN)
+├── chunk_09_models_advanced.py         # Advanced architectures (Transformer, GNN)
+├── chunk_10_models_ensemble.py         # Ensemble builders and aggregators
+├── chunk_11_models_sklearn.py          # Scikit-learn model wrappers
+├── chunk_12_evaluation_evaluator.py    # Model evaluation utilities
+├── chunk_13_state_manager.py           # Pipeline state management
+├── chunk_14_models_trainer.py          # Model training orchestration
+├── chunk_15_phase_base.py              # Abstract base phase class
+├── chunk_16_phase_1_setup.py           # Phase 1: Pipeline setup
+├── chunk_17_phase_3_temporal.py        # Phase 3: Temporal weighting
+├── chunk_18_phase_4_ensemble.py        # Phase 4: Neural ensemble
+├── chunk_19_phase_5_optimization.py    # Phase 5: Prediction optimization
+├── chunk_20_pipeline_main.py           # Main orchestrator
+├── chunk_21_hyperparam_optimizer.py    # Hyperparameter optimization (Optuna)
+├── chunk_22_model_loader.py            # Model loading for predictions
+├── chunk_XX_feature_importance.py      # 6-method feature importance engine
+├── chunk_XX_phase_feature_analysis_a.py # Phase Xa: Raw feature analysis
+├── chunk_XX_phase_feature_analysis_b.py # Phase Xb: Temporal precision gap
+├── legacy files/                       # Moved non-functional/legacy code and logs
+├── for_train_x_2025_10_24_clean.csv    # Input data (~938 MB)
+└── ... (output artifacts, config backups, documentation)
+```
+
+## Dependency Layers
+
+### Phase 1: Foundation (00-04)
+Independent chunks with no dependencies.
+- `00_validation_framework.py` - Validation utilities
+- `01_config.py` - Configuration constants
+- `02_utils_logging.py` - Logging utilities
+- `03_utils_memory.py` - Memory utilities
+- `04_utils_metrics.py` - Metric utilities
+
+### Phase 2: Data Layer (05-07)
+Depends on: Phase 1
+- `05_data_manager.py` - Data loading and validation
+- `06_data_augmentation.py` - Data augmentation
+- `07_data_temporal.py` - Temporal features
+
+### Phase 3: Model Architecture (08-11)
+Depends on: Phase 1
+- `08_models_base.py` - Basic neural models
+- `09_models_advanced.py` - Advanced neural models
+- `10_models_ensemble.py` - Ensemble models
+- `11_models_sklearn.py` - Sklearn models
+
+### Phase 4: Training & Evaluation (12-14)
+Depends on: Phase 1-3
+- `12_evaluation_evaluator.py` - Evaluation utilities
+- `13_state_manager.py` - State management
+- `14_models_trainer.py` - Training orchestration
+
+### Phase 5: Pipeline Phases (15-19)
+Depends on: Phase 1-4
+- `15_phase_base.py` - Base phase class
+- `16_phase_1_setup.py` - Phase 1 implementation
+- `17_phase_3_temporal.py` - Phase 3 implementation (Phase 2 removed)
+- `18_phase_4_ensemble.py` - Phase 4 implementation:
+  - 4a. Threshold Optimization (find best threshold for each architecture)
+  - 4b. Hyperparameter Optimization (Optuna Bayesian search)
+  - 4c. Ensemble Creation (combine model predictions)
+  - 4d. Model Persistence (save to ./saved_models/)
+- `19_phase_5_optimization.py` - Phase 5 implementation (final predictions)
+
+**Note**: Phase 2 was intentionally removed - threshold optimization was moved into Phase 4
+
+### Phase 6: Orchestration (20-21)
+Depends on: All phases
+- `chunk_20_pipeline_main.py` - Main orchestrator
+- `chunk_21_hyperparam_optimizer.py` - Hyperparameter optimization (Optuna)
 
 ## Usage
 
