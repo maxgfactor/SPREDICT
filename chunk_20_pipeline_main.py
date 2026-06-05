@@ -15,6 +15,7 @@ if sys.platform == 'linux':
 
 import numpy as np
 from typing import Dict, List, Type
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 
 from chunk_01_config import CONFIG, validate_config_structure, DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
 from chunk_02_utils_logging import Logger
@@ -117,12 +118,26 @@ class PipelineOrchestrator:
         for phase, timing in self.phase_timings.items():
             self.logger.log(f"   {phase}: {timing:.2f}s", 'info')
         
-        # Log final metrics
-        if 'final_metrics' in context:
+        # Log final metrics — use consensus predictions vs binarized ground truth if available
+        final_predictions = context.get('final_predictions')
+        y_inference_binarized = context.get('y_inference_binarized')
+        if final_predictions is not None and y_inference_binarized is not None:
+            cons_precision = precision_score(y_inference_binarized, final_predictions, zero_division=0)
+            cons_recall = recall_score(y_inference_binarized, final_predictions, zero_division=0)
+            cons_f1 = f1_score(y_inference_binarized, final_predictions, zero_division=0)
+            try:
+                cons_auc = roc_auc_score(y_inference_binarized, final_predictions)
+            except Exception:
+                cons_auc = 0.0
+            self.logger.log(f"[stat] Final Results:", 'info')
+            self.logger.log(f"   precision: {cons_precision:.4f}", 'info')
+            self.logger.log(f"   recall: {cons_recall:.4f}", 'info')
+            self.logger.log(f"   f1 Score: {cons_f1:.4f}", 'info')
+            self.logger.log(f"   auc: {cons_auc:.4f}", 'info')
+        elif 'final_metrics' in context:
+            # Fallback: display best architecture's metrics
             metrics = context['final_metrics']
-            # Handle both dict and list formats
             if isinstance(metrics, list) and len(metrics) > 0:
-                # Use the first (best) architecture's metrics
                 metrics = metrics[0]
             if isinstance(metrics, dict):
                 self.logger.log(f"[stat] Final Results:", 'info')
@@ -555,11 +570,16 @@ def validate_pipeline_execution(context: Dict, logger: Logger = None) -> bool:
     assert 'final_metrics' in context, "Missing final_metrics"
     assert 'final_predictions' in context, "Missing final_predictions"
     
-    # Validate metrics quality
-    metrics = context['final_metrics']
-    if isinstance(metrics, list) and len(metrics) > 0:
-        metrics = metrics[0]  # Use first (best) architecture's metrics
-    precision = metrics.get('precision', 0)
+    # Validate metrics quality — use consensus precision if available
+    fp = context.get('final_predictions')
+    y_true = context.get('y_inference_binarized')
+    if fp is not None and y_true is not None:
+        precision = precision_score(y_true, fp, zero_division=0)
+    else:
+        metrics = context.get('final_metrics', [{}])
+        if isinstance(metrics, list) and len(metrics) > 0:
+            metrics = metrics[0]
+        precision = metrics.get('precision', 0)
     assert precision >= 0, "Precision cannot be negative"
     assert precision <= 1, "Precision cannot exceed 1"
     

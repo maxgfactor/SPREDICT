@@ -32,6 +32,7 @@ the optimal thresholds found in Phase 4.
 import numpy as np
 import time
 from typing import Dict
+from collections import Counter
 
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
@@ -185,6 +186,7 @@ class Phase5_PredictionOptimization(BasePhase):
         ensemble_min_precision = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
         ensemble_vote_threshold = self.config.get('ENSEMBLE_VOTE_THRESHOLD', 0.5)
         all_pred_fraud_sets = []  # list of (arch_name, set(indices))
+        arch_thresholds = {}  # arch_name -> opt_threshold
         
         for arch_name, model in models.items():
             # Get metadata for this architecture
@@ -299,6 +301,7 @@ class Phase5_PredictionOptimization(BasePhase):
                 # C1: Only include high-precision models in consensus voting
                 if best_val_prec > ensemble_min_precision:
                     all_pred_fraud_sets.append((arch_name, set(pred_fraud_indices)))
+                    arch_thresholds[arch_name] = opt_threshold
                 if len(pred_fraud_indices) > 0:
                     self.logger.log("", 'info')
                     self.logger.log(f"{arch_name} MODEL PREDICTED FRAUD ({len(pred_fraud_indices)} rows)", 'info')
@@ -334,14 +337,31 @@ class Phase5_PredictionOptimization(BasePhase):
                 'Inf_PRAUC': inf_prauc,
                 'Inf_BalAcc': inf_balanced_acc,
             })
-        
+
+        # --- Majority label threshold filter ---
+        majority_threshold = None
+        majority_archs = set()
+        if arch_thresholds:
+            counts = Counter(arch_thresholds.values())
+            max_count = max(counts.values())
+            majority_threshold = max(t for t, c in counts.items() if c == max_count)
+
+            majority_archs = {name for name, t in arch_thresholds.items() if t == majority_threshold}
+            excluded = set(arch_thresholds.keys()) - majority_archs
+
+            all_pred_fraud_sets = [(name, s) for name, s in all_pred_fraud_sets if name in majority_archs]
+
+            self.logger.log(f"Majority label threshold: {majority_threshold} ({len(majority_archs)} archs)", 'info')
+            if excluded:
+                self.logger.log(f"  Excluded from consensus (different label threshold): {', '.join(sorted(excluded))}", 'info')
+
         # Consolidated consensus table (vote-based, using only high-precision architectures — C1/C2 fix)
         final_predictions = None
         if df_with_all_cols is not None and len(all_pred_fraud_sets) > 0:
             non_empty = [(name, s) for name, s in all_pred_fraud_sets if s]
             if non_empty:
-                # Vote-based consensus: require at least 5 architectures to agree
-                min_votes = 5
+                # Vote-based consensus: dynamic min_votes based on majority group size
+                min_votes = max(3, len(majority_archs)) if majority_threshold is not None else 5
                 all_indices = set.union(*(s for _, s in non_empty))
                 vote_counts = {}
                 vote_archs = {}
@@ -353,18 +373,24 @@ class Phase5_PredictionOptimization(BasePhase):
                 if common_indices:
                     consensus_rows = df_with_all_cols.iloc[list(common_indices)]
                     self.logger.log("", 'info')
-                    self.logger.log(f"Consolidated Predicted Fraud ({len(models)} architectures, min {min_votes} votes):", 'info')
+                    self.logger.log(f"Consolidated Predicted Fraud ({len(majority_archs)} architectures, min {min_votes} votes):", 'info')
                     header_cols = list(df_with_all_cols.columns) + ['VoteCount', 'VotingArchs']
                     self.logger.log("Row," + ",".join(header_cols), 'info')
                     for idx, (orig_idx, row) in enumerate(consensus_rows.iterrows(), 1):
                         row_values = list(row.values) + [vote_counts[orig_idx], "+".join(vote_archs[orig_idx])]
                         self.logger.log(f"{idx}," + ",".join(str(v) for v in row_values), 'info')
                     self.logger.log(f"  Total consensus rows: {len(common_indices)}", 'info')
-                    # Build final_predictions from consensus vote — only ticker_ids with ≥6 votes flagged as fraud
+                    # Build final_predictions from consensus vote — only ticker_ids with ≥min_votes votes flagged as fraud
                     final_predictions = np.zeros(n_inference)
                     for idx in common_indices:
                         final_predictions[idx] = 1
-        
+
+        # Binarize inference ground truth at majority label threshold for consensus metrics
+        if majority_threshold is not None:
+            y_inference_binarized = (y_val_continuous >= majority_threshold).astype(int)
+        else:
+            y_inference_binarized = None
+
         # =========================================================================
         # STEP 7: Summary Table (NO confusion matrix)
         # =========================================================================
@@ -418,8 +444,10 @@ class Phase5_PredictionOptimization(BasePhase):
         context.update({
             'architecture_results': architecture_results,
             'phase5_complete': True,
-            'final_metrics': sorted_results,  # Use sorted results (highest precision first)
-            'final_predictions': final_predictions
+            'final_metrics': sorted_results,
+            'final_predictions': final_predictions,
+            'y_inference_binarized': y_inference_binarized,
+            'majority_threshold': majority_threshold
         })
         
         return context
