@@ -175,6 +175,7 @@ Each chunk has defined validation functions:
 | Phase 3 | Temporal segmentation + weighting | temporal_weights, date segments |
 | Phase 4a | Threshold Search | optimal_threshold per architecture |
 | Phase 4b | HyperParameter Optimization | best_hyperparams per architecture |
+| Phase 4c | Post-HPO Threshold Search/Re-Evaluation | Refined threshold per architecture |
 | Phase 4d | Ensemble Assembly | Precision-weighted predictions |
 | Phase 4e | Model Persistence | ./saved_models/ |
 | Phase 5 | Inference on newest date | Predictions, per-arch metrics, rankings |
