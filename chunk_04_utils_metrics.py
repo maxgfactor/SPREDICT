@@ -114,9 +114,9 @@ def format_diagnostic_string(predictions: np.ndarray, prefix: str = "") -> str:
     # Format percentiles
     result = f"{prefix} percentiles: p1={stats['p1']:.4f}, p5={stats['p5']:.4f}, p10={stats['p10']:.4f}, p25={stats['p25']:.4f}, p50={stats['p50']:.4f}, p75={stats['p75']:.4f}, p90={stats['p90']:.4f}, p95={stats['p95']:.4f}, p99={stats['p99']:.4f}, max={stats['max']:.4f}"
     
-    # Add histogram info (first and last 3 bins)
+    # Add histogram info (all bins)
     if len(hist['counts']) > 0:
-        result += f" | histogram: bins[{hist['counts'][0]},{hist['counts'][1]},{hist['counts'][2]}...{hist['counts'][-3]},{hist['counts'][-2]},{hist['counts'][-1]}]"
+        result += f" | histogram: bins{hist['counts']}"
     
     return result
 

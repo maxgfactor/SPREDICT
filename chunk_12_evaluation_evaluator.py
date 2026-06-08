@@ -391,7 +391,7 @@ class Evaluator:
             val_status = "[ok]" if val_class_1 > 0 else "[warning]"
             
             arch_tag = f"[{arch_name.upper()}]"
-            if self.logger: self.logger.log(f"{arch_tag} LABEL_THRESHOLD={thresh:.1f} | Train: 0={train_class_0:,},1={train_class_1:,} {train_status} | Val: 0={val_class_0:,},1={val_class_1:,} {val_status}", 'info')
+            if self.logger: self.logger.log(f"{arch_tag} LABEL_THRESHOLD={thresh:.1f} | Train: below prediction_binary_split={train_class_0:,},above prediction_binary_split={train_class_1:,} {train_status} | Validation: below prediction_binary_split={val_class_0:,},above prediction_binary_split={val_class_1:,} {val_status}", 'info')
             
             # Use model for inference only (no retraining) - for POST-HPO threshold search
             # Or train model for each threshold - for Section 2 pre-HPO threshold search
@@ -499,7 +499,7 @@ class Evaluator:
                 min_improvement = self.config.get('MIN_PRECISION_OVER_BASELINE', 0.05)
             current_precision = val_metrics['P']
             if current_precision <= baseline_precision + min_improvement:
-                if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: precision={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')
+                if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: validation_precision={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
                     if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f}", 'info')

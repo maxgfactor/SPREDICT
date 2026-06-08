@@ -164,7 +164,7 @@ class FeatureImportanceAnalyzer:
         results = results_by_threshold[first_thresh]
         
         # Compute correlation matrix (using full data)
-        self._log(f"Computing feature correlation matrix...")
+        self._log(f"Computing feature correlation matrix")
         corr_matrix = np.corrcoef(X.T) if X.shape[1] > 1 else np.array([[1.0]])
         
         total_time = time.time() - start_time
@@ -500,9 +500,7 @@ class FeatureImportanceAnalyzer:
     
     def generate_report(self, analysis_results: Dict) -> str:
         lines = []
-        lines.append("=" * 80)
         lines.append("FEATURE IMPORTANCE ANALYSIS REPORT")
-        lines.append("=" * 80)
         
         n_orig = analysis_results['n_features_original']
         n_pruned = analysis_results['n_features_pruned']
@@ -521,9 +519,7 @@ class FeatureImportanceAnalyzer:
         lines.append(f"Kept features: {analysis_results['kept_names']}")
         
         results = analysis_results['results']
-        lines.append("\n" + "-" * 80)
         lines.append("CONSOLIDATED RANKING (1 = most important)")
-        lines.append("-" * 80)
         
         consolidated = results['consolidated']
         if 'consolidated_rank' in consolidated.columns:
@@ -537,9 +533,7 @@ class FeatureImportanceAnalyzer:
         
         lines.append(consolidated[['feature', 'mean_rank', 'consolidated_rank']].to_string(index=False))
         
-        lines.append("\n" + "-" * 80)
         lines.append("TOP FEATURES PER METHOD")
-        lines.append("-" * 80)
         
         method_labels = {
             'correlation': 'Spearman Correlation',
@@ -567,7 +561,6 @@ class FeatureImportanceAnalyzer:
                         top5 = df.nsmallest(5, rank_col)[['feature', 'rank', 'spearman_abs']]
                     lines.append(f"  {top5.to_string(index=False)}")
         
-        lines.append("\n" + "=" * 80)
         return "\n".join(lines)
     
     def save_report(self, analysis_results: Dict, output_path: str = './feature_importance_report.txt') -> None:

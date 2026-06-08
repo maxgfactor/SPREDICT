@@ -337,12 +337,12 @@ class HyperparameterOptimizer:
             
             # Check: Target met?
             if current_precision >= target_precision and current_tp > 0:
-                if self.logger: self.logger.log(f"   TARGET MET at trial {trial_number}: precision={current_precision:.4f} >= {target_precision}", 'info')
+                if self.logger: self.logger.log(f"   TARGET MET at trial {trial_number}: validation_precision={current_precision:.4f} >= {target_precision}", 'info')
                 break
             
             # Progress logging every 10 trials
             if trial_number % 10 == 0:
-                if self.logger: self.logger.log(f"   progress: TRIAL {trial_number} | best_precision={current_precision:.4f} (trial {best_trial_number}) | target={target_precision}", 'info')
+                if self.logger: self.logger.log(f"   progress: TRIAL {trial_number} | validation_best_precision={current_precision:.4f} (trial {best_trial_number}) | target={target_precision}", 'info')
             
             # Check: Phase transition (reset stagnation every 30 trials)
             if trial_number % 30 == 0:
@@ -361,7 +361,7 @@ class HyperparameterOptimizer:
             
             # Stop if stagnant
             if no_improve_count >= stagnation_threshold:
-                if self.logger: self.logger.log(f"   stopped: No improvement for {stagnation_threshold} trials (best_precision={best_precision_seen:.4f})", 'info')
+                if self.logger: self.logger.log(f"   stopped: No improvement for {stagnation_threshold} trials (validation_best_precision={best_precision_seen:.4f})", 'info')
                 break
             
             # Continue if enabled and not target met
@@ -370,7 +370,7 @@ class HyperparameterOptimizer:
             
             # Safety cap
             if trial_number >= max_trials:
-                if self.logger: self.logger.log(f"   safety stop: Reached {max_trials} trials (best_precision={best_precision_seen:.4f})", 'warning')
+                if self.logger: self.logger.log(f"   safety stop: Reached {max_trials} trials (validation_best_precision={best_precision_seen:.4f})", 'warning')
                 break
         
         best_params = study.best_params

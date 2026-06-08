@@ -42,7 +42,6 @@ from chunk_21_hyperparam_optimizer import HyperparameterOptimizer
 from chunk_04_utils_metrics import (
     inverse_log_transform,
     get_prediction_percentiles,
-    get_prediction_histogram,
     format_diagnostic_string,
     analyze_loss_distribution,
     calculate_temporal_drift,
@@ -284,7 +283,6 @@ class Phase4_NeuralEnsemble(BasePhase):
             try:
                 arch_tag = f"[{arch_name.upper()}]"
                 arch_start_time = time.time()
-                self.logger.log(f"[section 1] {arch_tag} [baseline] Training with threshold optimization...", 'info')
                 
                 # === BASELINE DIAGNOSTICS: Get prediction stats before any threshold optimization ===
                 baseline_y_train = (y_train_continuous >= thresholds[0]).astype(int)  # Use first threshold
@@ -296,12 +294,10 @@ class Phase4_NeuralEnsemble(BasePhase):
                     raise ValueError(f"[fatal] {arch_name} baseline_model is None after training")
                 baseline_pred = baseline_model.predict(X_val_bl, verbose=0).flatten()
                 
-                self.logger.log(f"[section 1] {arch_tag} [baseline] before_threshold_optimization:", 'info')
+                self.logger.log(f"[section 1] {arch_tag} [baseline] LABEL_THRESHOLD={thresholds[0]:.1f},", 'info')
                 self.logger.log(f"[section 1] {arch_tag} [baseline] predictions: mean={baseline_pred.mean():.4f}, std={baseline_pred.std():.4f}, min={baseline_pred.min():.4f}, max={baseline_pred.max():.4f}", 'info')
                 self.logger.log(f"[section 1] {arch_tag} [baseline] " + format_diagnostic_string(baseline_pred, ""), 'info')
-                hist = get_prediction_histogram(baseline_pred, 20)
-                self.logger.log(f"[section 1] {arch_tag} [baseline] Histogram bins: {hist['counts'][:5]} ... {hist['counts'][-5:]}", 'info')
-                self.logger.log(f"[section 1] {arch_tag} [baseline] % positive predictions (prediction_threshold={pred_threshold:.2f}): {((baseline_pred >= pred_threshold).mean() * 100):.2f}%", 'info')
+                self.logger.log(f"[section 1] {arch_tag} [baseline] prediction_binary_split={pred_threshold:.2f}, VALIDATION predictions at LABEL_THRESHOLD={thresholds[0]:.1f}: {((baseline_pred >= pred_threshold).mean() * 100):.2f}%", 'info')
                 if ((baseline_pred >= pred_threshold).sum() == 0):
                     self.logger.log(f"[section 1] {arch_tag} [baseline] [warning] No predictions >= {pred_threshold}!", 'warning')
                 
@@ -598,7 +594,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                                         best_f1 = f1
                                         best_pred_threshold = pred_thresh
                             pred_threshold = best_pred_threshold
-                            self.logger.log(f"   [diagnostic] best_prediction_threshold_(hyperparameter_optimization): {pred_threshold:.2f} (f1={best_f1:.4f})", 'info')
+                            self.logger.log(f"   [diagnostic] best_prediction_threshold_(hyperparameter_optimization): {pred_threshold:.2f} (validation_f1={best_f1:.4f})", 'info')
                         else:
                             pred_threshold = self.config.get('PREDICTION_THRESHOLD', PREDICTION_THRESHOLD_DEFAULT)
                         
@@ -1485,7 +1481,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     sw_f1 = self.evaluator.calculate_f1(y_val_sw, sw_val_binary)
                     
                     self.logger.log(f"   sliding window: train_samples={X_train_sw.shape[0]}, validation_samples={X_val_sw.shape[0]}", 'info')
-                    self.logger.log(f"   Sliding Window validation: precision={sw_precision:.4f} recall={sw_recall:.4f} f1={sw_f1:.4f}", 'info')
+                    self.logger.log(f"   Sliding Window validation: validation_precision={sw_precision:.4f} validation_recall={sw_recall:.4f} validation_f1={sw_f1:.4f}", 'info')
                     
                     if len(val_dates) >= 3:
                         seg_size = len(val_dates) // 3
@@ -1581,10 +1577,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                     self.logger.log(f"   [warning] Advanced diagnostics failed for {arch_name}: {e}", 'warning')
 
         # Use the optimal threshold from architecture training for ensemble evaluation
-        if optimal_thresholds:
-            best_ensemble_threshold = max(final_thresholds) if final_thresholds else max(optimal_thresholds)
-        else:
-            best_ensemble_threshold = self.config.get('FIRST_THRESHOLD', 24.9)
+        # Computed after filtering below — placeholder until then
+        best_ensemble_threshold = self.config.get('FIRST_THRESHOLD', 0.0)
         
         # Initialize ensemble variables with defaults
         ensemble_min_precision = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
@@ -1620,9 +1614,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                         filtered_precisions.append(val_prec)
                         filtered_arch_names.append(arch_name)
                         filtered_kept_indices.append(arch_kept_indices[i] if i < len(arch_kept_indices) else None)
-                        self.logger.log(f"  {arch_name}: precision={val_prec:.4f} ✓", 'info')
+                        self.logger.log(f"  {arch_name}: validation_precision={val_prec:.4f} ✓", 'info')
                     else:
-                        self.logger.log(f"  {arch_name}: precision={val_prec:.4f} ✗ (below threshold)", 'info')
+                        self.logger.log(f"  {arch_name}: validation_precision={val_prec:.4f} ✗ (below threshold)", 'info')
             
             # Check for fallback
             if not filtered_models:
@@ -1634,8 +1628,16 @@ class Phase4_NeuralEnsemble(BasePhase):
                         filtered_precisions.append(best_val_precision_list[i] if i < len(best_val_precision_list) else 0.0)
                         filtered_arch_names.append(arch_name)
                         filtered_kept_indices.append(arch_kept_indices[i] if i < len(arch_kept_indices) else None)
-                        self.logger.log(f"  Fallback {arch_name}: precision={filtered_precisions[-1]:.4f}", 'info')
+                        self.logger.log(f"  Fallback {arch_name}: validation_precision={filtered_precisions[-1]:.4f}", 'info')
                         break
+            
+            # Determine ensemble label threshold from architectures that passed the filter
+            arch_threshold_map = dict(zip(arch_names, final_thresholds))
+            passing_thresholds = [arch_threshold_map[a] for a in filtered_arch_names if a in arch_threshold_map]
+            if passing_thresholds:
+                best_ensemble_threshold = max(set(passing_thresholds), key=passing_thresholds.count)
+            elif final_thresholds:
+                best_ensemble_threshold = max(final_thresholds)
             
             # Create precision-weighted ensemble
             if filtered_models:
@@ -1727,26 +1729,26 @@ class Phase4_NeuralEnsemble(BasePhase):
             # Sort by precision descending
             sorted_metrics = sorted(arch_final_metrics, key=lambda x: x['P'], reverse=True)
             
-            self.logger.log("ARCHITECTURE RANKING (by Validation precision)", 'info')
+            self.logger.log("ARCHITECTURE RANKING (by validation_precision)", 'info')
             self.logger.log(
                 f"{'Rank':>4} | {'Arch':<7} | {'Thresh':>6} | {'validation_precision':>8} | {'validation_recall':>8} | {'validation_auc':>8} | "
-                f"{'FN':>5} | {'TN':>6} | {'TP':>4} | {'FP':>4}",
+                f"{'validation_false_negatives':>5} | {'validation_true_negatives':>6} | {'validation_true_positives':>4} | {'validation_false_positives':>4}",
                 'info'
             )
             
             for rank, m in enumerate(sorted_metrics, 1):
                 self.logger.log(
-                    f"{rank:>4} | {m['arch']:<7} | {m['optimal_label_threshold']:>6.1f} | {m['P']:>8.4f} | "
-                    f"{m['R']:>8.4f} | {m['AUC']:>8.4f} | {m['FN']:>5} | {m['TN']:>6} | "
-                    f"{m['TP']:>4} | {m['FP']:>4}",
+                    f"{rank:>4} | {m['arch']:<7} | {m['optimal_label_threshold']:>6.1f} | validation_precision={m['P']:>8.4f} | "
+                    f"validation_recall={m['R']:>8.4f} | validation_auc={m['AUC']:>8.4f} | validation_false_negatives={m['FN']:>5} | validation_true_negatives={m['TN']:>6} | "
+                    f"validation_true_positives={m['TP']:>4} | validation_false_positives={m['FP']:>4}",
                     'info'
                 )
             
             # 2. HPO Impact Summary
             if pre_hpo_precisions and post_hpo_precisions and len(pre_hpo_precisions) == len(post_hpo_precisions):
-                self.logger.log("HPO IMPACT SUMMARY", 'info')
+                self.logger.log("hyperparameter_optimization IMPACT SUMMARY", 'info')
                 self.logger.log(
-                    f"{'Architecture':<12} | {'Pre-HPO P':>10} | {'Post-HPO P':>10} | {'Improved?':<9}",
+                    f"{'Architecture':<12} | {'Pre_hyperparameter_optimization_validation_precision':>10} | {'Post_hyperparameter_optimization_validation_precision':>10} | {'Improved?':<9}",
                     'info'
                 )
                 
@@ -1755,7 +1757,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     post_p = post_hpo_precisions[i] if i < len(post_hpo_precisions) else 0.0
                     improved = "Yes" if post_p > pre_p else "No"
                     self.logger.log(
-                        f"{arch:<12} | {pre_p:>10.4f} | {post_p:>10.4f} | {improved:<9}",
+                        f"{arch:<12} | Pre_hyperparameter_optimization_validation_precision={pre_p:>10.4f} | Post_hyperparameter_optimization_validation_precision={post_p:>10.4f} | Improved?={improved:<9}",
                         'info'
                     )
                 

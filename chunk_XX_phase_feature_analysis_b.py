@@ -182,11 +182,11 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         
         status_lines = []
         status_lines.append(f"{self.name} Report - FULL METRICS")
-        status_lines.append(f"{'Architecture':<12} {'Recent P':>8} {'Recent R':>8} {'Recent AUC':>10} {'Recent F1':>8} {'Older P':>8} {'Older R':>8} {'Older AUC':>10} {'Older F1':>8} {'Gap':>6}")
+        status_lines.append(f"{'Architecture':<12} {'validation_recent_precision':>8} {'validation_recent_recall':>8} {'validation_recent_auc':>10} {'validation_recent_f1':>8} {'validation_older_precision':>8} {'validation_older_recall':>8} {'validation_older_auc':>10} {'validation_older_f1':>8} {'Gap':>6}")
         
         for _, row in results_df.iterrows():
             gap_str = f"{row['gap']:+.2f}"
-            status_lines.append(f"{row['architecture']:<12} {row['recent_precision']:>8.4f} {row['recent_recall']:>8.4f} {row['recent_auc']:>10.4f} {row['recent_f1']:>8.4f} {row['older_precision']:>8.4f} {row['older_recall']:>8.4f} {row['older_auc']:>10.4f} {row['older_f1']:>8.4f} {gap_str:>6}")
+            status_lines.append(f"{row['architecture']:<12} validation_recent_precision={row['recent_precision']:>8.4f} validation_recent_recall={row['recent_recall']:>8.4f} validation_recent_auc={row['recent_auc']:>10.4f} validation_recent_f1={row['recent_f1']:>8.4f} validation_older_precision={row['older_precision']:>8.4f} validation_older_recall={row['older_recall']:>8.4f} validation_older_auc={row['older_auc']:>10.4f} validation_older_f1={row['older_f1']:>8.4f} Gap={gap_str:>6}")
         
         if self.logger:
             for line in status_lines:
