@@ -50,10 +50,10 @@ class ModelTrainer:
         Returns:
             Loss function (string or BinaryFocalCrossentropy)
         """
-        if self.config.get('USE_FOCAL_LOSS', False):
+        if self.config['USE_FOCAL_LOSS']:
             from tensorflow.keras.losses import BinaryFocalCrossentropy
-            alpha = self.config.get('FOCAL_LOSS_ALPHA', 0.7)
-            gamma = self.config.get('FOCAL_LOSS_GAMMA', 2.0)
+            alpha = self.config['FOCAL_LOSS_ALPHA']
+            gamma = self.config['FOCAL_LOSS_GAMMA']
             return BinaryFocalCrossentropy(alpha=alpha, gamma=gamma)
         return 'binary_crossentropy'
     

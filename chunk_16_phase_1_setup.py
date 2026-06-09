@@ -5,7 +5,6 @@ Initial data loading and preprocessing phase
 
 import numpy as np
 from typing import Dict
-from chunk_01_config import DEFAULT_THRESHOLD_STEP
 
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
@@ -52,12 +51,12 @@ class Phase1_PipelineSetup(BasePhase):
             raise RuntimeError("Data loading failed") from e
         
         # sanity check: Sample size validation
-        expected_samples = self.config.get('SAMPLE_SIZE', 0)
+        expected_samples = self.config['SAMPLE_SIZE']
         if expected_samples > 0 and len(X) != expected_samples:
             self.logger.log(f"sanity check: sample_size={expected_samples}, got {len(X)} samples", 'warning')
         
         # sanity check: Target value distribution (for continuous targets)
-        if self.config.get('TARGET_TYPE') == 'continuous':
+        if self.config['TARGET_TYPE'] == 'continuous':
             raw_target = self.data_manager._raw_target_values
             if raw_target is not None:
                 self.logger.log(f"Target Distribution (ChangeY):", 'info')
@@ -69,7 +68,7 @@ class Phase1_PipelineSetup(BasePhase):
                 # Class distribution for ENTIRE dataset at all thresholds (full detail)
                 first_thresh = self.config['FIRST_THRESHOLD']
                 last_thresh = self.config['LAST_THRESHOLD']
-                thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
+                thresh_step = self.config['THRESHOLD_STEP']
                 thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
 
                 for thresh in thresholds:
@@ -97,7 +96,7 @@ class Phase1_PipelineSetup(BasePhase):
         # Log full class distribution for ALL thresholds (synchronized with Phase 4)
         first_thresh = self.config['FIRST_THRESHOLD']
         last_thresh = self.config['LAST_THRESHOLD']
-        thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
+        thresh_step = self.config['THRESHOLD_STEP']
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
 
         for thresh in thresholds:

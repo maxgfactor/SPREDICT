@@ -7,10 +7,6 @@ import os
 from typing import Dict, Any
 
 # Threshold search defaults (used as fallback across all phases)
-DEFAULT_FIRST_THRESHOLD = 20.0
-DEFAULT_LAST_THRESHOLD = 0.0
-DEFAULT_THRESHOLD_STEP = -2.0
-DEFAULT_HPO_TRIALS = 10
 PREDICTION_THRESHOLD_DEFAULT = 0.5  # fallback if config key is missing
 
 # Suppress TensorFlow/CUDA warnings for CPU-only execution

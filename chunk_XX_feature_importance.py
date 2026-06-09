@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Any, Tuple, Optional
 from scipy.stats import spearmanr, pointbiserialr
-from chunk_01_config import DEFAULT_THRESHOLD_STEP
 
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.inspection import permutation_importance
@@ -58,7 +57,7 @@ class FeatureImportanceAnalyzer:
         # Get thresholds from config (synchronized with Phase 4)
         first_thresh = self.config['FIRST_THRESHOLD']
         last_thresh = self.config['LAST_THRESHOLD']
-        thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
+        thresh_step = self.config['THRESHOLD_STEP']
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         
         self._log(f"Starting 6-method feature importance analysis")

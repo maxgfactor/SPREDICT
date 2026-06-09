@@ -451,18 +451,18 @@ class Evaluator:
             # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
             # Architecture-specific thresholds (May 6, 2026)
             if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
-                sklearn_safeguards = self.config.get('SKLEARN_SAFEGUARDS', {})
-                min_positive_percentage = sklearn_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005))
-                min_positive_absolute = sklearn_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config.get('MIN_POSITIVE_ABSOLUTE', 50))
+                sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
+                min_positive_percentage = sklearn_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config['MIN_POSITIVE_PERCENTAGE'])
+                min_positive_absolute = sklearn_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config['MIN_POSITIVE_ABSOLUTE'])
             elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
-                neural_safeguards = self.config.get('NEURAL_SAFEGUARDS', {})
-                min_positive_percentage = neural_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005))
-                min_positive_absolute = neural_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config.get('MIN_POSITIVE_ABSOLUTE', 50))
-                patience = neural_safeguards.get('PATIENCE', self.config.get('PATIENCE', 5))
+                neural_safeguards = self.config['NEURAL_SAFEGUARDS']
+                min_positive_percentage = neural_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config['MIN_POSITIVE_PERCENTAGE'])
+                min_positive_absolute = neural_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config['MIN_POSITIVE_ABSOLUTE'])
+                patience = neural_safeguards.get('PATIENCE', self.config['PATIENCE'])
             else:
-                min_positive_percentage = self.config.get('MIN_POSITIVE_PERCENTAGE', 0.005)
-                min_positive_absolute = self.config.get('MIN_POSITIVE_ABSOLUTE', 50)
-                patience = self.config.get('PATIENCE', 5)
+                min_positive_percentage = self.config['MIN_POSITIVE_PERCENTAGE']
+                min_positive_absolute = self.config['MIN_POSITIVE_ABSOLUTE']
+                patience = self.config['PATIENCE']
             n_samples = len(y_val_binary)
             min_positive_predictions = max(min_positive_absolute, int(n_samples * min_positive_percentage))
             
@@ -476,8 +476,8 @@ class Evaluator:
                 continue
             
             # Safeguard 2: Reject if positive prediction ratio is too extreme
-            min_pos_ratio = self.config.get('MIN_POS_PRED_RATIO', 0.01)
-            max_pos_ratio = self.config.get('MAX_POS_PRED_RATIO', 0.70)
+            min_pos_ratio = self.config['MIN_POS_PRED_RATIO']
+            max_pos_ratio = self.config['MAX_POS_PRED_RATIO']
             pos_pred_ratio = val_total_positive_preds / len(y_val_binary)
             if pos_pred_ratio < min_pos_ratio or pos_pred_ratio > max_pos_ratio:
                 if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: pos_pred_ratio={pos_pred_ratio:.2%} outside [{min_pos_ratio:.0%}, {max_pos_ratio:.0%}]", 'info')
@@ -492,10 +492,10 @@ class Evaluator:
             baseline_precision = min(y_val_binary.mean(), 0.5)  # Cap at 0.5 to avoid degenerate rejections at high baseline prevalence (t=0.0)
             # Check for sklearn architecture-specific overrides
             if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
-                sklearn_safeguards = self.config.get('SKLEARN_SAFEGUARDS', {})
+                sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
                 min_improvement = sklearn_safeguards.get('MIN_PRECISION_OVER_BASELINE', 0.05)
             else:
-                min_improvement = self.config.get('MIN_PRECISION_OVER_BASELINE', 0.05)
+                min_improvement = self.config['MIN_PRECISION_OVER_BASELINE']
             current_precision = val_metrics['P']
             if current_precision <= baseline_precision + min_improvement:
                 if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: validation_precision={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')

@@ -50,7 +50,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
             context['phaseXb_complete'] = True
             return context
         
-        label_threshold = self.config.get('FIRST_THRESHOLD', 2.0)
+        label_threshold = self.config['FIRST_THRESHOLD']
         pred_threshold = self.config['PREDICTION_THRESHOLD']
         
         # PRIORITY 1 FIX: Validate and Re-derive Dimensions (May 7, 2026)

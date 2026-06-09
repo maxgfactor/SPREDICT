@@ -182,8 +182,8 @@ class Phase5_PredictionOptimization(BasePhase):
         # Consolidated column set (same df_with_all_cols for all architectures)
         available_cols = list(df_with_all_cols.columns) if df_with_all_cols is not None else []
         # C1/C2: Use only high-precision models for consensus, with configurable vote threshold
-        ensemble_min_precision = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
-        ensemble_vote_threshold = self.config.get('ENSEMBLE_VOTE_THRESHOLD', 0.5)
+        ensemble_min_precision = self.config['ENSEMBLE_MIN_PRECISION']
+        ensemble_vote_threshold = self.config['ENSEMBLE_VOTE_THRESHOLD']
         all_pred_signal_sets = []  # list of (arch_name, set(indices))
         arch_thresholds = {}  # arch_name -> opt_threshold
         
@@ -253,7 +253,7 @@ class Phase5_PredictionOptimization(BasePhase):
             y_val_binarized = (y_val_continuous >= opt_threshold).astype(int)
             
             # Apply inverse log transform if configured (convert predictions back to original scale)
-            if self.config.get('LOG_TRANSFORM_TARGET', False):
+            if self.config['LOG_TRANSFORM_TARGET']:
                 predictions_original = inverse_log_transform(predictions)
             else:
                 predictions_original = predictions

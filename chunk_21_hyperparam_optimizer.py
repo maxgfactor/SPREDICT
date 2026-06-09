@@ -7,7 +7,7 @@ import optuna
 import numpy as np
 from typing import Dict, Any, Callable, Optional, Tuple
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score
-from chunk_01_config import DEFAULT_HPO_TRIALS, PREDICTION_THRESHOLD_DEFAULT
+from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -25,9 +25,9 @@ class HyperparameterOptimizer:
         """
         self.config = config
         self.logger = logger
-        self.n_trials = config.get('HYPERPARAM_OPTIMIZATION_TRIALS', DEFAULT_HPO_TRIALS)
-        self.epochs = config.get('HYPERPARAM_OPTIMIZATION_EPOCHS', 3)
-        self.search_space = config.get('HYPERPARAM_SEARCH_SPACE', {})
+        self.n_trials = config['HYPERPARAM_OPTIMIZATION_TRIALS']
+        self.epochs = config['HYPERPARAM_OPTIMIZATION_EPOCHS']
+        self.search_space = config['HYPERPARAM_SEARCH_SPACE']
     
     def optimize(
         self,
@@ -313,8 +313,8 @@ class HyperparameterOptimizer:
         
         # Custom loop for unlimited trials until target met (May 11, 2026)
         target_precision = self.config.get('HPO_TARGET_PRECISION', 0.60)
-        continue_until_target = self.config.get('HPO_CONTINUE_UNTIL_TARGET', True)
-        stagnation_threshold = self.config.get('HPO_STAGNATION_THRESHOLD', 30)
+        continue_until_target = self.config['HPO_CONTINUE_UNTIL_TARGET']
+        stagnation_threshold = self.config['HPO_STAGNATION_THRESHOLD']
         max_trials = 1000  # Safety cap (raised from 500, May 13, 2026)
         
         study = optuna.create_study(direction='maximize')

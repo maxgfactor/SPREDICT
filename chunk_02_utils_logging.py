@@ -32,7 +32,7 @@ class Logger:
         Args:
             config: Configuration dictionary with LOG_VERBOSITY
         """
-        self.verbosity = config.get('LOG_VERBOSITY', 1)  # 0=quiet, 1=normal, 2=verbose
+        self.verbosity = config['LOG_VERBOSITY']  # 0=quiet, 1=normal, 2=verbose
     
     def log(self, message: str, level: str = 'info', source: str = None):
         """

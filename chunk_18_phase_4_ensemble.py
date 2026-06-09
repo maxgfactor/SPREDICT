@@ -30,7 +30,6 @@ import time
 import sys
 from typing import Dict, List, Any
 from sklearn.preprocessing import StandardScaler  # NN-only normalization (trees are scale-invariant)
-from chunk_01_config import DEFAULT_THRESHOLD_STEP
 
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
@@ -87,15 +86,15 @@ class Phase4_NeuralEnsemble(BasePhase):
         min_dates = self.config['MIN_DATES_THRESHOLD']
         unique_dates = len(np.unique(dates))
         
-        if self.config.get('FEATURE_STABILITY_ANALYSIS', False):
+        if self.config['FEATURE_STABILITY_ANALYSIS']:
             if unique_dates < min_dates:
                 raise ValueError(f"Feature stability analysis requires at least {min_dates} unique dates, got {unique_dates}")
         
-        if self.config.get('TRACK_INFERENCE_LATENCY', False):
+        if self.config['TRACK_INFERENCE_LATENCY']:
             if unique_dates < min_dates:
                 raise ValueError(f"Inference latency tracking requires at least {min_dates} unique dates, got {unique_dates}")
         
-        if self.config.get('SLIDING_WINDOW_VALIDATION', False):
+        if self.config['SLIDING_WINDOW_VALIDATION']:
             if unique_dates < min_dates:
                 raise ValueError(f"Sliding window validation requires at least {min_dates} unique dates, got {unique_dates}")
     
@@ -213,7 +212,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         # Get threshold config values
         first_threshold = self.config['FIRST_THRESHOLD']
         last_threshold = self.config['LAST_THRESHOLD']
-        threshold_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
+        threshold_step = self.config['THRESHOLD_STEP']
         
         # SANITY CHECK: Show class distribution at key thresholds
         # Use same thresholds as the search range for coherence
@@ -473,7 +472,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                         section2_pred = threshold_opt_model.predict(X_val_opt, verbose=0).flatten()
                         section2_max_pred = section2_pred.max()
                         section2_mean_pred = section2_pred.mean()
-                        if self.config.get('LOG_VERBOSITY', 0) >= 2:
+                        if self.config['LOG_VERBOSITY'] >= 2:
                             self.logger.log(f"[section 1] {arch_tag} [label_threshold_optimal] " + format_diagnostic_string(section2_pred, ""), 'info')
                     else:
                         section2_pred = np.zeros(len(X_val_opt))
@@ -516,7 +515,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # This is computationally expensive (~4 hours for RNN, ~6.5 for LSTM on CPU)
                 
                 # Run hyperparameter optimization if enabled
-                enable_hyperparam = self.config.get('ENABLE_HYPERPARAM_OPTIMIZATION', True)
+                enable_hyperparam = self.config['ENABLE_HYPERPARAM_OPTIMIZATION']
                 best_hyperparams = {}
                 hpo_best_model = None
                 hpo_best_precision = 0.0
@@ -575,20 +574,20 @@ class Phase4_NeuralEnsemble(BasePhase):
                     hpo_post_precision = 0.0  # Default
                     if hpo_best_model is not None:
                         hpo_val_pred = hpo_best_model.predict(X_val_opt, verbose=0).flatten()
-                        if self.config.get('LOG_VERBOSITY', 0) >= 2:
+                        if self.config['LOG_VERBOSITY'] >= 2:
                             self.logger.log(f"   [diagnostic-hyperparameter_optimization] " + format_diagnostic_string(hpo_val_pred, ""), 'info')
                         
                         # Search for best prediction threshold if enabled
-                        if self.config.get('PREDICTION_THRESHOLD_SEARCH', False):
+                        if self.config['PREDICTION_THRESHOLD_SEARCH']:
                             best_pred_threshold = 0.5
                             best_f1 = 0.0
                             for pred_thresh in np.arange(
-                                self.config.get('PREDICTION_THRESHOLD_MIN', 0.1),
-                                self.config.get('PREDICTION_THRESHOLD_MAX', 0.5) + 0.001,
-                                self.config.get('PREDICTION_THRESHOLD_STEP', 0.05)
+                            self.config['PREDICTION_THRESHOLD_MIN'],
+                            self.config['PREDICTION_THRESHOLD_MAX'] + 0.001,
+                            self.config['PREDICTION_THRESHOLD_STEP']
                             ):
                                 hpo_binary_test = (hpo_val_pred >= pred_thresh).astype(int)
-                                if hpo_binary_test.sum() >= self.config.get('MIN_POSITIVE_PREDICTIONS', 100):
+                                if hpo_binary_test.sum() >= self.config['MIN_POSITIVE_PREDICTIONS']:
                                     f1 = self.evaluator.calculate_f1(y_val_binarized, hpo_binary_test)
                                     if f1 > best_f1:
                                         best_f1 = f1
@@ -744,7 +743,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # This finds the optimal threshold specifically for the HPO model
                 # Compare pre-HPO vs post-HPO threshold precision and use the better one
                 
-                enable_post_hpo = self.config.get('ENABLE_POST_HPO_THRESHOLD_SEARCH', True)
+                enable_post_hpo = self.config['ENABLE_POST_HPO_THRESHOLD_SEARCH']
                 final_threshold = optimal_threshold
                 threshold_source = 'section3'
                 post_hpo_prec = 0.0  # Default value
@@ -819,7 +818,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Get MaxPred/MeanPred from model
                 if model_for_post_hpo is not None:
                     s4_pred = model_for_post_hpo.predict(X_val_opt, verbose=0).flatten()
-                    if self.config.get('LOG_VERBOSITY', 0) >= 2:
+                    if self.config['LOG_VERBOSITY'] >= 2:
                         self.logger.log(f"[section 4] {arch_tag} [post hyperparameter_optimization] [diagnostic] " + format_diagnostic_string(s4_pred, ""), 'info')
                     s4_max_pred = s4_pred.max()
                     s4_mean_pred = s4_pred.mean()
@@ -1001,12 +1000,12 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Detect near-constant predictions (e.g., VAE decoder collapse)
                 if train_pred.std() < 1e-6 or val_pred.std() < 1e-6:
                     self.logger.log(f"   [warning] Near-constant predictions: train_std={train_pred.std():.6f}, val_std={val_pred.std():.6f}", 'warning')
-                if self.config.get('LOG_VERBOSITY', 0) >= 2:
+                if self.config['LOG_VERBOSITY'] >= 2:
                     self.logger.log(f"[section 5] {arch_tag} [final] [diagnostic] Train " + format_diagnostic_string(train_pred, ""), 'info')
                     self.logger.log(f"[section 5] {arch_tag} [final] [diagnostic] validation   " + format_diagnostic_string(val_pred, ""), 'info')
                 
                 # Search for best prediction threshold if enabled
-                if self.config.get('PREDICTION_THRESHOLD_SEARCH', False):
+                if self.config['PREDICTION_THRESHOLD_SEARCH']:
                     y_train_binary = (y_train_continuous >= optimal_threshold).astype(int)
                     y_val_binary_search = (y_val_continuous >= optimal_threshold).astype(int)
                     
@@ -1015,12 +1014,12 @@ class Phase4_NeuralEnsemble(BasePhase):
                     search_results = []
                     
                     for pred_thresh in np.arange(
-                        self.config.get('PREDICTION_THRESHOLD_MIN', 0.1),
-                        self.config.get('PREDICTION_THRESHOLD_MAX', 0.5) + 0.001,
-                        self.config.get('PREDICTION_THRESHOLD_STEP', 0.05)
+                        self.config['PREDICTION_THRESHOLD_MIN'],
+                        self.config['PREDICTION_THRESHOLD_MAX'] + 0.001,
+                        self.config['PREDICTION_THRESHOLD_STEP']
                     ):
                         val_binary_test = (val_pred >= pred_thresh).astype(int)
-                        if val_binary_test.sum() >= self.config.get('MIN_POSITIVE_PREDICTIONS', 100):
+                        if val_binary_test.sum() >= self.config['MIN_POSITIVE_PREDICTIONS']:
                             f1 = self.evaluator.calculate_f1(y_val_binary_search, val_binary_test)
                             precision = self.evaluator.calculate_precision(y_val_binary_search, val_binary_test)
                             recall = self.evaluator.calculate_recall(y_val_binary_search, val_binary_test)
@@ -1113,7 +1112,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     s5_mean_pred = val_pred.mean() if len(val_pred) > 0 else 0.0
                     
                     # Apply inverse log transform if configured (convert predictions back to original scale)
-                    if self.config.get('LOG_TRANSFORM_TARGET', False):
+                    if self.config['LOG_TRANSFORM_TARGET']:
                         train_pred_original = inverse_log_transform(train_pred)
                         val_pred_original = inverse_log_transform(val_pred)
                     else:
@@ -1134,7 +1133,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     val_balanced_acc = val_metrics.get('balanced_accuracy', 0.0)
                 
                 # Apply inverse log transform if configured (convert predictions back to original scale)
-                if self.config.get('LOG_TRANSFORM_TARGET', False):
+                if self.config['LOG_TRANSFORM_TARGET']:
                     train_pred_original = inverse_log_transform(train_pred)
                     val_pred_original = inverse_log_transform(val_pred)
                 else:
@@ -1360,7 +1359,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         unique_dates = np.unique(dates)
         
         # Item 1: Feature Stability Analysis
-        if self.config.get('FEATURE_STABILITY_ANALYSIS', False):
+        if self.config['FEATURE_STABILITY_ANALYSIS']:
             self.logger.log("Running Feature Stability Analysis...", 'info')
             try:
                 train_dates_mask = dates < np.median(unique_dates)
@@ -1378,7 +1377,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     from sklearn.ensemble import RandomForestClassifier
                     
                     # Binarize y_binary for classifier (line 1150 expects integer 0/1)
-                    optimal_threshold = self.config.get('FIRST_THRESHOLD', 2.0)
+                    optimal_threshold = self.config['FIRST_THRESHOLD']
                     y_binary_binarized = (y_binary_fs >= optimal_threshold).astype(int)
                     
                     stability_results = {}
@@ -1417,7 +1416,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 self.logger.log(f"   [error] Feature stability analysis failed: {e}", 'warning')
         
         # Item 2: Inference Latency
-        if self.config.get('TRACK_INFERENCE_LATENCY', False):
+        if self.config['TRACK_INFERENCE_LATENCY']:
             self.logger.log("Measuring Inference Latency...", 'info')
             try:
                 sample_size = min(self.config['INFERENCE_LATENCY_SAMPLE_SIZE'], len(X_val))
@@ -1437,7 +1436,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         orig_val_mask = val_mask.copy()
         
         # Item 4: Sliding Window Validation
-        if self.config.get('SLIDING_WINDOW_VALIDATION', False):
+        if self.config['SLIDING_WINDOW_VALIDATION']:
             self.logger.log("Running Sliding Window Validation...", 'info')
             try:
                 n_dates = len(unique_dates)
@@ -1461,7 +1460,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     val_mask = val_mask[:min_samples]
                 
                 # Binarize y_binary for classifier metrics (line 1212+ expects integer 0/1)
-                optimal_threshold = self.config.get('FIRST_THRESHOLD', 2.0)
+                optimal_threshold = self.config['FIRST_THRESHOLD']
                 y_binary_binarized = (y_binary >= optimal_threshold).astype(int)
                 
                 X_train_sw = X[train_mask]
@@ -1511,7 +1510,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 self.logger.log(f"   [error] Sliding window validation failed: {e}", 'warning')
         
         # Permutation Importance on all trained models
-        if self.config.get('PERMUTATION_IMPORTANCE', False):
+        if self.config['PERMUTATION_IMPORTANCE']:
             self.logger.log("Running Permutation Importance on all trained models...", 'info')
             
             # Use validation data
@@ -1578,11 +1577,11 @@ class Phase4_NeuralEnsemble(BasePhase):
 
         # Use the optimal threshold from architecture training for ensemble evaluation
         # Computed after filtering below — placeholder until then
-        best_ensemble_threshold = self.config.get('FIRST_THRESHOLD', 0.0)
+        best_ensemble_threshold = self.config['FIRST_THRESHOLD']
         
         # Initialize ensemble variables with defaults
-        ensemble_min_precision = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
-        ensemble_weighting = self.config.get('ENSEMBLE_WEIGHTING', 'precision_weighted')
+        ensemble_min_precision = self.config['ENSEMBLE_MIN_PRECISION']
+        ensemble_weighting = self.config['ENSEMBLE_WEIGHTING']
         filtered_models = []
         filtered_precisions = []
         filtered_arch_names = []
@@ -1621,7 +1620,7 @@ class Phase4_NeuralEnsemble(BasePhase):
             # Check for fallback
             if not filtered_models:
                 self.logger.log(f"No architectures met min precision > {ensemble_min_precision:.2f}, using fallback", 'warning')
-                fallback_arch = self.config.get('FALLBACK_ARCHITECTURE', 'RNN')
+                fallback_arch = self.config['FALLBACK_ARCHITECTURE']
                 for i, arch_name in enumerate(arch_names):
                     if arch_name == fallback_arch and trained_models[i] is not None:
                         filtered_models.append(trained_models[i])
@@ -1672,7 +1671,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 predictions = np.average(ensemble_preds, axis=0, weights=w)
             else:
                 predictions = np.mean(val_predictions, axis=0)
-            if self.config.get('LOG_VERBOSITY', 0) >= 2:
+            if self.config['LOG_VERBOSITY'] >= 2:
                 self.logger.log(f"   [diagnostic-ensemble] " + format_diagnostic_string(predictions, ""), 'info')
             binary_preds = (predictions >= self.config['PREDICTION_THRESHOLD']).astype(int)
             ensemble_precision = self.evaluator.calculate_precision(y_val_binary, binary_preds)
@@ -1799,13 +1798,21 @@ class Phase4_NeuralEnsemble(BasePhase):
                 os.makedirs(models_path, exist_ok=True)
                 
                 # Save each trained model (only those meeting precision threshold — C3 fix)
+                arch_names_to_save = []
+                best_fallback_model = None
+                best_fallback_arch = None
+                best_fallback_prec = 0.0
                 for i, (model, arch_name) in enumerate(zip(trained_models, arch_names)):
                     if model is not None:
-                        # Skip low-precision models — they'd degrade Phase 5 consensus
                         val_prec = best_val_precision_list[i] if i < len(best_val_precision_list) else 0.0
                         if val_prec < ensemble_min_precision:
                             self.logger.log(f"   Skipping {arch_name} (precision {val_prec:.4f} < {ensemble_min_precision})", 'info')
+                            if val_prec > best_fallback_prec:
+                                best_fallback_prec = val_prec
+                                best_fallback_model = model
+                                best_fallback_arch = arch_name
                             continue
+                        arch_names_to_save.append(arch_name)
                         model_path = os.path.join(models_path, f'{arch_name}_model.keras')
                         model.save(model_path)
                         self.logger.log(f"   Saved {arch_name} model to {model_path}", 'info')
@@ -1814,6 +1821,13 @@ class Phase4_NeuralEnsemble(BasePhase):
                         scaler_path = os.path.join(models_path, f'{arch_name}_scaler.joblib')
                         joblib.dump(arch_scalers[arch_name], scaler_path)
                         self.logger.log(f"   Saved {arch_name} scaler to {scaler_path}", 'info')
+                
+                # Fallback: if no models met precision threshold, save the best one anyway
+                if not arch_names_to_save and best_fallback_model is not None:
+                    arch_names_to_save.append(best_fallback_arch)
+                    model_path = os.path.join(models_path, f'{best_fallback_arch}_model.keras')
+                    best_fallback_model.save(model_path)
+                    self.logger.log(f"   [fallback] Saved {best_fallback_arch} model (precision {best_fallback_prec:.4f} below threshold {ensemble_min_precision})", 'info')
                 
                 # Save temporal weights (used for preprocessing)
                 if 'temporal_weights' in context:
@@ -1850,14 +1864,10 @@ class Phase4_NeuralEnsemble(BasePhase):
                         json.dump(all_dates, f)
                     self.logger.log(f"   Saved all training dates to {all_dates_path}", 'info')
                 
-                # Save metadata for each architecture (optimal_threshold, best_hyperparams)
-                # This allows Phase 5 to load models and know which threshold/hyperparams to use
-                for i, arch_name in enumerate(arch_names):
+                # Save metadata for each saved architecture (optimal_threshold, best_hyperparams)
+                for arch_name in arch_names_to_save:
+                    i = arch_names.index(arch_name)
                     if i < len(optimal_thresholds) and i < len(best_hyperparams_list) and i < len(final_thresholds):
-                        # Skip metadata for low-precision models (matching model save filter — C3 fix)
-                        val_prec = best_val_precision_list[i] if i < len(best_val_precision_list) else 0.0
-                        if val_prec < ensemble_min_precision:
-                            continue
                         metadata = {
                             'optimal_threshold': float(final_thresholds[i]),
                             'best_hyperparams': best_hyperparams_list[i] if best_hyperparams_list[i] else {},
@@ -1869,7 +1879,10 @@ class Phase4_NeuralEnsemble(BasePhase):
                             json.dump(metadata, f)
                         self.logger.log(f"   Saved {arch_name} metadata to {metadata_path}", 'info')
                 
-                self.logger.log(f"   All models and parameters saved to {models_path}", 'info')
+                if not arch_names_to_save:
+                    self.logger.log(f"   [fallback] No models met precision threshold ({ensemble_min_precision}); no models saved to {models_path}", 'info')
+                else:
+                    self.logger.log(f"   {len(arch_names_to_save)} model(s) and parameters saved to {models_path}", 'info')
         
         # Add architecture metrics to context for metrics review
         context['arch_final_metrics'] = arch_final_metrics

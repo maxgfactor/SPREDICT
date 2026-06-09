@@ -59,7 +59,7 @@ class Phase3_TemporalWeighting(BasePhase):
         # Apply temporal weighting
         strategy_config = {
             'type': 'linear',
-            'multiplier': self.config.get('TEMPORAL_MULTIPLIER', 9.0)
+            'multiplier': self.config['TEMPORAL_MULTIPLIER']
         }
         
         temporal_weights = apply_temporal_weighting_strategy(dates, strategy_config)

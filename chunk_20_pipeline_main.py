@@ -21,7 +21,7 @@ import numpy as np
 from typing import Dict, List, Type
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 
-from chunk_01_config import CONFIG, validate_config_structure, DEFAULT_THRESHOLD_STEP
+from chunk_01_config import CONFIG, validate_config_structure
 from chunk_02_utils_logging import Logger
 from chunk_15_phase_base import BasePhase
 from chunk_16_phase_1_setup import Phase1_PipelineSetup, validate_phase1_output
@@ -74,7 +74,7 @@ class PipelineOrchestrator:
         self.logger.log(f"   hyperparameter_optimization: trials={self.config['HYPERPARAM_OPTIMIZATION_TRIALS']}, continue_until_target={self.config['HPO_CONTINUE_UNTIL_TARGET']}, epochs_per_trial={self.config['HYPERPARAM_OPTIMIZATION_EPOCHS']}, stagnation_threshold={self.config['HPO_STAGNATION_THRESHOLD']}", 'info')
         first_thresh = self.config['FIRST_THRESHOLD']
         last_thresh = self.config['LAST_THRESHOLD']
-        thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
+        thresh_step = self.config['THRESHOLD_STEP']
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         self.logger.log(f"   Label_Thresholds: {first_thresh} to {last_thresh} ({len(thresholds)} thresholds)", 'info')
         
@@ -175,7 +175,7 @@ class PipelineOrchestrator:
             
             self.logger.log(f"[architecture performance] (sorted by validation_precision)", 'info')
             
-            ensemble_threshold = self.config.get('ENSEMBLE_MIN_PRECISION', 0.40)
+            ensemble_threshold = self.config['ENSEMBLE_MIN_PRECISION']
             
             for i, m in enumerate(sorted_metrics, 1):
                 arch = m.get('arch', 'Unknown')
@@ -410,7 +410,7 @@ class PipelineOrchestrator:
             self.logger.log(f"[backup] Config saved to {config_backup_file}", 'info')
             
             # Auto-apply logic
-            hpo_space = config.get('HYPERPARAM_SEARCH_SPACE', {})
+            hpo_space = config['HYPERPARAM_SEARCH_SPACE']
             
             for m in sorted_metrics:
                 arch = m.get('arch', 'Unknown')

@@ -40,7 +40,7 @@ class DataManager:
             FileNotFoundError: If data file not found
             ValueError: If data validation fails
         """
-        data_path = self.config.get('DATA_PATH', 'stock_data.csv')
+        data_path = self.config['DATA_PATH']
         
         # Strict requirement: file must exist
         if not os.path.exists(data_path):
@@ -68,7 +68,7 @@ class DataManager:
         df = pd.read_csv(data_path)
         
         # Flexible sample count
-        min_samples = self.config.get('MIN_SAMPLES', 30)
+        min_samples = self.config['MIN_SAMPLES']
         if len(df) < min_samples:
             raise ValueError(f"Insufficient data: {len(df)} samples found, minimum {min_samples} required")
         
@@ -78,7 +78,7 @@ class DataManager:
         
         # Auto-detect date and target columns
         date_col_idx = self._detect_date_column(df)
-        target_col_idx = self.config.get('TARGET_COLUMN_INDEX', -1)
+        target_col_idx = self.config['TARGET_COLUMN_INDEX']
         
         # Convert negative index to actual index (e.g., -1 -> last column index)
         if target_col_idx < 0:
@@ -93,7 +93,7 @@ class DataManager:
         X = df.iloc[:, feature_cols].apply(pd.to_numeric, errors='coerce').values
         
         # Handle continuous targets - keep as raw/continuous for threshold optimization
-        if self.config.get('TARGET_TYPE') == 'continuous':
+        if self.config['TARGET_TYPE'] == 'continuous':
             # Keep target as raw/continuous values (don't convert to binary)
             y = raw_target  # Keep continuous
             self._raw_target_values = raw_target
@@ -103,7 +103,7 @@ class DataManager:
             self._raw_target_column = df.columns[target_col_idx]
         
         # Apply log transform if configured (Step 1 - Option C: sign + magnitude)
-        if self.config.get('LOG_TRANSFORM_TARGET', False):
+        if self.config['LOG_TRANSFORM_TARGET']:
             sign = np.sign(y)
             magnitude = np.abs(y)
             y = sign * np.log1p(magnitude)
@@ -121,7 +121,7 @@ class DataManager:
         dates = dates[valid_mask].astype(int)
         
         # Apply stratified sampling if configured
-        if self.config.get('USE_SAMPLING', False):
+        if self.config['USE_SAMPLING']:
             X, y, dates = self._apply_stratified_sampling(X, y, dates)
         
         # Apply feature engineering (Step 4)
@@ -152,17 +152,17 @@ class DataManager:
         original_features = X.shape[1]
         
         # Step 4a: Winsorize features
-        if self.config.get('WINSORIZE_FEATURES', False):
-            low_pct = self.config.get('WINSORIZE_PERCENTILE_LOW', 1)
-            high_pct = self.config.get('WINSORIZE_PERCENTILE_HIGH', 99)
+        if self.config['WINSORIZE_FEATURES']:
+            low_pct = self.config['WINSORIZE_PERCENTILE_LOW']
+            high_pct = self.config['WINSORIZE_PERCENTILE_HIGH']
             for col in range(X.shape[1]):
                 p_low, p_high = np.percentile(X[:, col], [low_pct, high_pct])
                 X[:, col] = np.clip(X[:, col], p_low, p_high)
             print(f"   [feature] Winsorized {X.shape[1]} features at {low_pct}/{high_pct} percentiles")
         
         # Step 4c: Log-transform highly skewed features
-        if self.config.get('LOG_TRANSFORM_FEATURES', False):
-            skewed_indices = self.config.get('HIGHLY_SKEWED_FEATURES', [])
+        if self.config['LOG_TRANSFORM_FEATURES']:
+            skewed_indices = self.config['HIGHLY_SKEWED_FEATURES']
             transformed_count = 0
             for idx in skewed_indices:
                 if idx < X.shape[1]:
@@ -172,7 +172,7 @@ class DataManager:
                 print(f"   [feature] Log-transformed {transformed_count} skewed features")
         
         # Step 4b: Add ratio features (must be after winsorization and log-transform)
-        if self.config.get('ADD_RATIO_FEATURES', False) and self._feature_columns:
+        if self.config['ADD_RATIO_FEATURES'] and self._feature_columns:
             new_features = []
             added_names = []
             feature_names = self._feature_columns
@@ -246,7 +246,7 @@ class DataManager:
         Returns:
             Sampled (X, y, dates)
         """
-        sample_size = self.config.get('SAMPLE_SIZE', 100000)
+        sample_size = self.config['SAMPLE_SIZE']
         total_samples = len(y)
         
         if total_samples <= sample_size:
@@ -285,7 +285,7 @@ class DataManager:
         if len(signal_indices) == 0:
             return X, y, dates
         
-        max_samples = self.config.get('AUGMENTATION_MAX_SAMPLES', 50000)
+        max_samples = self.config['AUGMENTATION_MAX_SAMPLES']
         target_signal_rate = 0.005  # 0.5% signal rate
         
         current_signal_count = len(signal_indices)
