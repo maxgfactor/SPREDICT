@@ -33,8 +33,6 @@ import numpy as np
 import time
 from typing import Dict
 from collections import Counter
-from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
-
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
 from chunk_12_evaluation_evaluator import Evaluator
@@ -85,8 +83,8 @@ class Phase5_PredictionOptimization(BasePhase):
         # =========================================================================
         from chunk_22_model_loader import load_models_with_metadata, load_preprocessing_params, load_scaler
         
-        models_path = self.config.get('MODELS_PATH', './saved_models')
-        data_path = self.config.get('DATA_PATH', 'for_train_x_2025_10_24_clean.csv')
+        models_path = self.config['MODELS_PATH']
+        data_path = self.config['DATA_PATH']
         
         self.logger.log(f"Loading saved models from {models_path}...", 'info')
         models, metadata = load_models_with_metadata(models_path)
@@ -132,7 +130,7 @@ class Phase5_PredictionOptimization(BasePhase):
         y_val_continuous = y_inference_continuous if y_inference_continuous is not None else np.zeros(n_inference)
         
         # Get threshold info from config
-        label_threshold = self.config.get('FIRST_THRESHOLD', 20.0)
+        label_threshold = self.config['FIRST_THRESHOLD']
         
         self.logger.log(f"  Label threshold: {label_threshold}", 'info')
         self.logger.log(f"  Inference data: RAW (no temporal weighting applied)", 'info')
@@ -164,7 +162,7 @@ class Phase5_PredictionOptimization(BasePhase):
         temporal_indices = np.array([all_dates.get(str(d), 0) for d in dates])
         
         # Apply temporal weighting (sqrt to avoid over-amplification)
-        temporal_multiplier = self.config.get('TEMPORAL_MULTIPLIER', 9.0)
+        temporal_multiplier = self.config['TEMPORAL_MULTIPLIER']
         temporal_w = 1.0 + (temporal_indices / max(len(all_dates), 1)) * (temporal_multiplier - 1.0)
         temporal_w = np.sqrt(temporal_w)
         
@@ -195,7 +193,7 @@ class Phase5_PredictionOptimization(BasePhase):
             opt_threshold = arch_metadata.get('optimal_threshold', 20.0)
             best_hyperparams = arch_metadata.get('best_hyperparams', {})
             best_val_prec = arch_metadata.get('best_val_precision', 0.0)
-            pred_threshold = self.config.get('PREDICTION_THRESHOLD', PREDICTION_THRESHOLD_DEFAULT)
+            pred_threshold = self.config['PREDICTION_THRESHOLD']
             kept_idx = arch_metadata.get('kept_feature_indices')
             
             # Select features for this architecture's optimal threshold

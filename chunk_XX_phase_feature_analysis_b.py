@@ -9,7 +9,6 @@ Runs after Phase 4 (which stores validation predictions in context)
 import numpy as np
 import pandas as pd
 from typing import Dict, Any
-from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
 
 import chunk_15_phase_base as phase_base
 
@@ -52,7 +51,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
             return context
         
         label_threshold = self.config.get('FIRST_THRESHOLD', 2.0)
-        pred_threshold = self.config.get('PREDICTION_THRESHOLD', PREDICTION_THRESHOLD_DEFAULT)
+        pred_threshold = self.config['PREDICTION_THRESHOLD']
         
         # PRIORITY 1 FIX: Validate and Re-derive Dimensions (May 7, 2026)
         # Check if val_dates and val_y_raw have mismatched lengths

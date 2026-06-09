@@ -5,7 +5,7 @@ Initial data loading and preprocessing phase
 
 import numpy as np
 from typing import Dict
-from chunk_01_config import DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
+from chunk_01_config import DEFAULT_THRESHOLD_STEP
 
 from chunk_15_phase_base import BasePhase
 from chunk_02_utils_logging import Logger
@@ -67,8 +67,8 @@ class Phase1_PipelineSetup(BasePhase):
                 if np.nanmax(raw_target) > 100:
                     self.logger.log(f"sanity check: Extreme target values detected (max={np.nanmax(raw_target):.2f})", 'warning')
                 # Class distribution for ENTIRE dataset at all thresholds (full detail)
-                first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
-                last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+                first_thresh = self.config['FIRST_THRESHOLD']
+                last_thresh = self.config['LAST_THRESHOLD']
                 thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
                 thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
 
@@ -95,8 +95,8 @@ class Phase1_PipelineSetup(BasePhase):
         }
         
         # Log full class distribution for ALL thresholds (synchronized with Phase 4)
-        first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
-        last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+        first_thresh = self.config['FIRST_THRESHOLD']
+        last_thresh = self.config['LAST_THRESHOLD']
         thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
 
@@ -170,7 +170,7 @@ class Phase1_PipelineSetup(BasePhase):
         remaining_unique_dates = np.unique(remaining_dates)
         
         # Train/Val split on REMAINING data (70/30)
-        val_pct = self.config.get('VAL_SPLIT_PERCENTAGE', 0.30)
+        val_pct = self.config['VAL_SPLIT_PERCENTAGE']
         n_remaining = len(remaining_unique_dates)
         n_train_dates = int(n_remaining * (1 - val_pct))
         

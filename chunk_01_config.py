@@ -155,6 +155,7 @@ CONFIG = {
         'MIN_POSITIVE_ABSOLUTE': 5,  # 5 instead of 50
         'PATIENCE': 10,  # Higher patience for neural models
     },
+    'PATIENCE': 10,  # Top-level key for direct access (matching NEURAL_SAFEGUARDS value)
     
     # Post-HPO Threshold Search (Apr 5, 2026)
     # Run a second threshold search AFTER HPO to find optimal threshold for HPO model
@@ -193,6 +194,13 @@ CONFIG = {
     'FEATURE_ANALYSIS_SAMPLE_SIZE': 100000,  # Subsample for faster analysis
     'FEATURE_PRUNE_PERCENTILE': 20,  # Drop bottom N% features by importance
     'FEATURE_ANALYSIS_REPORT_PATH': './feature_importance_report.txt',  # Output path
+    
+    # Feature importance analysis internals (moved from CONFIG_FEATURE_ANALYSIS)
+    'ABLATON_THRESHOLD': 2.0,
+    'CORRELATION_THRESHOLDS': [0.0, 0.5, 1.0, 2.0],
+    'TREE_ESTIMATORS': 200,
+    'PERMUTATION_REPEATS': 5,
+    'SHAP_SAMPLE_SIZE': 5000,
     
     # Per-architecture hyperparameter search spaces (GIS RECONFIGURED - May 13, 2026)
     # Root cause: all 6 NNs had MaxPred << 0.5 (CNN:0.004, LSTM:0.032, RNN:0.066, VAE:0.092, Transformer:0.044)
@@ -326,7 +334,7 @@ REQUIRED_CONFIG_KEYS = [
     'MIN_POSITIVE_PREDICTIONS',
     # Ensemble configuration
     'ENSEMBLE_MIN_PRECISION', 'ENSEMBLE_WEIGHTING', 'FALLBACK_ARCHITECTURE',
-    'MIN_POSITIVE_PERCENTAGE', 'MIN_POSITIVE_ABSOLUTE', 'FOCAL_LOSS_CONFIG',
+    'MIN_POSITIVE_PERCENTAGE', 'MIN_POSITIVE_ABSOLUTE', 'FOCAL_LOSS_CONFIG', 'PATIENCE',
     # Imbalance handling (Step 3)
     'DYNAMIC_CLASS_WEIGHTS', 'PREDICTION_THRESHOLD_SEARCH',
     'PREDICTION_THRESHOLD_MIN', 'PREDICTION_THRESHOLD_MAX', 'PREDICTION_THRESHOLD_STEP',
@@ -334,9 +342,29 @@ REQUIRED_CONFIG_KEYS = [
     # Feature engineering (Step 4)
     'WINSORIZE_FEATURES', 'WINSORIZE_PERCENTILE_LOW', 'WINSORIZE_PERCENTILE_HIGH',
     'ADD_RATIO_FEATURES', 'LOG_TRANSFORM_FEATURES', 'HIGHLY_SKEWED_FEATURES',
+    # Model, path, temporal, split keys (defensive coverage)
+    'MODELS_PATH', 'SAVE_TRAINED_MODELS', 'TEMPORAL_MULTIPLIER',
+    'VAL_SPLIT_PERCENTAGE',
+    # Feature importance analysis
+    'FEATURE_ANALYSIS_ENABLED', 'FEATURE_ANALYSIS_SAMPLE_SIZE',
+    'FEATURE_PRUNE_PERCENTILE', 'FEATURE_ANALYSIS_REPORT_PATH',
     # Diagnostics and validation (Items 1, 2, 4)
     'FEATURE_STABILITY_ANALYSIS', 'TRACK_INFERENCE_LATENCY', 'SLIDING_WINDOW_VALIDATION',
     'PERMUTATION_IMPORTANCE', 'MIN_DATES_THRESHOLD', 'INFERENCE_LATENCY_SAMPLE_SIZE',
+    # Feature importance analysis internals
+    'ABLATON_THRESHOLD', 'CORRELATION_THRESHOLDS', 'TREE_ESTIMATORS',
+    'PERMUTATION_REPEATS', 'SHAP_SAMPLE_SIZE',
+    # Additional global configs (defensive registration)
+    'FORCE_SAMPLING', 'LOG_VERBOSITY',
+    'kernel_sizes', 'layers', 'heads', 'dim', 'cnn_filters', 'lstm_units',
+    'MIN_ENSEMBLE_SIZE', 'MAX_TRAINING_ATTEMPTS',
+    'VERBOSE_TENSORFLOW_LOGGING', 'VERBOSE_PROCESSING_LOGGING',
+    'USE_FOCAL_LOSS', 'FOCAL_LOSS_ALPHA', 'FOCAL_LOSS_GAMMA',
+    'MIN_PRECISION_OVER_BASELINE', 'MIN_POS_PRED_RATIO', 'MAX_POS_PRED_RATIO',
+    'HPO_MIN_POSITIVE_PERCENTAGE', 'HPO_MIN_POSITIVE_ABSOLUTE',
+    'SKLEARN_SAFEGUARDS', 'NEURAL_SAFEGUARDS',
+    'ENABLE_POST_HPO_THRESHOLD_SEARCH', 'TOP_DATES_HELD_OUT',
+    'ENSEMBLE_VOTE_THRESHOLD', 'HYPERPARAM_SEARCH_SPACE',
 ]
 
 # Configuration key types for validation
@@ -412,6 +440,33 @@ CONFIG_TYPES = {
     'MIN_POSITIVE_ABSOLUTE': int,
     # Focal loss configuration
     'FOCAL_LOSS_CONFIG': dict,
+    # Additional validated keys
+    'PATIENCE': int,
+    'SAVE_TRAINED_MODELS': bool,
+    'MODELS_PATH': str,
+    'VAL_SPLIT_PERCENTAGE': (int, float),
+    'FEATURE_ANALYSIS_ENABLED': bool,
+    'FEATURE_ANALYSIS_SAMPLE_SIZE': int,
+    'FEATURE_PRUNE_PERCENTILE': (int, float),
+    'FEATURE_ANALYSIS_REPORT_PATH': str,
+    # Feature importance analysis internals
+    'ABLATON_THRESHOLD': (int, float),
+    'CORRELATION_THRESHOLDS': list,
+    'TREE_ESTIMATORS': int,
+    'PERMUTATION_REPEATS': int,
+    'SHAP_SAMPLE_SIZE': int,
+    # Additional safeguard and container types
+    'MIN_PRECISION_OVER_BASELINE': (int, float),
+    'MIN_POS_PRED_RATIO': (int, float),
+    'MAX_POS_PRED_RATIO': (int, float),
+    'HPO_MIN_POSITIVE_PERCENTAGE': dict,
+    'HPO_MIN_POSITIVE_ABSOLUTE': dict,
+    'SKLEARN_SAFEGUARDS': dict,
+    'NEURAL_SAFEGUARDS': dict,
+    'ENABLE_POST_HPO_THRESHOLD_SEARCH': bool,
+    'TOP_DATES_HELD_OUT': int,
+    'ENSEMBLE_VOTE_THRESHOLD': (int, float),
+    'HYPERPARAM_SEARCH_SPACE': dict,
 }
 
 

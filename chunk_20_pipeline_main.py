@@ -21,7 +21,7 @@ import numpy as np
 from typing import Dict, List, Type
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 
-from chunk_01_config import CONFIG, validate_config_structure, DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
+from chunk_01_config import CONFIG, validate_config_structure, DEFAULT_THRESHOLD_STEP
 from chunk_02_utils_logging import Logger
 from chunk_15_phase_base import BasePhase
 from chunk_16_phase_1_setup import Phase1_PipelineSetup, validate_phase1_output
@@ -72,8 +72,8 @@ class PipelineOrchestrator:
             self.logger.log(f"   Could not read dataset: {e}", 'warning')
         self.logger.log(f"   Sampling: size={self.config['SAMPLE_SIZE']}, enabled={self.config['USE_SAMPLING']}, forced={self.config['FORCE_SAMPLING']}", 'info')
         self.logger.log(f"   hyperparameter_optimization: trials={self.config['HYPERPARAM_OPTIMIZATION_TRIALS']}, continue_until_target={self.config['HPO_CONTINUE_UNTIL_TARGET']}, epochs_per_trial={self.config['HYPERPARAM_OPTIMIZATION_EPOCHS']}, stagnation_threshold={self.config['HPO_STAGNATION_THRESHOLD']}", 'info')
-        first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
-        last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+        first_thresh = self.config['FIRST_THRESHOLD']
+        last_thresh = self.config['LAST_THRESHOLD']
         thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         self.logger.log(f"   Label_Thresholds: {first_thresh} to {last_thresh} ({len(thresholds)} thresholds)", 'info')

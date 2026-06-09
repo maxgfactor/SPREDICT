@@ -35,7 +35,7 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         
         n_features = X.shape[1]
         n_samples = X.shape[0]
-        sample_size = self.config.get('FEATURE_ANALYSIS_SAMPLE_SIZE', 100000)
+        sample_size = self.config['FEATURE_ANALYSIS_SAMPLE_SIZE']
         
         if n_samples > sample_size:
             if self.logger:
@@ -65,7 +65,7 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
             trained_dense_model=trained_dense
         )
         
-        report_path = self.config.get('FEATURE_ANALYSIS_REPORT_PATH', './feature_importance_report.txt')
+        report_path = self.config['FEATURE_ANALYSIS_REPORT_PATH']
         self.analyzer.save_report(analysis_results, report_path)
         
         # Store per-threshold pruning results (each Label_Threshold gets its own feature subset)

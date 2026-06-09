@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Any, Tuple, Optional
 from scipy.stats import spearmanr, pointbiserialr
-from chunk_01_config import DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP
+from chunk_01_config import DEFAULT_THRESHOLD_STEP
 
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.inspection import permutation_importance
@@ -23,20 +23,10 @@ from sklearn.model_selection import train_test_split
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings('ignore')
 
-CONFIG_FEATURE_ANALYSIS = {
-    'FEATURE_ANALYSIS_SAMPLE_SIZE': 100000,
-    'FEATURE_PRUNE_PERCENTILE': 20,
-    'ABLATON_THRESHOLD': 2.0,
-    'CORRELATION_THRESHOLDS': [0.0, 0.5, 1.0, 2.0],
-    'TREE_ESTIMATORS': 200,
-    'PERMUTATION_REPEATS': 5,
-    'SHAP_SAMPLE_SIZE': 5000,
-}
-
 
 class FeatureImportanceAnalyzer:
     def __init__(self, config: Optional[Dict] = None, logger=None):
-        self.config = {**CONFIG_FEATURE_ANALYSIS, **(config or {})}
+        self.config = config or {}
         self.results = {}
         self.timings = {}
         self.logger = logger
@@ -66,8 +56,8 @@ class FeatureImportanceAnalyzer:
         n_features = X.shape[1]
         
         # Get thresholds from config (synchronized with Phase 4)
-        first_thresh = self.config.get('FIRST_THRESHOLD', DEFAULT_FIRST_THRESHOLD)
-        last_thresh = self.config.get('LAST_THRESHOLD', DEFAULT_LAST_THRESHOLD)
+        first_thresh = self.config['FIRST_THRESHOLD']
+        last_thresh = self.config['LAST_THRESHOLD']
         thresh_step = self.config.get('THRESHOLD_STEP', DEFAULT_THRESHOLD_STEP)
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         
@@ -610,7 +600,16 @@ if __name__ == "__main__":
     
     print(f"Test data: {n_samples} samples, positive rate (t=2.0): {y_binary_t2.mean():.1%}")
     
-    analyzer = FeatureImportanceAnalyzer()
+    test_config = {
+        'FIRST_THRESHOLD': 20.0,
+        'LAST_THRESHOLD': 0.0,
+        'CORRELATION_THRESHOLDS': [0.0, 0.5, 1.0, 2.0],
+        'TREE_ESTIMATORS': 200,
+        'PERMUTATION_REPEATS': 5,
+        'SHAP_SAMPLE_SIZE': 5000,
+        'FEATURE_PRUNE_PERCENTILE': 20,
+    }
+    analyzer = FeatureImportanceAnalyzer(test_config)
     results = analyzer.run_full_analysis(X, y_raw, feature_names)
     analyzer.save_report(results, './feature_importance_report_test.txt')
     

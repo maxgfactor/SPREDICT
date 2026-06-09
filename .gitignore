@@ -3,7 +3,7 @@
 
 # Logs & Reports
 *.log
-!pipeline_cpu_iter6.log
+!pipeline_cpu_iter9.log
 *.txt
 memory*.txt
 
