@@ -293,7 +293,7 @@ CONFIG = {
 
     # Ensemble Configuration (REVISED - March 2026)
     'ENSEMBLE_MIN_PRECISION': 0.53,  # Architecture must have val_precision > 0.53 (GIS Tier 3 — tighter ensemble filter)
-    'ENSEMBLE_WEIGHTING': 'uniform',  # weight = precision_i / sum(precision) (GIS Tier 1 — uniform to prevent CatBoost dominance)
+    'ENSEMBLE_WEIGHTING': 'uniform',  # Uniform averaging (GIS Tier 1 — prevents CatBoost dominance)
     'FALLBACK_ARCHITECTURE': 'VAE',  # Highest val precision (P=0.5416, GIS Tier 1)
     # Temporal Precision Gap Analysis (Phase Xb)
     'TEMPORAL_GAP_N_DAYS': 3,        # Number of unique dates in each tail (overrides FRACTION if > 0)

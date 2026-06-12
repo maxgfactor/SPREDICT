@@ -367,7 +367,7 @@ The pipeline calculates and reports the following metrics:
 | ID | Criterion | Verification Method | FR Reference |
 |----|-----------|---------------------|--------------|
 | AC-01 | Pipeline executes without errors | Run `python chunk_20_pipeline_main.py` | Implements all FRs |
-| AC-02 | All 10 architectures train successfully | Check logs | → FR-05 |
+| AC-02 | All 9 architectures train successfully | Check logs | → FR-05 |
 | AC-03 | Validation precision ≥ 0.60 | Check metrics output | → FR-06, FR-07, FR-11 |
 | AC-04 | Models saved to ./saved_models/ | Directory inspection | → FR-09 |
 | AC-05 | Predictions generated | Run legacy files/predict.py | → FR-10 |
@@ -518,7 +518,7 @@ All 18 training metrics are reported in SECTION 5 (Final) with TRAIN_ prefix:
 
 ### Validation Metrics
 
-All 24 validation metrics are reported in SECTIONS 1-5 with VALIDATION_ prefix:
+All 24 validation metrics are reported in SECTIONS 1-5 with VALIDATION_ prefix. Note: in the code, some validation keys appear in lowercase (`validation_false_positives`, `validation_false_negatives`) while others are uppercase (`VALIDATION_PRECISION`, `VALIDATION_TRUE_POSITIVES`). The tables below document both variants.
 
 | Metric | Prefix | Description | Formula |
 |--------|--------|-------------|---------|
@@ -806,15 +806,30 @@ Compare HPO precision vs pre-HPO precision at prediction binary split 0.5:
 - The same model that produced Section 4's metrics must be used here — silent model swaps between S4 and S5 are a functional failure
 
 #### Ensemble Assembly (after Section 5)
-- All architectures with `VAL_PRECISION ≥ ENSEMBLE_MIN_PRECISION` (0.40) are eligible for the ensemble
-- Precision-weighted voting: each architecture's vote weight = `precision_i / sum(precisions of all eligible archs)`
-- Fallback: if no architecture meets 0.40, use the highest-precision arch alone
+- All architectures with `VAL_PRECISION ≥ ENSEMBLE_MIN_PRECISION` (0.53) are eligible for the ensemble
+- Uniform averaging (each eligible architecture gets equal weight)
+- Fallback: if no architecture meets 0.53, use the highest-precision arch alone
+
+> **Note**: Actual value is 0.53 (GIS Tier 3). The code comment in chunk_18 was previously 0.40 but the config value was raised. Uniform weighting (not precision-weighted) was adopted in GIS Tier 1 to prevent any single architecture from dominating the vote.
 
 ### Normalization Scope
 
 - `StandardScaler` is applied only to NN architectures (CNN, RNN, LSTM, Dense, VAE, Transformer)
 - Gradient boosting models (CatBoost, LightGBM, XGBoost) are tree-based and scale-invariant — skip normalization
 - Normalization must be applied at the **caller level** (chunk_18, chunk_12), NOT inside `train_model()`, to ensure both `model.fit()` and `model.predict()` receive consistent scaled data
+
+### HPO Architecture-Specific Objectives
+
+Each architecture uses a different objective function during Bayesian optimization, tuned to its prediction range and failure mode:
+
+| Architecture | Objective Function | Rationale |
+|--------------|-------------------|-----------|
+| CatBoost, LightGBM, XGBoost | precision | Standard — well-calibrated trees |
+| VAE | precision | Standard — falls through to else branch |
+| Dense | precision * log(TP + 1) | Balances precision and TP count |
+| CNN, RNN, LSTM, Transformer | precision * MaxPred | Push predictions toward 0.5 threshold |
+
+Implementation details: Dense uses `balanced_score = precision * np.log(tp + 1 + 1e-6)`; CNN/RNN/LSTM/Transformer use `balanced_score = precision * max_pred` (RNN additionally rejects trials with TP < 100); tree archs and VAE use `balanced_score = precision`.
 
 ### Cross-Phase Variable Hygiene
 
@@ -909,13 +924,117 @@ Always use the elected model from the prior phase. Never re-evaluate a model tha
 | LightGBM | Gradient Boosting | Fastest, imbalance-aware | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | XGBoost | Gradient Boosting | Battle-tested | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | CatBoost | Gradient Boosting | Categorical feature handling | ✅ Implemented | → Section 1.1.2, 1.1.3 |
-| Boosting_Adaptive | Gradient Boosting | Adaptive boosting | ✅ Implemented | → Section 1.1.2, 1.1.3 |
+| Boosting_Adaptive | Gradient Boosting | Adaptive boosting | ⬜ Registered (not active in pipeline) | → Section 1.1.2, 1.1.3 |
 | VAE | Neural Network | Variational autoencoder | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | Dense | Neural Network | Feed-forward baseline | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | CNN | Neural Network | Convolutional feature extraction | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | RNN | Neural Network | Sequential pattern recognition | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | LSTM | Neural Network | Long-term dependencies | ✅ Implemented | → Section 1.1.2, 1.1.3 |
 | Transformer | Neural Network | Attention-based | ✅ Implemented | → Section 1.1.2, 1.1.3 |
+
+### Architecture Groups
+
+**Gradient Boosting** (LightGBM, XGBoost, CatBoost)
+- Native class imbalance handling via tree parameters (`class_weight='balanced'`, `auto_class_weights`)
+- Produces well-calibrated probabilities
+- HPO: tree params (n_estimators, depth, learning_rate)
+- Safeguards: SKLEARN_SAFEGUARDS
+
+**Neural Networks** (CNN, RNN, LSTM, Dense, VAE, Transformer)
+- Focal loss for imbalance (alpha, gamma parameters)
+- Predictions clustered near zero (< 5% range)
+- HPO: network params + loss params
+- Safeguards: NEURAL_SAFEGUARDS
+
+### Per-Architecture Parameter Impact
+
+The tables below document which HPO parameters have the strongest effect on each architecture. HIGHEST = primary lever for improvement; HIGH = strong influence; MEDIUM = secondary tuning.
+
+#### VAE
+
+| Category | Parameter | Config Key | Range | Impact |
+|----------|-----------|------------|-------|--------|
+| Architecture | Latent Dim | latent_dim | [32, 64, 128, 256] | HIGH |
+| | Dropout | dropout | [0.0, 0.02, 0.05, 0.1] | HIGH |
+| | Encoder Layers | encoder_layers | [1, 2, 3] | MEDIUM |
+| | Decoder Layers | decoder_layers | [1, 2, 3] | MEDIUM |
+| Loss | **Loss Function** | loss_function | [bce, focal_loss] | HIGHEST |
+| | Focal Alpha | alpha | [0.25, 0.5, 0.75, 1.0, 1.25] | HIGH |
+| | Focal Gamma | gamma | [2.0, 2.5, 3.0] | HIGHEST |
+| Optimizer | Learning Rate | learning_rate | [0.0005, 0.001, 0.002, 0.005] | HIGH |
+| Training | Epochs | epochs | [30, 50, 80] | MEDIUM |
+
+#### CNN
+
+| Category | Parameter | Config Key | Range | Impact |
+|----------|-----------|------------|-------|--------|
+| Architecture | Filters | filters | [64, 128, 256, 512] | HIGH |
+| | Kernel Size | kernel_size | [3, 5, 7, 11] | HIGH |
+| | Dropout | dropout | [0.0, 0.05, 0.1, 0.2] | HIGH |
+| | Conv Layers | layers | [1, 2, 3] | MEDIUM |
+| | Pooling | pooling | [max, avg, none] | MEDIUM |
+| Loss | **Loss Function** | loss_function | [bce, focal_loss] | HIGHEST |
+| | Focal Alpha | alpha | [0.25, 0.5, 0.75, 1.0] | HIGH |
+| | Focal Gamma | gamma | [2.0, 2.5, 3.0] | HIGHEST |
+| Optimizer | Learning Rate | learning_rate | [0.0005, 0.001, 0.002, 0.005, 0.01] | HIGH |
+| Training | Epochs | epochs | [30, 50, 80, 100] | HIGH |
+
+#### RNN
+
+| Category | Parameter | Config Key | Range | Impact |
+|----------|-----------|------------|-------|--------|
+| Architecture | Units | units | [64, 128, 256] | HIGH |
+| | Dropout | dropout | [0.0, 0.05, 0.1] | HIGH |
+| | RNN Layers | layers | [1, 2] | MEDIUM |
+| Loss | **Loss Function** | loss_function | [bce, focal_loss] | HIGHEST |
+| | Focal Alpha | alpha | [0.25, 0.5, 0.75, 1.0, 1.25] | HIGH |
+| | Focal Gamma | gamma | [2.0, 2.5, 3.0, 3.5] | HIGHEST |
+| Optimizer | Learning Rate | learning_rate | [0.0005, 0.001, 0.002, 0.005] | HIGH |
+| Training | Epochs | epochs | [20, 30, 50] | HIGH |
+
+#### LSTM
+
+| Category | Parameter | Config Key | Range | Impact |
+|----------|-----------|------------|-------|--------|
+| Architecture | LSTM Units | lstm_units | [32, 64, 128, 256] | HIGH |
+| | Dropout | dropout | [0.0, 0.05, 0.1, 0.2] | HIGH |
+| | LSTM Layers | layers | [1, 2] | MEDIUM |
+| | Bidirectional | bidirectional | [True, False] | MEDIUM |
+| Loss | **Loss Function** | loss_function | [bce, focal_loss] | HIGHEST |
+| | Focal Alpha | alpha | [0.25, 0.5, 0.75, 1.0] | HIGH |
+| | Focal Gamma | gamma | [2.0, 2.5, 3.0] | HIGHEST |
+| Optimizer | Learning Rate | learning_rate | [0.0005, 0.001, 0.002, 0.005] | HIGH |
+| Training | Epochs | epochs | [20, 30, 50] | HIGH |
+
+#### Transformer
+
+| Category | Parameter | Config Key | Range | Impact |
+|----------|-----------|------------|-------|--------|
+| Architecture | Embedding Dim | dim | [64, 128, 256] | HIGH |
+| | Attention Heads | heads | [2, 4, 8] | HIGH |
+| | Feed-Forward Dim | ff_dim | [64, 128, 256] | MEDIUM |
+| | Dropout | dropout | [0.0, 0.05, 0.1, 0.2] | HIGH |
+| | Transformer Layers | layers | [1, 2, 4] | HIGH |
+| Loss | **Loss Function** | loss_function | [bce, focal_loss] | HIGHEST |
+| | Focal Alpha | alpha | [0.25, 0.5, 0.75, 1.0, 1.25] | HIGH |
+| | Focal Gamma | gamma | [1.5, 2.0, 2.5, 3.0] | HIGHEST |
+| Optimizer | Learning Rate | learning_rate | [0.00005, 0.0001, 0.0002] | HIGH |
+| Training | Epochs | epochs | [20, 30, 50] | HIGH |
+
+#### Dense
+
+| Category | Parameter | Config Key | Range | Impact |
+|----------|-----------|------------|-------|--------|
+| Architecture | Layers | layers | [2, 3, 4] | HIGH |
+| | Units | units | [64, 128, 256, 512, 1024] | HIGH |
+| | Dropout | dropout | [0.1, 0.2, 0.3, 0.4] | HIGH |
+| | Activation | activation | [relu, leaky_relu, selu] | MEDIUM |
+| | Batch Size | batch_size | [32, 64, 128, 256] | MEDIUM |
+| Loss | **Loss Function** | loss_function | [bce, focal_loss] | HIGHEST |
+| | Focal Alpha | alpha | [0.25, 0.5, 0.75, 1.0, 1.25, 1.5] | HIGH |
+| | Focal Gamma | gamma | [2.0, 2.5, 3.0, 4.0] | HIGHEST |
+| Optimizer | Learning Rate | learning_rate | [0.0001, 0.0003, 0.0005, 0.001] | HIGH |
+| Training | Epochs | epochs | [15, 20, 30, 40] | HIGH |
 
 ---
 
@@ -930,7 +1049,7 @@ Always use the elected model from the prior phase. Never re-evaluate a model tha
 | SAMPLE_SIZE | 184408 | ~25 dates worth (~2.7% of dataset) |
 | MIN_SAMPLES | 30 | Minimum samples required |
 | TARGET_TYPE | continuous | Target type |
-| LOG_TRANSFORM_TARGET | True | Apply log1p transform to target (Option C: sign * log1p(\|y\|)) |
+| LOG_TRANSFORM_TARGET | False | Apply log1p transform to target (disabled May 5, 2026 — use raw ChangeY values) |
 | DATE_COLUMN_INDEX | -1 | Auto-detect date column |
 | TARGET_COLUMN_INDEX | -1 | Auto-detect target column |
 | TEMPORAL_MULTIPLIER | 9.0 | Temporal weighting multiplier |
@@ -950,8 +1069,7 @@ Always use the elected model from the prior phase. Never re-evaluate a model tha
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | ENSEMBLE_MIN_PRECISION | 0.53 | Minimum precision for ensemble (raised from 0.52 for GIS Tier 3 — tighter ensemble filter) |
-| ENSEMBLE_WEIGHTING | uniform | Weighting method (changed from precision_weighted to uniform for GIS Tier 1 — prevents CatBoost dominance) |
-| ENSEMBLE_VOTE_THRESHOLD | 0.67 | Models must agree threshold (raised from 0.5 for GIS Tier 1 — tighter consensus) |
+| ENSEMBLE_WEIGHTING | uniform | Uniform averaging (changed from precision_weighted for GIS Tier 1 — prevents CatBoost dominance) |
 | FALLBACK_ARCHITECTURE | VAE | Highest val precision fallback (changed from RNN for GIS Tier 1) |
 
 ### HPO Configuration
@@ -973,7 +1091,7 @@ Always use the elected model from the prior phase. Never re-evaluate a model tha
 | MIN_POS_PRED_RATIO | 0.001 | Min 0.1% of predictions must be positive (raised from 0.01% for GIS Tier 2) |
 | MAX_POS_PRED_RATIO | 0.60 | Max 60% of predictions can be positive (lowered from 70% for GIS Tier 2) |
 | SKLEARN_SAFEGUARDS | dict | Arch-specific safeguard overrides for sklearn models (MIN_PRECISION_OVER_BASELINE=0.01, MIN_POSITIVE_PERCENTAGE=0.001, MIN_POSITIVE_ABSOLUTE=10) |
-| NEURAL_SAFEGUARDS | dict | Arch-specific safeguard overrides for neural models (MIN_PRECISION_OVER_BASELINE=0.02, MIN_POSITIVE_PERCENTAGE=0.01, MIN_POSITIVE_ABSOLUTE=100) |
+| NEURAL_SAFEGUARDS | dict | Arch-specific safeguard overrides for neural models (MIN_POSITIVE_PERCENTAGE=0, MIN_POSITIVE_ABSOLUTE=5, PATIENCE=10) |
 
 ### Validation Split
 
@@ -981,6 +1099,29 @@ Always use the elected model from the prior phase. Never re-evaluate a model tha
 |-----------|-------|-------------|
 | VAL_SPLIT_PERCENTAGE | 0.30 | 30% validation split |
 | TOP_DATES_HELD_OUT | 2 | Newest dates to hold out |
+
+### Temporal Precision Gap Analysis (Phase Xb)
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| TEMPORAL_GAP_N_DAYS | 3 | Number of recent dates in each tail (overrides TAIL_FRACTION if > 0) |
+| TEMPORAL_GAP_TAIL_FRACTION | 0.33 | Tail fraction fallback when N_DAYS <= 0 |
+
+### Model Persistence
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| SAVE_TRAINED_MODELS | True | Save best models after training |
+| MODELS_PATH | ./saved_models | Model output directory |
+| FEATURE_ANALYSIS_REPORT_PATH | ./feature_importance_report.txt | Analysis output path |
+
+### Logging & Verbosity
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| LOG_VERBOSITY | 2 | Log level (0=quiet, 2=verbose) |
+| VERBOSE_TENSORFLOW_LOGGING | False | TF internal log suppression |
+| VERBOSE_PROCESSING_LOGGING | False | Chunk-level log suppression |
 
 ---
 
@@ -1471,15 +1612,15 @@ Complete reference of all cosmetic log labels, section tags, metric keys, and ab
 
 | Tag | Description | Source File(s) |
 |-----|-------------|---------------|
-| `[section_1_baseline]` | Baseline threshold search | chunk_18 |
-| `[SECTION_2_HYPERPARAMETER_OPTIMIZATION_SEARCH]` | Pre-HPO threshold search | chunk_18 |
-| `[section_3_pre_hyperparameter_optimization]` | Pre-HPO evaluation | chunk_18 |
-| `[section_4_post_hyperparameter_optimization]` | Post-HPO evaluation | chunk_18 |
-| `[section_5_final]` | Final training summary | chunk_18 |
+| `[section 1] [baseline]` | Baseline threshold search | chunk_18 |
+| `[section 2] [HYPERPARAMETER_OPTIMIZATION_SEARCH]` | Pre-HPO threshold search | chunk_18 |
+| `[section 3] [HYPERPARAMETER_OPTIMIZATION]` / `[section 3] [PRE-HYPERPARAMETER_OPTIMIZATION]` | Pre-HPO evaluation (HPO improved / did not improve) | chunk_18 |
+| `[section 4] [post hyperparameter_optimization]` | Post-HPO evaluation | chunk_18 |
+| `[section 5] [final]` | Final training summary | chunk_18 |
 | `[baseline]` | Baseline model evaluation | chunk_18 |
-| `[label_threshold_OPTIMAL]` | Optimal threshold found | chunk_18 |
+| `[label_threshold_optimal]` | Optimal threshold found | chunk_18 |
 | `[final]` | Final training step | chunk_18 |
-| `[post_hyperparameter_optimization]` | Post-HPO results | chunk_18 |
+| `[post hyperparameter_optimization]` | Post-HPO results | chunk_18 |
 | `[pre_hyperparameter_optimization]` | Pre-HPO results | chunk_18 |
 | `[diagnostic]` | Diagnostic info (expanded from `[diag]`) | chunk_18 |
 | `[diagnostic-hyperparameter_optimization]` | Diagnostic HPO info (expanded from `[diag-hpo]`) | chunk_18 |

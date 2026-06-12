@@ -1635,7 +1635,7 @@ class Phase4_NeuralEnsemble(BasePhase):
             # ============================================================================
             # SECTION 5: Ensemble Creation
             # ============================================================================
-            # - Filter architectures by ENSEMBLE_MIN_PRECISION (>0.40)
+            # - Filter architectures by ENSEMBLE_MIN_PRECISION (>0.53)
             # - Use precision-weighted averaging (higher precision = higher weight)
             # - Evaluate ensemble at best_ensemble_threshold
             # - Note: Ensemble is for reference; Phase 5 uses individual models

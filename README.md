@@ -20,6 +20,22 @@
 
 **Mission**: An automated ML pipeline that loads market data, engineers temporal features to account for recency bias, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), and ensembles 9 diverse architectures to produce more reliable strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (VAE, CNN, RNN, LSTM, Transformer, GNN) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class.
 
+### Why 9 Architectures
+
+Each architecture reveals different dataset characteristics:
+
+| Order | Architecture | Data Insight |
+|-------|-------------|--------------|
+| 1 | CatBoost | Feature importance, splits |
+| 2 | Dense | Global feature interactions |
+| 3 | CNN | Local pattern scales |
+| 4 | RNN | Temporal/sequential patterns |
+| 5 | LSTM | Temporal/sequential patterns |
+| 6 | VAE | Latent distribution shape |
+| 7 | Transformer | Feature attention maps |
+
+**Principle**: Foundation → Specific, Fast → Slow, Simple → Complex.
+
 ## Dataset Quick Facts
 
 | Attribute | Value |
@@ -83,6 +99,8 @@ pip install -r requirements.txt
           Input: CSV  -->  Output: X, y, dates
                              Output: Predictions, metrics, saved models
 ```
+
+**Architecture groups**: Gradient boosting models (CatBoost, LightGBM, XGBoost) handle imbalance natively and produce well-calibrated probabilities. Neural networks (CNN, RNN, LSTM, Dense, VAE, Transformer) use focal loss and require feature normalization.
 
 ### Phase Details
 
