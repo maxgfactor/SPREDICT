@@ -36,10 +36,10 @@ class FeatureImportanceAnalyzer:
         else:
             print(msg)
 
-    def _log_all_features(self, method_prefix: str, df: pd.DataFrame, score_col: str, dropped_indices: List[int], timing: float, label_threshold: float, pos_rate: float, extra: str = ""):
+    def _log_all_features(self, method_num: int, method_name: str, df: pd.DataFrame, score_col: str, dropped_indices: List[int], timing: float, label_threshold: float, pos_rate: float, extra: str = ""):
         kept_df = df[~df['index'].isin(dropped_indices)].sort_values(score_col, ascending=False)
         parts = [f"{row['feature']}={row[score_col]:.6f}" for _, row in kept_df.iterrows()]
-        self._log(f"  {method_prefix} (label_threshold={label_threshold:.1f}, +{pos_rate:.3%}{extra}, kept {len(kept_df)}/{len(df)}) Done in {timing:.1f}s: {' | '.join(parts)}")
+        self._log(f"  method={method_num} method_total=6 method_name={method_name} label_threshold={label_threshold:.1f} signal_rate={pos_rate:.6f} kept={len(kept_df)} kept_total={len(df)}{extra} duration={timing:.1f} {' '.join(parts)}")
     
     def run_full_analysis(
         self,
@@ -118,22 +118,22 @@ class FeatureImportanceAnalyzer:
             
             # Per-method all-feature logs (excluding pruned)
             pos_rate = y_binary.mean()
-            self._log_all_features("Method 1/6: Statistical Correlation", results['correlation'], 'spearman_abs', dropped_indices, results['correlation_timing'], thresh, pos_rate)
-            self._log_all_features("Method 2/6: Tree-Based Importance", results['tree'], 'combined_importance', dropped_indices, results['tree_timing'], thresh, pos_rate)
-            self._log_all_features("Method 3/6: Permutation Importance", results['permutation'], 'auc_drop', dropped_indices, results['permutation_timing'], thresh, pos_rate, extra=f", baseline AUC={results['permutation_baseline_auc']:.4f}")
-            self._log_all_features("Method 4/6: Neural Weight Analysis", results['neural'], 'mean_abs_weight', dropped_indices, results['neural_timing'], thresh, pos_rate)
-            self._log_all_features("Method 5/6: SHAP Values", results['shap'], 'mean_abs_shap', dropped_indices, results['shap_timing'], thresh, pos_rate)
-            self._log_all_features("Method 6/6: Ablation Study", results['ablation'], 'auc', dropped_indices, results['ablation_timing'], thresh, pos_rate)
+            self._log_all_features(1, "Statistical_Correlation", results['correlation'], 'spearman_abs', dropped_indices, results['correlation_timing'], thresh, pos_rate)
+            self._log_all_features(2, "Tree_Based_Importance", results['tree'], 'combined_importance', dropped_indices, results['tree_timing'], thresh, pos_rate)
+            self._log_all_features(3, "Permutation_Importance", results['permutation'], 'auc_drop', dropped_indices, results['permutation_timing'], thresh, pos_rate, extra=f" baseline_auc={results['permutation_baseline_auc']:.4f}")
+            self._log_all_features(4, "Neural_Weight_Analysis", results['neural'], 'mean_abs_weight', dropped_indices, results['neural_timing'], thresh, pos_rate)
+            self._log_all_features(5, "SHAP_Values", results['shap'], 'mean_abs_shap', dropped_indices, results['shap_timing'], thresh, pos_rate)
+            self._log_all_features(6, "Ablation_Study", results['ablation'], 'auc', dropped_indices, results['ablation_timing'], thresh, pos_rate)
             
             # Consolidated ranking of all kept features
             kept_df = consolidated[~consolidated['index'].isin(dropped_indices)]
-            parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in kept_df.iterrows()]
-            self._log(f"  Consolidated ranking (label_threshold={thresh:.1f}, +{pos_rate:.3%}, kept {len(kept_df)}/{len(feature_names)}): {' | '.join(parts)}")
+            parts = [f"rank={int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in kept_df.iterrows()]
+            self._log(f"  consolidated_ranking label_threshold={thresh:.1f} signal_rate={pos_rate:.6f} kept={len(kept_df)} kept_total={len(feature_names)} {' '.join(parts)}")
             
             results_by_threshold[thresh] = results
             pruned_df = consolidated[consolidated['index'].isin(dropped_indices)]
-            parts = [f"#{int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in pruned_df.iterrows()]
-            self._log(f"  Consolidated pruning (label_threshold={thresh:.1f}, +{pos_rate:.3%}, pruned {len(dropped_indices)}/{n_features}): {' | '.join(parts)}")
+            parts = [f"rank={int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in pruned_df.iterrows()]
+            self._log(f"  consolidated_pruning label_threshold={thresh:.1f} signal_rate={pos_rate:.6f} pruned={len(dropped_indices)} pruned_total={n_features} {' '.join(parts)}")
         
         # Cross-threshold stability summary
         n_thresh = len(thresholds)
@@ -143,9 +143,9 @@ class FeatureImportanceAnalyzer:
         always_pruned = sorted([f for f, c in drop_counts.items() if c == n_thresh])
         never_pruned = sorted([f for f, c in drop_counts.items() if c == 0])
         borderline = {f: c for f, c in sorted(drop_counts.items()) if 0 < c < n_thresh}
-        self._log(f"[cross-threshold] Always pruned ({n_thresh}/{n_thresh}): {always_pruned}")
-        self._log(f"[cross-threshold] Never pruned (0/{n_thresh}): {never_pruned}")
-        self._log(f"[cross-threshold] Borderline: {borderline}")
+        self._log(f"cross_threshold always_pruned={' ,'.join(always_pruned)}")
+        self._log(f"cross_threshold never_pruned={' ,'.join(never_pruned)}")
+        self._log(f"cross_threshold borderline={' ,'.join(f'{k}:{v}' for k,v in sorted(borderline.items()))}")
         
         # Use results from first threshold for return (unless specified otherwise)
         # This maintains backward compatibility while storing all thresholds
@@ -158,6 +158,8 @@ class FeatureImportanceAnalyzer:
         
         total_time = time.time() - start_time
         self.timings['total'] = total_time
+        for key in ['correlation', 'tree', 'permutation', 'neural', 'shap', 'ablation']:
+            self.timings[key] = results.get(f'{key}_timing', 0)
         
         self._log(f"total time: {total_time:.1f}s ({total_time/60:.1f} min)")
         self._log(f"features: {n_features} total -> {len(results['kept_indices'])} kept, {len(results['dropped_indices'])} pruned")
@@ -496,13 +498,7 @@ class FeatureImportanceAnalyzer:
         lines.append(f"\nOriginal features: {n_orig} | After pruning: {n_pruned} | Dropped: {n_orig - n_pruned}")
         
         timings = analysis_results['timings']
-        lines.append(f"Runtime: {timings.get('total', 0)/60:.1f} min")
-        lines.append(f"  - Correlation: {timings.get('correlation', 0):.1f}s")
-        lines.append(f"  - Tree: {timings.get('tree', 0):.1f}s")
-        lines.append(f"  - Permutation: {timings.get('permutation', 0):.1f}s")
-        lines.append(f"  - Neural: {timings.get('neural', 0):.1f}s")
-        lines.append(f"  - shap: {timings.get('shap', 0):.1f}s")
-        lines.append(f"  - Ablation: {timings.get('ablation', 0):.1f}s")
+        lines.append(f"runtime_total={timings.get('total', 0)/60:.1f}min correlation={timings.get('correlation', 0):.1f}s tree={timings.get('tree', 0):.1f}s permutation={timings.get('permutation', 0):.1f}s neural={timings.get('neural', 0):.1f}s shap={timings.get('shap', 0):.1f}s ablation={timings.get('ablation', 0):.1f}s")
         
         lines.append(f"\nDropped features: {analysis_results['dropped_names']}")
         lines.append(f"Kept features: {analysis_results['kept_names']}")
@@ -522,33 +518,29 @@ class FeatureImportanceAnalyzer:
         
         lines.append(consolidated[['feature', 'mean_rank', 'consolidated_rank']].to_string(index=False))
         
-        lines.append("TOP FEATURES PER METHOD")
+        lines.append("FEATURE IMPORTANCE RANKING PER METHOD")
         
         method_labels = {
             'correlation': 'Spearman Correlation',
-            'tree': 'Tree Importance (RF+GBM)',
+            'tree': 'Tree Importance (Random Forest + Gradient Boosting)',
             'permutation': 'Permutation Importance',
             'neural': 'Neural Weight Magnitude',
             'shap': 'SHAP Values',
             'ablation': 'Ablation Study (AUC)',
         }
         
-        for method, label in method_labels.items():
+        for i, (method, label) in enumerate(method_labels.items()):
             df = results.get(method)
             if df is not None:
-                lines.append(f"\n{label}:")
+                prefix = "\n" if i > 0 else ""
+                lines.append(f"{prefix}{label}:")
                 rank_col = 'rank'
                 if rank_col in df.columns:
-                    top5 = df.nsmallest(5, rank_col)[['feature', 'rank']]
-                    if 'combined_importance' in df.columns:
-                        top5 = df.nsmallest(5, rank_col)[['feature', 'rank', 'combined_importance']]
-                    elif 'mean_abs_shap' in df.columns:
-                        top5 = df.nsmallest(5, rank_col)[['feature', 'rank', 'mean_abs_shap']]
-                    elif 'auc' in df.columns:
-                        top5 = df.nsmallest(5, rank_col)[['feature', 'rank', 'auc']]
-                    elif 'spearman_abs' in df.columns:
-                        top5 = df.nsmallest(5, rank_col)[['feature', 'rank', 'spearman_abs']]
-                    lines.append(f"  {top5.to_string(index=False)}")
+                    cols = ['feature', 'rank']
+                    for extra_col in ['combined_importance', 'mean_abs_shap', 'auc', 'spearman_abs']:
+                        if extra_col in df.columns:
+                            cols.append(extra_col)
+                    lines.append(f"  {df[cols].to_string(index=False)}")
         
         return "\n".join(lines)
     

@@ -94,6 +94,20 @@ def get_prediction_histogram(predictions: np.ndarray, num_bins: int = 20) -> Dic
     }
 
 
+def get_round_threshold_density(predictions: np.ndarray) -> str:
+    if len(predictions) == 0:
+        return ""
+    thresholds = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50]
+    total = len(predictions)
+    parts = []
+    for t in thresholds:
+        pct = (predictions <= t).sum() / total * 100
+        parts.append(f"{pct:.0f}% ≤ {t}")
+    pct_above = (predictions >= 0.50).sum() / total * 100
+    parts.append(f"{pct_above:.0f}% ≥ 0.50")
+    return ", ".join(parts)
+
+
 def format_diagnostic_string(predictions: np.ndarray, prefix: str = "") -> str:
     """
     Format comprehensive diagnostic string for predictions.
@@ -109,14 +123,12 @@ def format_diagnostic_string(predictions: np.ndarray, prefix: str = "") -> str:
         return f"{prefix} No predictions"
     
     stats = get_prediction_percentiles(predictions)
-    hist = get_prediction_histogram(predictions)
     
-    # Format percentiles
-    result = f"{prefix} percentiles: p1={stats['p1']:.4f}, p5={stats['p5']:.4f}, p10={stats['p10']:.4f}, p25={stats['p25']:.4f}, p50={stats['p50']:.4f}, p75={stats['p75']:.4f}, p90={stats['p90']:.4f}, p95={stats['p95']:.4f}, p99={stats['p99']:.4f}, max={stats['max']:.4f}"
+    result = f"{prefix} cumulative binary_split_predictions (1%) ≤ {stats['p1']:.4f}, (5%) ≤ {stats['p5']:.4f}, (10%) ≤ {stats['p10']:.4f}, (25%) ≤ {stats['p25']:.4f}, (50%) ≤ {stats['p50']:.4f}, (75%) ≤ {stats['p75']:.4f}, (90%) ≤ {stats['p90']:.4f}, (95%) ≤ {stats['p95']:.4f}, (99%) ≤ {stats['p99']:.4f}, max={stats['max']:.4f}"
     
-    # Add histogram info (all bins)
-    if len(hist['counts']) > 0:
-        result += f" | histogram: bins{hist['counts']}"
+    density_str = get_round_threshold_density(predictions)
+    if density_str:
+        result += f" binary_split_predictions distribution: {density_str}"
     
     return result
 

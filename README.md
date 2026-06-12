@@ -91,20 +91,20 @@ Section 5 FINAL (uses Section 4's elected model+threshold)
 
 #### Section 1 — Threshold Search
 - Train model with **default hyperparameters** at each label threshold (20→10→0)
-- Evaluate at prediction threshold 0.5 at each label threshold
+- Evaluate at prediction binary split 0.5 at each label threshold
 - **Output**: `optimal_threshold` (label threshold with best val precision),
   `threshold_opt_model` (model trained at that threshold), all per-threshold
   metrics stored in `all_results`
 
 #### Section 2 — Hyperparameter Optimization (HPO)
 - Run Optuna Bayesian optimization (5–30 trials) using the `optimal_threshold`
-  from Section 1 with the same 0.5 prediction threshold
+  from Section 1 with the same 0.5 prediction binary split
 - **Output**: `hpo_best_model` + `hpo_val_precision` + `best_hyperparams`
 - HPO trials that fail MaxPred, TP, or min-precision gates are rejected
   silently; the surviving best trial is the "HPO best"
 
 #### Section 3 — HPO Election Gate
-Compare HPO precision vs pre-HPO precision at prediction threshold 0.5:
+Compare HPO precision vs pre-HPO precision at prediction binary split 0.5:
 
 - **Branch 1** (HPO did NOT improve — 7 archs: CatBoost through Transformer):
   The pre-HPO model (`threshold_opt_model`) is the best. Model and threshold

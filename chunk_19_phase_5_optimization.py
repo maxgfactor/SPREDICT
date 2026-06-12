@@ -183,7 +183,7 @@ class Phase5_PredictionOptimization(BasePhase):
         available_cols = list(df_with_all_cols.columns) if df_with_all_cols is not None else []
         # C1/C2: Use only high-precision models for consensus, with configurable vote threshold
         ensemble_min_precision = self.config['ENSEMBLE_MIN_PRECISION']
-        ensemble_vote_threshold = self.config['ENSEMBLE_VOTE_THRESHOLD']
+        # ensemble_vote_threshold REMOVED — see SPEC.md §2.13; consensus uses max(3, len(majority_archs))
         all_pred_signal_sets = []  # list of (arch_name, set(indices))
         arch_thresholds = {}  # arch_name -> opt_threshold
         
@@ -304,7 +304,7 @@ class Phase5_PredictionOptimization(BasePhase):
                 if len(pred_signal_indices) > 0:
                     self.logger.log("", 'info')
                     self.logger.log(f"{arch_name} MODEL PREDICTED SIGNAL ({len(pred_signal_indices)} rows)", 'info')
-                    self.logger.log(f"architecture: {arch_name} | inference_precision: {metrics['precision']:.4f} | prediction_binary_split: {pred_threshold} | predicted: {len(pred_signal_indices)}", 'info')
+                    self.logger.log(f"{arch_name} inference_precision={metrics['precision']:.4f} prediction_binary_split={pred_threshold} predicted={len(pred_signal_indices)}", 'info')
                     self.logger.log("Row," + ",".join(available_cols), 'info')
 
             # Store results with Inf_ prefix (16 metrics + 2 extras)
@@ -399,19 +399,18 @@ class Phase5_PredictionOptimization(BasePhase):
             
             self.logger.log("", 'info')
             self.logger.log("FINAL PREDICTION RESULTS (sorted by inference_precision)", 'info')
-            self.logger.log(
-                f"{'Rank':>4} | {'Architecture':<8} | {'Label_Threshold':>15} | {'Prediction_Binary_Split':>22} | "
-                f"{'inference_precision':>19} | {'inference_recall':>16} | {'inference_auc':>13} | {'inference_f1':>12} | "
-                f"{'inference_false_negatives':>25} | {'inference_true_negatives':>24} | {'inference_true_positives':>24} | {'inference_false_positives':>25}",
-                'info'
-            )
             
             for rank, r in enumerate(sorted_results, 1):
                 self.logger.log(
-                    f"{rank:>4} | {r['architecture']:<8} | {r['label_threshold']:>15.1f} | {r['pred_threshold']:>22.2f} | "
-                    f"{r['Inf_P']:>19.4f} | {r['Inf_R']:>16.4f} | {r['Inf_AUC']:>13.4f} | "
-                    f"{r['Inf_F1']:>12.4f} | {r['Inf_FN']:>25} | {r['Inf_TN']:>24} | "
-                    f"{r['Inf_TP']:>24} | {r['Inf_FP']:>25}",
+                    f"{rank}. {r['architecture']:<12} "
+                    f"inference_precision={r['Inf_P']:.4f} "
+                    f"inference_recall={r['Inf_R']:.4f} "
+                    f"inference_auc={r['Inf_AUC']:.4f} "
+                    f"inference_f1={r['Inf_F1']:.4f} "
+                    f"inference_fn={r['Inf_FN']} "
+                    f"inference_tn={r['Inf_TN']} "
+                    f"inference_tp={r['Inf_TP']} "
+                    f"inference_fp={r['Inf_FP']}",
                     'info'
                 )
             
@@ -420,7 +419,7 @@ class Phase5_PredictionOptimization(BasePhase):
             phase5_time = time.time() - phase5_start_time
             self.logger.log(f"Best architecture: {best['architecture']} (inference_precision: {best['Inf_P']:.4f})", 'info')
             self.logger.log(f"phase 5 total time: {phase5_time:.1f}s", 'info')
-            self.logger.log(f"data points evaluated: {n_inference} (date={dates_inference[0]})", 'info')
+            self.logger.log(f"data points evaluated: {n_inference} (date(s)={np.unique(dates_inference)})", 'info')
         
         # =========================================================================
         # STEP 8: Update context (fixes AssertionError: Missing final_predictions)

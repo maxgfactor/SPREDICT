@@ -153,14 +153,15 @@ class Phase4_NeuralEnsemble(BasePhase):
         # Get split percentage from config (default 0.30 = 30%)
         val_split_pct = self.config['VAL_SPLIT_PERCENTAGE']
         
-        # Exclude top 2 newest dates
-        if len(unique_dates) >= 2:
-            top_2_dates = unique_dates[-2:]
+        # Exclude top N newest dates (config-driven)
+        n_held_out = self.config['TOP_DATES_HELD_OUT']
+        if len(unique_dates) >= n_held_out:
+            held_out_dates = unique_dates[-n_held_out:]
         else:
-            top_2_dates = []
-        
-        # Get remaining dates (exclude top 2)
-        remaining_dates = unique_dates[:-2] if len(unique_dates) >= 2 else unique_dates
+            held_out_dates = []
+
+        # Get remaining dates (exclude top N)
+        remaining_dates = unique_dates[:-n_held_out] if len(unique_dates) >= n_held_out else unique_dates
         
         # Calculate number of dates for validation and training
         n_remaining = len(remaining_dates)
@@ -196,7 +197,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         n_dates_train = len(np.unique(dates[train_mask]))
         n_dates_val = len(np.unique(dates[val_mask]))
         
-        self.logger.log(f"Date split: {len(unique_dates)} total, top 2 held out", 'info')
+        self.logger.log(f"Date split: {len(unique_dates)} total, top {n_held_out} held out (TOP_DATES_HELD_OUT={n_held_out})", 'info')
         self.logger.log(f"  Remaining dates: {n_remaining} (after excluding top 2)", 'info')
         self.logger.log(f"  Validation split: {val_split_pct:.0%} = {n_val} dates", 'info')
         self.logger.log(f"  Training split: {1-val_split_pct:.0%} = {n_train} dates", 'info')
@@ -587,7 +588,14 @@ class Phase4_NeuralEnsemble(BasePhase):
                             self.config['PREDICTION_THRESHOLD_STEP']
                             ):
                                 hpo_binary_test = (hpo_val_pred >= pred_thresh).astype(int)
-                                if hpo_binary_test.sum() >= self.config['MIN_POSITIVE_PREDICTIONS']:
+                                if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+                                    _sg = self.config['SKLEARN_SAFEGUARDS']
+                                elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
+                                    _sg = self.config['NEURAL_SAFEGUARDS']
+                                else:
+                                    _sg = {'MIN_POSITIVE_ABSOLUTE': 100, 'MIN_POSITIVE_PERCENTAGE': 0.01}
+                                _min_pos = max(_sg['MIN_POSITIVE_ABSOLUTE'], int(len(hpo_val_pred) * _sg['MIN_POSITIVE_PERCENTAGE']))
+                                if hpo_binary_test.sum() >= _min_pos:
                                     f1 = self.evaluator.calculate_f1(y_val_binarized, hpo_binary_test)
                                     if f1 > best_f1:
                                         best_f1 = f1
@@ -1019,7 +1027,14 @@ class Phase4_NeuralEnsemble(BasePhase):
                         self.config['PREDICTION_THRESHOLD_STEP']
                     ):
                         val_binary_test = (val_pred >= pred_thresh).astype(int)
-                        if val_binary_test.sum() >= self.config['MIN_POSITIVE_PREDICTIONS']:
+                        if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+                            _sg = self.config['SKLEARN_SAFEGUARDS']
+                        elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
+                            _sg = self.config['NEURAL_SAFEGUARDS']
+                        else:
+                            _sg = {'MIN_POSITIVE_ABSOLUTE': 100, 'MIN_POSITIVE_PERCENTAGE': 0.01}
+                        _min_pos = max(_sg['MIN_POSITIVE_ABSOLUTE'], int(len(val_pred) * _sg['MIN_POSITIVE_PERCENTAGE']))
+                        if val_binary_test.sum() >= _min_pos:
                             f1 = self.evaluator.calculate_f1(y_val_binary_search, val_binary_test)
                             precision = self.evaluator.calculate_precision(y_val_binary_search, val_binary_test)
                             recall = self.evaluator.calculate_recall(y_val_binary_search, val_binary_test)
@@ -1228,7 +1243,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 # Log additional configuration details for analysis
                 loss_fn = best_hyperparams.get('loss_function', 'binary_crossentropy') if best_hyperparams else 'binary_crossentropy'
-                self.logger.log(f"   [{arch_name}] loss: {loss_fn} | pred_threshold: {pred_threshold} | epochs: {train_epochs}", 'info')
+                self.logger.log(f"   {arch_name} loss={loss_fn} pred_threshold={pred_threshold} epochs={train_epochs}", 'info')
                 
                 # Log key hyperparameters if available
                 if best_hyperparams:
@@ -1317,6 +1332,23 @@ class Phase4_NeuralEnsemble(BasePhase):
                     # NEW: Post-HPO threshold search
                     'threshold_source': threshold_source,
                     'final_label_threshold': final_threshold,
+                    # Evaluator-style keys for ranking table (Section 5 metric names)
+                    'MaxPred': float(s5_max_pred),
+                    'MeanPred': float(s5_mean_pred),
+                    'Spec': float(s5_spec),
+                    'FPR': float(s5_fpr),
+                    'F2': float(s5_f2),
+                    'MCC': float(s5_mcc),
+                    'PRAUC': float(s5_prauc),
+                    'BalAcc': float(s5_balacc),
+                    'Brier': float(s5_brier),
+                    'Kappa': float(s5_kappa),
+                    'Informedness': float(s5_informedness),
+                    'Markedness': float(s5_markedness),
+                    'Gini': float(s5_gini),
+                    'OptThresh': float(s5_opt_thresh),
+                    'StdPred': float(val_std_pred),
+                    'PctAboveThresh': float(val_pct_above_thresh),
                 })
                 
                 # Track per-architecture data for Phase 5
@@ -1350,6 +1382,11 @@ class Phase4_NeuralEnsemble(BasePhase):
                     'val_mean_pred': 0.0, 'val_std_pred': 0.0,
                     'best_epoch': 0, 'train_loss': 0.0, 'val_loss': 0.0, 'loss_delta': 0.0,
                     'hpo_trials': 0, 'hpo_improvement': 0.0, 'key_hyperparams': 'failed',
+                    # Evaluator-style keys for ranking table (placeholder)
+                    'MaxPred': 0.0, 'MeanPred': 0.0, 'Spec': 0.0, 'FPR': 0.0, 'F2': 0.0,
+                    'MCC': 0.0, 'PRAUC': 0.0, 'BalAcc': 0.0, 'Brier': 0.0, 'Kappa': 0.0,
+                    'Informedness': 0.0, 'Markedness': 0.0, 'Gini': 0.0, 'OptThresh': 0.0,
+                    'StdPred': 0.0, 'PctAboveThresh': 0.0,
                 })
                 continue
         
@@ -1407,8 +1444,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                                 stability_results[fname] = {'importance': train_importance, 'stability': 0.0}
                     
                     sorted_stability = sorted(stability_results.items(), key=lambda x: x[1]['stability'], reverse=True)
-                    self.logger.log(f"   Feature Stability (top 5):", 'info')
-                    for fname, vals in sorted_stability[:5]:
+                    self.logger.log(f"   Feature Stability:", 'info')
+                    for fname, vals in sorted_stability:
                         self.logger.log(f"      {fname}: stability={vals['stability']:.3f}, importance={vals['importance']:.3f}", 'info')
                 else:
                     self.logger.log("   [warning] Insufficient data for feature stability analysis", 'warning')
@@ -1536,9 +1573,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                     
                     if perm_importance:
                         sorted_importance = sorted(perm_importance.items(), key=lambda x: x[1], reverse=True)
-                        self.logger.log(f"   {arch_name} Permutation Importance (top 10):", 'info')
-                        
-                        for feat_idx, score in sorted_importance[:10]:
+                        self.logger.log(f"   {arch_name} Permutation Importance:", 'info')
+
+                        for feat_idx, score in sorted_importance:
                             feat_name = feature_names[feat_idx] if feat_idx < len(feature_names) else f"feature_{feat_idx}"
                             self.logger.log(f"      {feat_name}: {score:.4f}", 'info')
                     else:
@@ -1729,34 +1766,51 @@ class Phase4_NeuralEnsemble(BasePhase):
             sorted_metrics = sorted(arch_final_metrics, key=lambda x: x['P'], reverse=True)
             
             self.logger.log("ARCHITECTURE RANKING (by validation_precision)", 'info')
-            self.logger.log(
-                f"{'Rank':>4} | {'Arch':<7} | {'Thresh':>6} | {'validation_precision':>8} | {'validation_recall':>8} | {'validation_auc':>8} | "
-                f"{'validation_false_negatives':>5} | {'validation_true_negatives':>6} | {'validation_true_positives':>4} | {'validation_false_positives':>4}",
-                'info'
-            )
-            
+
             for rank, m in enumerate(sorted_metrics, 1):
                 self.logger.log(
-                    f"{rank:>4} | {m['arch']:<7} | {m['optimal_label_threshold']:>6.1f} | validation_precision={m['P']:>8.4f} | "
-                    f"validation_recall={m['R']:>8.4f} | validation_auc={m['AUC']:>8.4f} | validation_false_negatives={m['FN']:>5} | validation_true_negatives={m['TN']:>6} | "
-                    f"validation_true_positives={m['TP']:>4} | validation_false_positives={m['FP']:>4}",
+                    f"{rank}. {m['arch']:<12} "
+                    f"label_threshold={m['optimal_label_threshold']:.1f} "
+                    f"validation_precision={m['P']:.4f} "
+                    f"VALIDATION_TRUE_POSITIVES={m['TP']} "
+                    f"VALIDATION_TRUE_NEGATIVES={m['TN']} "
+                    f"validation_false_positives={m['FP']} "
+                    f"validation_false_negatives={m['FN']} "
+                    f"validation_max_prediction={m['MaxPred']:.4f} "
+                    f"validation_mean_prediction={m['MeanPred']:.4f} "
+                    f"validation_recall={m['R']:.4f} "
+                    f"validation_f1={m['F1']:.4f} "
+                    f"validation_auc={m['AUC']:.4f} "
+                    f"validation_specificity={m['Spec']:.4f} "
+                    f"validation_false_positive_rate={m['FPR']:.4f} "
+                    f"validation_f2={m['F2']:.4f} "
+                    f"validation_mcc={m['MCC']:.4f} "
+                    f"validation_prauc={m['PRAUC']:.4f} "
+                    f"validation_balanced_accuracy={m['BalAcc']:.4f} "
+                    f"validation_brier={m['Brier']:.4f} "
+                    f"validation_kappa={m['Kappa']:.4f} "
+                    f"validation_informedness={m['Informedness']:.4f} "
+                    f"validation_markedness={m['Markedness']:.4f} "
+                    f"validation_gini={m['Gini']:.4f} "
+                    f"validation_optimal_threshold={m['OptThresh']:.4f} "
+                    f"validation_standard_deviation_prediction={m['StdPred']:.4f} "
+                    f"validation_percentage_above_threshold={m['PctAboveThresh']:.2f}",
                     'info'
                 )
             
             # 2. HPO Impact Summary
             if pre_hpo_precisions and post_hpo_precisions and len(pre_hpo_precisions) == len(post_hpo_precisions):
                 self.logger.log("hyperparameter_optimization IMPACT SUMMARY", 'info')
-                self.logger.log(
-                    f"{'Architecture':<12} | {'Pre_hyperparameter_optimization_validation_precision':>10} | {'Post_hyperparameter_optimization_validation_precision':>10} | {'Improved?':<9}",
-                    'info'
-                )
                 
                 for i, arch in enumerate(arch_names):
                     pre_p = pre_hpo_precisions[i] if i < len(pre_hpo_precisions) else 0.0
                     post_p = post_hpo_precisions[i] if i < len(post_hpo_precisions) else 0.0
                     improved = "Yes" if post_p > pre_p else "No"
                     self.logger.log(
-                        f"{arch:<12} | Pre_hyperparameter_optimization_validation_precision={pre_p:>10.4f} | Post_hyperparameter_optimization_validation_precision={post_p:>10.4f} | Improved?={improved:<9}",
+                        f"{arch:<12} "
+                        f"pre_hpo_validation_precision={pre_p:.4f} "
+                        f"post_hpo_validation_precision={post_p:.4f} "
+                        f"hpo_improved={improved}",
                         'info'
                     )
                 

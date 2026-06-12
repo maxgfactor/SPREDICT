@@ -63,11 +63,55 @@ class PipelineOrchestrator:
         try:
             data_path = self.config['DATA_PATH']
             with open(data_path) as f:
-                num_cols = len(f.readline().split(','))
-                f.seek(0)
-                num_rows = sum(1 for _ in f) - 1
+                header_line = f.readline().strip()
+                header_cols = header_line.split(',')
+                num_cols = len(header_cols)
+                tid_col = header_cols.index('Ticker_id')
+                date_col = header_cols.index('date')
+                reorder_cols = [date_col] + [i for i in range(num_cols) if i not in (date_col, tid_col)] + [tid_col]
+                max_date = None
+                min_date = None
+                newest_first = None
+                newest_last = None
+                oldest_first = None
+                oldest_last = None
+                num_rows = 0
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split(',')
+                    num_rows += 1
+                    tid = int(parts[tid_col])
+                    date = int(parts[date_col])
+                    if max_date is None or date > max_date:
+                        max_date = date
+                        newest_first = (date, tid, line)
+                        newest_last = (date, tid, line)
+                    elif date == max_date:
+                        if tid < newest_first[1]:
+                            newest_first = (date, tid, line)
+                        if tid > newest_last[1]:
+                            newest_last = (date, tid, line)
+                    if min_date is None or date < min_date:
+                        min_date = date
+                        oldest_first = (date, tid, line)
+                        oldest_last = (date, tid, line)
+                    elif date == min_date:
+                        if tid < oldest_first[1]:
+                            oldest_first = (date, tid, line)
+                        if tid > oldest_last[1]:
+                            oldest_last = (date, tid, line)
             file_size_mb = os.path.getsize(data_path) / 1024 / 1024
             self.logger.log(f"   Dataset shape: {num_rows:,} rows x {num_cols} columns ({file_size_mb:.1f} MB)", 'info')
+            def _reorder(line):
+                parts = line.split(',')
+                return ','.join(parts[i] for i in reorder_cols)
+            self.logger.log(_reorder(header_line), 'info')
+            self.logger.log(_reorder(newest_first[2]), 'info')
+            self.logger.log(_reorder(newest_last[2]), 'info')
+            self.logger.log(_reorder(oldest_first[2]), 'info')
+            self.logger.log(_reorder(oldest_last[2]), 'info')
         except Exception as e:
             self.logger.log(f"   Could not read dataset: {e}", 'warning')
         self.logger.log(f"   Sampling: size={self.config['SAMPLE_SIZE']}, enabled={self.config['USE_SAMPLING']}, forced={self.config['FORCE_SAMPLING']}", 'info')
@@ -145,10 +189,10 @@ class PipelineOrchestrator:
             except Exception:
                 cons_auc = 0.0
             self.logger.log(f"[stat] Final Results:", 'info')
-            self.logger.log(f"   inference_precision: {cons_precision:.4f}", 'info')
-            self.logger.log(f"   inference_recall: {cons_recall:.4f}", 'info')
-            self.logger.log(f"   inference_f1: {cons_f1:.4f}", 'info')
-            self.logger.log(f"   inference_auc: {cons_auc:.4f}", 'info')
+            self.logger.log(f"   inference_precision={cons_precision:.4f}", 'info')
+            self.logger.log(f"   inference_recall={cons_recall:.4f}", 'info')
+            self.logger.log(f"   inference_f1={cons_f1:.4f}", 'info')
+            self.logger.log(f"   inference_auc={cons_auc:.4f}", 'info')
         elif 'final_metrics' in context:
             # Fallback: display best architecture's metrics
             metrics = context['final_metrics']
@@ -156,10 +200,10 @@ class PipelineOrchestrator:
                 metrics = metrics[0]
             if isinstance(metrics, dict):
                 self.logger.log(f"[stat] Final Results:", 'info')
-                self.logger.log(f"   inference_precision: {metrics.get('Inf_P', 0):.4f}", 'info')
-                self.logger.log(f"   inference_recall: {metrics.get('Inf_R', 0):.4f}", 'info')
-                self.logger.log(f"   inference_f1: {metrics.get('Inf_F1', 0):.4f}", 'info')
-                self.logger.log(f"   inference_auc: {metrics.get('Inf_AUC', 0):.4f}", 'info')
+                self.logger.log(f"   inference_precision={metrics.get('Inf_P', 0):.4f}", 'info')
+                self.logger.log(f"   inference_recall={metrics.get('Inf_R', 0):.4f}", 'info')
+                self.logger.log(f"   inference_f1={metrics.get('Inf_F1', 0):.4f}", 'info')
+                self.logger.log(f"   inference_auc={metrics.get('Inf_AUC', 0):.4f}", 'info')
         
         # =========================================================================
         # METRICS REVIEW FRAMEWORK
@@ -187,30 +231,6 @@ class PipelineOrchestrator:
                 
                 status = f"PASS (Minimum Validation_Precision Required={ensemble_threshold})" if p >= ensemble_threshold else f"FAIL (Minimum Validation_Precision Required={ensemble_threshold})"
                 self.logger.log(f"{i}. {arch:15s} validation_precision={p:.4f} validation_recall={r:.4f} validation_auc={auc:.4f} validation_true_positives={tp:5d} validation_false_positives={fp:5d} {status}", 'info')
-            
-            # Identify issues
-            self.logger.log(f"[issues identified]", 'info')
-            
-            issues = []
-            for m in sorted_metrics:
-                arch = m.get('arch', 'Unknown')
-                p = m.get('P', 0)
-                tp = m.get('TP', 0)
-                fp = m.get('FP', 0)
-                pred_total = tp + fp
-                
-                if p == 0:
-                    issues.append(f"- {arch}: VALIDATION_PRECISION=0 (model failing completely)")
-                elif p < ensemble_threshold:
-                    issues.append(f"- {arch}: VALIDATION_PRECISION={p:.4f} below threshold {ensemble_threshold}")
-                elif pred_total < 100:
-                    issues.append(f"- {arch}: Too few predictions ({pred_total})")
-            
-            if issues:
-                for issue in issues:
-                    self.logger.log(issue, 'info')
-            else:
-                self.logger.log("- No issues found", 'info')
             
             # =========================================================================
             # STANDARDIZED METRICS TABLE (CSV FORMAT)
@@ -366,178 +386,6 @@ class PipelineOrchestrator:
             with open(csv_filename, 'w') as f:
                 f.write('\n'.join(csv_lines))
             self.logger.log(f"[info] CSV saved to {csv_filename}", 'info')
-            
-            # Generate recommendations
-            self.logger.log(f"[recommended actions]", 'info')
-            
-            # Check for common issues
-            low_precision_archs = [m.get('arch') for m in sorted_metrics if m.get('P', 0) < ensemble_threshold and m.get('P', 0) > 0]
-            zero_precision_archs = [m.get('arch') for m in sorted_metrics if m.get('P', 0) == 0]
-            
-            if zero_precision_archs:
-                self.logger.log(f"1. For {', '.join(zero_precision_archs)}: Try binary_crossentropy instead of FocalLoss", 'info')
-            
-            if low_precision_archs:
-                self.logger.log(f"2. For {', '.join(low_precision_archs)}: Tune alpha/gamma in FocalLoss or lower prediction threshold", 'info')
-            
-            # Best performer
-            best_arch = sorted_metrics[0].get('arch', 'Unknown') if sorted_metrics else 'None'
-            best_p = sorted_metrics[0].get('P', 0) if sorted_metrics else 0
-            self.logger.log(f"3. Use {best_arch} as primary (validation_precision={best_p:.4f})", 'info')
-            
-            self.logger.log(f"[parameter tuning priority]", 'info')
-            self.logger.log("Priority 1: Loss Function (BCE vs FocalLoss) - highest impact", 'info')
-            self.logger.log("Priority 2: FocalLoss Gamma - controls selectivity", 'info')
-            self.logger.log("Priority 3: Learning Rate - convergence quality", 'info')
-            self.logger.log("Priority 4: Dropout - capacity vs regularization", 'info')
-            
-            # =========================================================================
-            # AUTO-APPLY CONFIG RECOMMENDATIONS
-            # =========================================================================
-            self.logger.log(f"[auto-apply] Analyzing config changes...", 'info')
-            
-            # Get current config
-            config = self.config
-            changes_applied = []
-            
-            # Save backup of current config
-            import json
-            from datetime import datetime
-            
-            config_backup_file = 'config_backup_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.json'
-            with open(config_backup_file, 'w') as f:
-                json.dump({k: str(v)[:100] for k, v in config.items()}, f, indent=2)
-            self.logger.log(f"[backup] Config saved to {config_backup_file}", 'info')
-            
-            # Auto-apply logic
-            hpo_space = config['HYPERPARAM_SEARCH_SPACE']
-            
-            for m in sorted_metrics:
-                arch = m.get('arch', 'Unknown')
-                p = m.get('P', 0)
-                r = m.get('R', 0)
-                tp = m.get('TP', 0)
-                fp = m.get('FP', 0)
-                pred_total = tp + fp
-                
-                # Skip if precision is already above threshold
-                if p >= ensemble_threshold:
-                    self.logger.log(f"[skip] {arch}: validation_precision={p:.4f} >= {ensemble_threshold} (working)", 'info')
-                    continue
-                
-                # Get current HPO config for this architecture
-                arch_hpo = hpo_space.get(arch, {})
-                current_loss = arch_hpo.get('loss_function', ['binary_crossentropy', 'focal_loss'])
-                
-                # Rule 1: If precision = 0, switch to binary_crossentropy
-                if p == 0:
-                    if 'binary_crossentropy' in current_loss and 'focal_loss' in current_loss:
-                        # Keep both in HPO, let next run try both
-                        self.logger.log(f"[auto] {arch}: validation_precision=0 - Will try both BCE and FocalLoss in next run", 'info')
-                        changes_applied.append(f"{arch}: validation_precision=0 - keeping both loss options")
-                    else:
-                        # Add binary_crossentropy to options
-                        if 'focal_loss' in str(current_loss):
-                            if isinstance(current_loss, list):
-                                new_loss = current_loss + ['binary_crossentropy']
-                            else:
-                                new_loss = ['binary_crossentropy', 'focal_loss']
-                            hpo_space[arch]['loss_function'] = new_loss
-                            changes_applied.append(f"{arch}: Added BCE to loss options (was: {current_loss})")
-                            self.logger.log(f"[auto] {arch}: Added BCE to loss options", 'info')
-                
-                # Rule 2: If precision below threshold but > 0, adjust alpha/gamma
-                elif p < ensemble_threshold and p > 0:
-                    current_alpha = arch_hpo.get('alpha', [0.5])
-                    current_gamma = arch_hpo.get('gamma', [1.0])
-                    
-                    # Expand alpha range to include higher values
-                    if isinstance(current_alpha, list):
-                        max_alpha = max(current_alpha)
-                        if max_alpha < 1.5:
-                            new_alpha = current_alpha + [min(1.5, max_alpha + 0.25)]
-                            hpo_space[arch]['alpha'] = new_alpha
-                            changes_applied.append(f"{arch}: Expanded alpha to {new_alpha}")
-                            self.logger.log(f"[auto] {arch}: Expanded alpha range to {new_alpha}", 'info')
-                    
-                    # Expand gamma range to include lower values
-                    if isinstance(current_gamma, list):
-                        min_gamma = min(current_gamma)
-                        if min_gamma > 1.0:
-                            new_gamma = [max(0.5, min_gamma - 0.5)] + current_gamma
-                            hpo_space[arch]['gamma'] = new_gamma
-                            changes_applied.append(f"{arch}: Expanded gamma to {new_gamma}")
-                            self.logger.log(f"[auto] {arch}: Expanded gamma range to {new_gamma}", 'info')
-            
-            # Update config with new HPO space
-            if changes_applied:
-                config['HYPERPARAM_SEARCH_SPACE'] = hpo_space
-                
-                # Save updated config
-                config_file = 'chunk_01_config.py'
-                self.logger.log(f"[success] Applied {len(changes_applied)} config changes:", 'info')
-                for change in changes_applied:
-                    self.logger.log(f"   - {change}", 'info')
-                
-                # Note: Manual update of chunk_01_config.py required
-                self.logger.log(f"[note] Please manually update {config_file} with:", 'info')
-                self.logger.log("   HPO space has been adjusted based on results", 'info')
-                self.logger.log("   Review the changes above and re-run pipeline", 'info')
-            else:
-                self.logger.log(f"[info] No config changes needed (all architectures working)", 'info')
-            
-            # =========================================================================
-            # ADDITIONAL AUTO-TUNE RULES (PRINTED ONLY)
-            # =========================================================================
-            self.logger.log(f"[ADDITIONAL AUTO-TUNE RULES] (printed only)", 'info')
-            
-            additional_rules_triggered = []
-            
-            for m in sorted_metrics:
-                arch = m.get('arch', 'Unknown')
-                p = m.get('P', 0)
-                r = m.get('R', 0)
-                auc = m.get('AUC', 0)
-                train_p = m.get('train_P', 0)
-                epochs_trained = m.get('epochs_trained', 0)
-                tp = m.get('TP', 0)
-                fp = m.get('FP', 0)
-                pred_total = tp + fp
-                
-                # Rule 1: Check epochs trained (patience issue)
-                if epochs_trained > 0 and epochs_trained <= 3:
-                    msg = f"Increase patience for {arch} (only {epochs_trained} epochs)"
-                    self.logger.log(f"[rule1] {msg}", 'info')
-                    additional_rules_triggered.append(msg)
-                
-                # Rule 2: Check train/val precision gap (overfitting)
-                if train_p > 0 and p > 0 and (train_p - p) > 0.1:
-                    gap = train_p - p
-                    msg = f"Expand dropout range for {arch} (train_precision={train_p:.4f} >> validation_precision={p:.4f}, gap={gap:.4f})"
-                    self.logger.log(f"[rule2] {msg}", 'info')
-                    additional_rules_triggered.append(msg)
-                
-                # Rule 3: Check recall (minimum coverage)
-                if r > 0 and r < 0.05:
-                    msg = f"Expand label_threshold search for {arch} (validation_recall={r:.4f} too low, need >=0.05)"
-                    self.logger.log(f"[rule3] {msg}", 'info')
-                    additional_rules_triggered.append(msg)
-                
-                # Rule 4: Check AUC (barely better than random)
-                if auc > 0 and auc < 0.55:
-                    msg = f"Flag {arch} for feature engineering review (validation_AUC={auc:.4f} barely above random 0.50)"
-                    self.logger.log(f"[rule4] {msg}", 'info')
-                    additional_rules_triggered.append(msg)
-                
-                # Rule 5: Check positive prediction rate (too few predictions)
-                if pred_total > 0 and pred_total < 50:
-                    pct = (pred_total / len(sorted_metrics)) * 100 if len(sorted_metrics) > 0 else 0
-                    msg = f"Increase predictions for {arch} (only {pred_total} positive predictions)"
-                    self.logger.log(f"[rule5] {msg}", 'info')
-                    additional_rules_triggered.append(msg)
-            
-            if not additional_rules_triggered:
-                self.logger.log("[info] No additional auto-tune rules triggered", 'info')
             
         else:
             self.logger.log("[warning] No architecture metrics found in context", 'warning')

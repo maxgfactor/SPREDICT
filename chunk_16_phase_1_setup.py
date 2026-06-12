@@ -160,43 +160,44 @@ class Phase1_PipelineSetup(BasePhase):
         n_dates = len(unique_dates)
         
         # Inference: newest date(s) - extracted FIRST
-        inference_date = unique_dates[-1]
-        inference_mask = dates == inference_date
-        
-        # Remaining dates: oldest to second-newest
+        n_held_out = self.config['TOP_DATES_HELD_OUT']
+        inference_dates = unique_dates[-n_held_out:] if len(unique_dates) >= n_held_out else unique_dates
+        inference_mask = np.isin(dates, inference_dates)
+
+        # Remaining dates: oldest to (n_held_out-th-newest)
         remaining_mask = ~inference_mask
         remaining_dates = dates[remaining_mask]
         remaining_unique_dates = np.unique(remaining_dates)
-        
+
         # Train/Val split on REMAINING data (70/30)
         val_pct = self.config['VAL_SPLIT_PERCENTAGE']
         n_remaining = len(remaining_unique_dates)
         n_train_dates = int(n_remaining * (1 - val_pct))
-        
+
         train_dates_threshold = remaining_unique_dates[n_train_dates] if n_train_dates > 0 else remaining_unique_dates[0]
-        
+
         train_mask = remaining_mask & (dates < train_dates_threshold)
         val_mask = remaining_mask & (dates >= train_dates_threshold)
-        
+
         # Extract data subsets
         X_train = X[train_mask]
         y_train_continuous = y[train_mask]
         dates_train = dates[train_mask]
-        
+
         X_val = X[val_mask]
         y_val_continuous = y[val_mask]
         dates_val = dates[val_mask]
-        
+
         X_inference = X[inference_mask]
         y_inference_continuous = y[inference_mask]
         dates_inference = dates[inference_mask]
-        
+
         # Log split summary
         self.logger.log("[data split] Summary:", 'info')
         self.logger.log(f"  Total: {len(X):,} samples, {n_dates} dates", 'info')
         self.logger.log(f"  train: {len(X_train):,} samples ({train_mask.sum() / len(X):.1%}), dates < {train_dates_threshold}", 'info')
         self.logger.log(f"  validation: {len(X_val):,} samples ({val_mask.sum() / len(X):.1%}), dates >= {train_dates_threshold}", 'info')
-        self.logger.log(f"  Inference: {len(X_inference):,} samples ({inference_mask.sum() / len(X):.1%}), date = {inference_date}", 'info')
+        self.logger.log(f"  Inference: {len(X_inference):,} samples ({inference_mask.sum() / len(X):.1%}), date(s) = {inference_dates}", 'info')
         
         context.update({
             'X': X,

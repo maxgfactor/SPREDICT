@@ -106,9 +106,6 @@ CONFIG = {
     # Threshold Safeguard: minimum positive predictions required to accept a threshold
     # Prevents precision gaming (predicting almost nothing → artificially high P)
     # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
-    'MIN_POSITIVE_PREDICTIONS': 1000,  # Legacy (fixed value, deprecated)
-    'MIN_POSITIVE_PERCENTAGE': 0.01,  # 1% of samples (GIS Tier 2 — raised from 0.5%)
-    'MIN_POSITIVE_ABSOLUTE': 100,       # Absolute floor (GIS Tier 2 — doubled from 50)
     'MIN_PRECISION_OVER_BASELINE': 0.02,  # Precision must beat baseline by at least 2% (GIS Tier 2 — raised from 1%)
     'MIN_POS_PRED_RATIO': 0.001,          # Min 0.1% of predictions must be positive (GIS Tier 2 — raised from 0.01%)
     'MAX_POS_PRED_RATIO': 0.60,            # Max 60% of predictions can be positive (GIS Tier 2 — lowered from 70%)
@@ -119,36 +116,19 @@ CONFIG = {
     # - Dense/RNN: Working well, keep current thresholds
     # - VAE/LSTM/Transformer: Struggling, lower thresholds for more exploration
     # - CNN: Very low MaxPred, lowest thresholds
-    'HPO_MIN_POSITIVE_PERCENTAGE': {
-        'Dense': 0.0005,        # ~36 (10% of 355)
-        'RNN': 0.0005,          # ~36 (10% of 355)
-        'VAE': 0.0001,          # ~7 (10% of 71)
-        'CNN': 0.00005,         # ~4 (10% of 36)
-        'LSTM': 0.0001,         # ~7 (10% of 71)
-        'Transformer': 0.0001,  # ~7 (10% of 71)
-    },
-    'HPO_MIN_POSITIVE_ABSOLUTE': {
-        'Dense': 5,             # 10% of 50
-        'RNN': 5,               # 10% of 50
-        'VAE': 2,               # 10% of 20
-        'CNN': 1,               # 10% of 10
-        'LSTM': 2,              # 10% of 20
-        'Transformer': 2,        # 10% of 20
-    },
-    
     # Sklearn-specific safeguard overrides (May 6, 2026)
     # Lower thresholds for gradient boosting models that struggle with rare positive class
     'SKLEARN_SAFEGUARDS': {
-        'MIN_PRECISION_OVER_BASELINE': 0.01,  # 1% instead of 5%
-        'MIN_POSITIVE_PERCENTAGE': 0.001,  # 0.1% instead of 0.5%
-        'MIN_POSITIVE_ABSOLUTE': 10,  # 10 instead of 50
+        'MIN_PRECISION_OVER_BASELINE': 0.01,  # 1% (relaxed for sklearn)
+        'MIN_POSITIVE_PERCENTAGE': 0.001,  # 0.1% (relaxed for sklearn)
+        'MIN_POSITIVE_ABSOLUTE': 10,  # 10 (relaxed for sklearn)
     },
     
     # Neural architecture-specific safeguard overrides (May 6, 2026)
     # Lower thresholds for neural models that produce low prediction ranges
     'NEURAL_SAFEGUARDS': {
         'MIN_POSITIVE_PERCENTAGE': 0,  # Disable percentage-based, use only absolute
-        'MIN_POSITIVE_ABSOLUTE': 5,  # 5 instead of 50
+        'MIN_POSITIVE_ABSOLUTE': 5,  # 5 (lower floor for neural models)
         'PATIENCE': 10,  # Higher patience for neural models
     },
     'PATIENCE': 10,  # Top-level key for direct access (matching NEURAL_SAFEGUARDS value)
@@ -314,8 +294,10 @@ CONFIG = {
     # Ensemble Configuration (REVISED - March 2026)
     'ENSEMBLE_MIN_PRECISION': 0.53,  # Architecture must have val_precision > 0.53 (GIS Tier 3 — tighter ensemble filter)
     'ENSEMBLE_WEIGHTING': 'uniform',  # weight = precision_i / sum(precision) (GIS Tier 1 — uniform to prevent CatBoost dominance)
-    'ENSEMBLE_VOTE_THRESHOLD': 0.67,  # At least 4/6 agree to predict signal (GIS Tier 1 — tighter consensus)
     'FALLBACK_ARCHITECTURE': 'VAE',  # Highest val precision (P=0.5416, GIS Tier 1)
+    # Temporal Precision Gap Analysis (Phase Xb)
+    'TEMPORAL_GAP_N_DAYS': 3,        # Number of unique dates in each tail (overrides FRACTION if > 0)
+    'TEMPORAL_GAP_TAIL_FRACTION': 0.33,  # Fraction fallback if N_DAYS <= 0
 }
 
 # Required configuration keys for validation
@@ -327,10 +309,9 @@ REQUIRED_CONFIG_KEYS = [
     'FIRST_THRESHOLD', 'LAST_THRESHOLD', 'THRESHOLD_STEP', 'PREDICTION_THRESHOLD',
     'ENABLE_HYPERPARAM_OPTIMIZATION', 'HYPERPARAM_OPTIMIZATION_EPOCHS', 'HYPERPARAM_OPTIMIZATION_TRIALS',
     'HPO_TARGET_PRECISION', 'HPO_CONTINUE_UNTIL_TARGET', 'HPO_STAGNATION_THRESHOLD',
-    'MIN_POSITIVE_PREDICTIONS',
     # Ensemble configuration
     'ENSEMBLE_MIN_PRECISION', 'ENSEMBLE_WEIGHTING', 'FALLBACK_ARCHITECTURE',
-    'MIN_POSITIVE_PERCENTAGE', 'MIN_POSITIVE_ABSOLUTE', 'FOCAL_LOSS_CONFIG', 'PATIENCE',
+    'FOCAL_LOSS_CONFIG', 'PATIENCE',
     # Imbalance handling (Step 3)
     'DYNAMIC_CLASS_WEIGHTS', 'PREDICTION_THRESHOLD_SEARCH',
     'PREDICTION_THRESHOLD_MIN', 'PREDICTION_THRESHOLD_MAX', 'PREDICTION_THRESHOLD_STEP',
@@ -357,10 +338,10 @@ REQUIRED_CONFIG_KEYS = [
     'VERBOSE_TENSORFLOW_LOGGING', 'VERBOSE_PROCESSING_LOGGING',
     'USE_FOCAL_LOSS', 'FOCAL_LOSS_ALPHA', 'FOCAL_LOSS_GAMMA',
     'MIN_PRECISION_OVER_BASELINE', 'MIN_POS_PRED_RATIO', 'MAX_POS_PRED_RATIO',
-    'HPO_MIN_POSITIVE_PERCENTAGE', 'HPO_MIN_POSITIVE_ABSOLUTE',
     'SKLEARN_SAFEGUARDS', 'NEURAL_SAFEGUARDS',
     'ENABLE_POST_HPO_THRESHOLD_SEARCH', 'TOP_DATES_HELD_OUT',
-    'ENSEMBLE_VOTE_THRESHOLD', 'HYPERPARAM_SEARCH_SPACE',
+    'HYPERPARAM_SEARCH_SPACE',
+    'TEMPORAL_GAP_N_DAYS', 'TEMPORAL_GAP_TAIL_FRACTION',
 ]
 
 # Configuration key types for validation
@@ -423,7 +404,6 @@ CONFIG_TYPES = {
     'HPO_TARGET_PRECISION': (int, float),
     'HPO_CONTINUE_UNTIL_TARGET': bool,
     'HPO_STAGNATION_THRESHOLD': int,
-    'MIN_POSITIVE_PREDICTIONS': int,
     'USE_FOCAL_LOSS': bool,
     'FOCAL_LOSS_ALPHA': (int, float),
     'FOCAL_LOSS_GAMMA': (int, float),
@@ -431,9 +411,6 @@ CONFIG_TYPES = {
     'ENSEMBLE_MIN_PRECISION': (int, float),
     'ENSEMBLE_WEIGHTING': str,
     'FALLBACK_ARCHITECTURE': str,
-    # Threshold dynamic configuration
-    'MIN_POSITIVE_PERCENTAGE': (int, float),
-    'MIN_POSITIVE_ABSOLUTE': int,
     # Focal loss configuration
     'FOCAL_LOSS_CONFIG': dict,
     # Additional validated keys
@@ -455,14 +432,13 @@ CONFIG_TYPES = {
     'MIN_PRECISION_OVER_BASELINE': (int, float),
     'MIN_POS_PRED_RATIO': (int, float),
     'MAX_POS_PRED_RATIO': (int, float),
-    'HPO_MIN_POSITIVE_PERCENTAGE': dict,
-    'HPO_MIN_POSITIVE_ABSOLUTE': dict,
     'SKLEARN_SAFEGUARDS': dict,
     'NEURAL_SAFEGUARDS': dict,
     'ENABLE_POST_HPO_THRESHOLD_SEARCH': bool,
     'TOP_DATES_HELD_OUT': int,
-    'ENSEMBLE_VOTE_THRESHOLD': (int, float),
     'HYPERPARAM_SEARCH_SPACE': dict,
+    'TEMPORAL_GAP_N_DAYS': int,
+    'TEMPORAL_GAP_TAIL_FRACTION': float,
 }
 
 

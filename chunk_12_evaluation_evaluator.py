@@ -386,11 +386,18 @@ class Evaluator:
             val_class_0 = int(np.sum(y_val_binary == 0))
             val_class_1 = int(np.sum(y_val_binary == 1))
             
-            train_status = "[ok]" if train_class_1 > 0 else "[warning]"
-            val_status = "[ok]" if val_class_1 > 0 else "[warning]"
+            train_positive_found = train_class_1 > 0
+            val_positive_found = val_class_1 > 0
             
             arch_tag = f"[{arch_name.upper()}]"
-            if self.logger: self.logger.log(f"{arch_tag} LABEL_THRESHOLD={thresh:.1f} | Train: below prediction_binary_split={train_class_0:,},above prediction_binary_split={train_class_1:,} {train_status} | Validation: below prediction_binary_split={val_class_0:,},above prediction_binary_split={val_class_1:,} {val_status}", 'info')
+            if self.logger: self.logger.log(
+                f"{arch_tag} label_threshold={thresh:.1f} "
+                f"train_below_prediction_binary_split={train_class_0:,} "
+                f"train_above_prediction_binary_split={train_class_1:,} "
+                f"train_positive_found={str(train_positive_found).lower()} "
+                f"val_below_prediction_binary_split={val_class_0:,} "
+                f"val_above_prediction_binary_split={val_class_1:,} "
+                f"val_positive_found={str(val_positive_found).lower()}", 'info')
             
             # Use model for inference only (no retraining) - for POST-HPO threshold search
             # Or train model for each threshold - for Section 2 pre-HPO threshold search
@@ -452,23 +459,23 @@ class Evaluator:
             # Architecture-specific thresholds (May 6, 2026)
             if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
                 sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
-                min_positive_percentage = sklearn_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config['MIN_POSITIVE_PERCENTAGE'])
-                min_positive_absolute = sklearn_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config['MIN_POSITIVE_ABSOLUTE'])
+                min_positive_percentage = sklearn_safeguards['MIN_POSITIVE_PERCENTAGE']
+                min_positive_absolute = sklearn_safeguards['MIN_POSITIVE_ABSOLUTE']
             elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
                 neural_safeguards = self.config['NEURAL_SAFEGUARDS']
-                min_positive_percentage = neural_safeguards.get('MIN_POSITIVE_PERCENTAGE', self.config['MIN_POSITIVE_PERCENTAGE'])
-                min_positive_absolute = neural_safeguards.get('MIN_POSITIVE_ABSOLUTE', self.config['MIN_POSITIVE_ABSOLUTE'])
-                patience = neural_safeguards.get('PATIENCE', self.config['PATIENCE'])
+                min_positive_percentage = neural_safeguards['MIN_POSITIVE_PERCENTAGE']
+                min_positive_absolute = neural_safeguards['MIN_POSITIVE_ABSOLUTE']
+                patience = neural_safeguards['PATIENCE']
             else:
-                min_positive_percentage = self.config['MIN_POSITIVE_PERCENTAGE']
-                min_positive_absolute = self.config['MIN_POSITIVE_ABSOLUTE']
+                min_positive_percentage = 0.01
+                min_positive_absolute = 100
                 patience = self.config['PATIENCE']
             n_samples = len(y_val_binary)
             min_positive_predictions = max(min_positive_absolute, int(n_samples * min_positive_percentage))
             
             val_total_positive_preds = val_metrics['TP'] + val_metrics['FP']
             if val_total_positive_preds < min_positive_predictions:
-                if self.logger: self.logger.log(f"[reject] Skipping threshold {thresh:.1f}: only {val_total_positive_preds} positive VALIDATION predictions (min={min_positive_predictions})", 'info')
+                if self.logger: self.logger.log(f"[reject] threshold={thresh:.1f} action=skipped reason=insufficient_positive_predictions positive_predictions={val_total_positive_preds} minimum_positive_required={min_positive_predictions}", 'info')
                 no_improve_count += 1
                 if no_improve_count >= patience:
                     if self.logger: self.logger.log(f"{arch_name}: Early stopping at threshold {thresh:.1f} (no improvement for {patience} iterations)", 'info')

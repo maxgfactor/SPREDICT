@@ -75,25 +75,33 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         
         unique_dates = np.unique(val_dates)
         n_dates = len(unique_dates)
-        
+
         if n_dates < 3 and self.logger:
             self.logger.log(f"warning: Only {n_dates} unique dates in validation - splitting may be unreliable", 'warning')
-        
-        recent_date_cutoff = unique_dates[int(n_dates * 0.67)]
-        older_date_cutoff = unique_dates[int(n_dates * 0.33)]
-        
-        is_recent = np.isin(val_dates, unique_dates[unique_dates >= recent_date_cutoff])
-        is_older = np.isin(val_dates, unique_dates[unique_dates <= older_date_cutoff])
-        
+
+        tail_n_days = self.config['TEMPORAL_GAP_N_DAYS']
+        tail_frac = self.config['TEMPORAL_GAP_TAIL_FRACTION']
+
+        if tail_n_days > 0:
+            n_tail = min(tail_n_days, n_dates // 2)
+            is_recent = np.isin(val_dates, unique_dates[-n_tail:])
+            is_older = np.isin(val_dates, unique_dates[:n_tail])
+        else:
+            n_tail = max(1, int(n_dates * tail_frac))
+            recent_cutoff = unique_dates[int(n_dates * (1 - tail_frac))]
+            older_cutoff = unique_dates[int(n_dates * tail_frac)]
+            is_recent = np.isin(val_dates, unique_dates[unique_dates >= recent_cutoff])
+            is_older = np.isin(val_dates, unique_dates[unique_dates <= older_cutoff])
+
         signal_mask = (val_y_raw >= label_threshold).astype(int)
-        
+
         n_recent_signal_total = int(np.sum(signal_mask[is_recent]))
         n_older_signal_total = int(np.sum(signal_mask[is_older]))
-        
+
         if self.logger:
-            self.logger.log(f"Date split: {n_dates} unique dates", 'info')
-            self.logger.log(f"Recent dates (>={recent_date_cutoff}): {np.sum(is_recent):,} samples, {n_recent_signal_total:,} signal cases", 'info')
-            self.logger.log(f"Older dates (<={older_date_cutoff}): {np.sum(is_older):,} samples, {n_older_signal_total:,} signal cases", 'info')
+            self.logger.log(f"Validation date split: {n_dates} unique dates, tail={n_tail} days each (N_DAYS={tail_n_days}, FRACTION={tail_frac:.0%})", 'info')
+            self.logger.log(f"Validation Recent dates (newest {n_tail} days, {unique_dates[-n_tail]}..{unique_dates[-1]}): {np.sum(is_recent):,} samples, {n_recent_signal_total:,} signal cases", 'info')
+            self.logger.log(f"Validation Older dates (oldest {n_tail} days, {unique_dates[0]}..{unique_dates[n_tail-1]}): {np.sum(is_older):,} samples, {n_older_signal_total:,} signal cases", 'info')
         
         results = []
         for i, (arch_name, preds) in enumerate(zip(arch_names, val_predictions)):
@@ -178,8 +186,10 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
         
         results_df = pd.DataFrame(results)
         results_df = results_df.sort_values('gap', ascending=False)
-        
+
+        middle_n = n_dates - 2 * n_tail
         status_lines = []
+        status_lines.append(f"Temporal Precision Gap (validation set): Recent = newest {n_tail} days ({unique_dates[-n_tail]}..{unique_dates[-1]}), Older = oldest {n_tail} days ({unique_dates[0]}..{unique_dates[n_tail-1]}), middle {middle_n} days excluded as buffer")
         status_lines.append(f"{self.name} Report - FULL METRICS")
         status_lines.append(f"{'Architecture':<12} {'validation_recent_precision':>8} {'validation_recent_recall':>8} {'validation_recent_auc':>10} {'validation_recent_f1':>8} {'validation_older_precision':>8} {'validation_older_recall':>8} {'validation_older_auc':>10} {'validation_older_f1':>8} {'Gap':>6}")
         

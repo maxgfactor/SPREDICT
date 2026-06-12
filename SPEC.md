@@ -1,6 +1,6 @@
 # Software Specification Requirements (SSR) - Stock Analysis Ensemble
 
-**Version**: 3.27  
+**Version**: 3.28  
 **Date**: 2026-06-09  
 **Status**: Living Document - Update After Each Run  
 
@@ -647,8 +647,8 @@ The following features were removed during preprocessing:
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | DATA_PATH | for_train_x_2025_10_24_clean.csv | Input CSV file |
-| USE_SAMPLING | False | Use entire dataset |
-| SAMPLE_SIZE | 99999999 | Use all samples |
+| USE_SAMPLING | True | Enable sampling for faster testing |
+| SAMPLE_SIZE | 184408 | ~25 dates worth (~2.7% of dataset) |
 | MIN_SAMPLES | 30 | Minimum samples required |
 | TARGET_TYPE | continuous | Target type |
 | LOG_TRANSFORM_TARGET | True | Apply log1p transform to target (Option C: sign * log1p(\|y\|)) |
@@ -664,7 +664,7 @@ The following features were removed during preprocessing:
 | FIRST_THRESHOLD | 20.0 | Starting label threshold |
 | LAST_THRESHOLD | 0.0 | Ending label threshold |
 | THRESHOLD_STEP | -10.0 | Label threshold increment (reduced to 3 steps: 20→10→0) |
-| PREDICTION_THRESHOLD | 0.55 | Binary classification threshold (raised from 0.5 for GIS Tier 1) |
+| PREDICTION_THRESHOLD | 0.5 | Binary classification split threshold (kept at 0.5; not raised to 0.55 as initially planned in GIS Tier 1) |
 
 ### Ensemble Configuration
 
@@ -701,7 +701,7 @@ The following features were removed during preprocessing:
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | VAL_SPLIT_PERCENTAGE | 0.30 | 30% validation split |
-| TOP_DATES_HELD_OUT | 2 | Newest dates to hold out |
+| TOP_DATES_HELD_OUT | 1 | Newest dates to hold out (code holds out 1; config says 2 — known discrepancy) |
 
 ---
 
@@ -893,19 +893,19 @@ Discovery sequence for dataset understanding and precision optimization:
 
 **Mission**: Optimize val_precision ≥ 0.60 for each architecture independently.
 
-**Note**: All architectures run full searches (unlimited trials until target met). Each architecture runs Sections 1-5 of Phase 4.
+**Note**: All architectures run 5 HPO trials per run (capped). See §2.12 for iteration strategy.
 
 ---
 
-## 2.12 Iteration Strategy (May 11, 2026)
+## 2.12 Iteration Strategy (May 11, 2026) — REVISED Jun 9, 2026
 
 ### Strategy Summary
 
 | # | Decision | Value |
 |---|----------|-------|
 | 1 | Iteration method | **Grouped** - Run by architecture group |
-| 2 | Trials per phase | **As deep as necessary** (no cap) |
-| 3 | Stop condition | **P ≥ 0.60** (then move to next arch) |
+| 2 | Trials per phase | **Capped at 5 per arch** (HPO_CONTINUE_UNTIL_TARGET=False) |
+| 3 | Stop condition | **5 trials, or P ≥ 0.60 if reached earlier** |
 | 4 | Config updates | **Yes** (incorporate findings between iterations) |
 
 ### Iteration Plan
@@ -922,23 +922,99 @@ Discovery sequence for dataset understanding and precision optimization:
 
 | Phase | Trials | Condition to Proceed |
 |-------|--------|---------------------|
-| **Coarse** | 30 | Standard exploration |
-| **Refine** | 30+ | Continue if P improving but < 0.60 |
-| **Maximize** | Until P ≥ 0.60 | Stop immediately when target met |
-| **Evidence** | 90+ | If stagnant, document and move on |
+| **Coarse** | 5 (hard cap) | Standard exploration |
+| **Refine** | N/A | Continue-until-target disabled — hard cap preferred |
 
 ### Decision Rules
 
 | Condition | Action |
 |-----------|--------|
-| P ≥ 0.60 AND TP > 0 | Save config, move to next architecture |
-| P < 0.60 but improving | Continue with expanded search |
-| P < 0.60, stagnant | Document findings, move to next arch |
+| P ≥ 0.60 AND TP > 0 | Save config, move to next architecture (within 5-trial limit) |
+| P < 0.60 after 5 trials | Document findings, move to next arch |
 | MaxPred < 0.3 | Architecture issue - document, move on |
 
 ---
 
-# SECTION 3: Documentation
+## 2.13 GIS (Global Iteration Strategy) — Tier Reference
+
+Consolidated reference for all GIS tier changes, grouped by strategic stage. Historical tier numbers (Tiers 1-7) are referenced for traceability; the stage-based grouping is the primary organizational axis.
+
+### Stage 1: Explore — Widen HPO
+*Give all architectures maximum room to discover working configurations.*
+
+| Change | Old → New | Historical Tier | Category |
+|--------|-----------|----------------|----------|
+| `HYPERPARAM_SEARCH_SPACE` | Narrow → **Expanded** (all 9 archs) | GIS Reconfig (May 13) | Config |
+| FocalLoss α for all 6 NNs | Higher → **+[0.25, 0.5]** | Tier 3 (v3.16) | Config |
+| Transformer loss_function | BCE only → **+focal_loss** | Tier 3 (v3.16) | Config |
+| `FOCAL_LOSS_CONFIG` defaults | Varied → **α=0.25, γ=2.0** (VAE kept 0.75/1.5) | Tier 3 (v3.16) | Config |
+
+### Stage 2: Diagnose — Fix Visibility
+*Fix bugs that hide results; clean logs for reliable analysis.*
+
+| Change | Fix | Historical Tier | Category |
+|--------|-----|----------------|----------|
+| All-thresholds-rejected logging | Was logging all-zero metrics | Tier 3 (v3.16) | Code |
+| Log standardization (31 lines) | Bare/unprefixed metrics → full prefixes | v3.20 | Cosmetic |
+| Visual icons removed (✓/✗ → PASS/FAIL) | Cleaner status reporting | v3.24 | Cosmetic |
+
+### Stage 3: Filter — Tighten Ensemble
+*Zero-runtime config that keeps only architectures that prove useful.*
+
+| Change | Old → New | Historical Tier | Category |
+|--------|-----------|----------------|----------|
+| `ENSEMBLE_MIN_PRECISION` | 0.52 → **0.53** | Tier 3 (v3.14) | Config |
+| `ENSEMBLE_VOTE_THRESHOLD` | 0.50 → **0.67** (⚠️ removed Jun 9 — dead key, read but ignored) | Tier 1 (v3.13) | Config |
+| `ENSEMBLE_WEIGHTING` | precision_weighted → **uniform** | Tier 1 (v3.13) | Config |
+| `FALLBACK_ARCHITECTURE` | RNN → **VAE** | Tier 1 (v3.13) | Config |
+| `PREDICTION_THRESHOLD` | — | **Kept at 0.5** (raise to 0.55 planned in Tier 1 but scrapped) | Config |
+
+### Stage 4: Refine — Optimize Keepers' Training
+*Moderate-runtime changes that make surviving architectures learn better.*
+
+| Change | Old → New | Historical Tier | Category |
+|--------|-----------|----------------|----------|
+| `TEMPORAL_MULTIPLIER` | 3x → **9x** | Tier 7 (v3.17) | Config |
+| `sample_weight` → model.fit() | Not passed → **passed** | Tier 7 (v3.17) | Code |
+| `FOCAL_LOSS_CONFIG` defaults | Varied → **narrowed** (α=0.25, γ=2.0) | Tier 3 (v3.16) | Config |
+
+### Stage 5: Stabilize — Harden Gates
+*Zero-runtime safeguards that catch edge cases discovered in earlier stages.*
+
+| Change | Old → New | Historical Tier | Category |
+|--------|-----------|----------------|----------|
+| `WINSORIZE_PERCENTILE_LOW` | 1 → **2** | Tier 2 (v3.14) | Config |
+| `WINSORIZE_PERCENTILE_HIGH` | 99 → 98 → **95** | Tier 2 → Tier 3 | Config |
+| `MIN_POSITIVE_PERCENTAGE` | 0.005 → **0.01** | Tier 2 (v3.14) | Config |
+| `MIN_POSITIVE_ABSOLUTE` | 50 → **100** | Tier 2 (v3.14) | Config |
+| `MIN_PRECISION_OVER_BASELINE` | 0.01 → **0.02** | Tier 2 (v3.14) | Config |
+| `MIN_POS_PRED_RATIO` | 0.0001 → **0.001** | Tier 2 (v3.14) | Config |
+| `MAX_POS_PRED_RATIO` | 0.70 → **0.60** | Tier 2 (v3.14) | Config |
+| `SKLEARN_SAFEGUARDS` | — | **Documented** (architecture-specific gate overrides) | Config |
+| `NEURAL_SAFEGUARDS` | — | **Documented** (architecture-specific gate overrides) | Config |
+| `PATIENCE` | — | **Documented** (threshold search early stopping) | Config |
+| `ENABLE_POST_HPO_THRESHOLD_SEARCH` | — | **Documented** (post-HPO optimization toggle) | Config |
+| S4→S5 cross-phase model carry-forward | Bug → **Fixed** | v3.18 (post-Tier 4) | Code |
+| Best-model fallback (zero archs above threshold) | Crash → **Fixed** | v3.27 | Code |
+
+### Historical Mapping
+
+| Old Tier | Status | Notes |
+|----------|--------|-------|
+| **Tier 1** | Applied (3 of 4 changes) | `PREDICTION_THRESHOLD` 0.55 was planned but scrapped; kept at 0.5 |
+| **Tier 2** | Fully applied | All 7 safeguard gates tightened |
+| **Tier 3** | Fully applied | Winsorization + FocalLoss expansion + bug fix |
+| **Tier 4** | **Abandoned** | Planned S4→S5 fix; executed later under v3.17/v3.18, never as a named tier |
+| **Tiers 5-6** | **Do not exist** | No references anywhere in the codebase |
+| **Tier 7** | Fully applied | Temporal sample_weight + TEMPORAL_MULTIPLIER 3x→9x |
+
+### Found Bugs During Audit
+| Issue | Status | Details |
+|-------|--------|---------|
+| `ENSEMBLE_VOTE_THRESHOLD=0.67` | **Resolved** — removed from CONFIG | Read but ignored — consensus uses `max(3, len(majority_archs))`. Config entry deleted. |
+| `TOP_DATES_HELD_OUT=2` | **Resolved** — wired into both Phase 1 and Phase 4 | Config was dead key. Phase 1 and Phase 4 now read `config['TOP_DATES_HELD_OUT']` instead of hardcoding 1/2. Both phases hold out 2 dates. |
+| `HYPERPARAM_OPTIMIZATION_TRIALS=5` | **Intentional** — not a bug | §2.12 updated to reflect 5-trial cap. Continue-until-target disabled. |
+| `HPO_CONTINUE_UNTIL_TARGET=False` | **Intentional** — not a bug | §2.12 updated: hard cap preferred over unbounded search under current runtime constraints. |
 
 ## 3.1 Version History
 
@@ -976,6 +1052,10 @@ Discovery sequence for dataset understanding and precision optimization:
 | 3.25 | 2026-06-09 | **Config consolidation — Step 1: full registration.** Added 11 missing CONFIG_TYPES entries (`MIN_PRECISION_OVER_BASELINE`, `MIN_POS_PRED_RATIO`, `MAX_POS_PRED_RATIO`, `HPO_MIN_POSITIVE_PERCENTAGE`, `HPO_MIN_POSITIVE_ABSOLUTE`, `SKLEARN_SAFEGUARDS`, `NEURAL_SAFEGUARDS`, `ENABLE_POST_HPO_THRESHOLD_SEARCH`, `TOP_DATES_HELD_OUT`, `ENSEMBLE_VOTE_THRESHOLD`, `HYPERPARAM_SEARCH_SPACE`). Added 26 missing entries to REQUIRED_CONFIG_KEYS (the 11 above + `FORCE_SAMPLING`, `LOG_VERBOSITY`, `kernel_sizes`, `layers`, `heads`, `dim`, `cnn_filters`, `lstm_units`, `MIN_ENSEMBLE_SIZE`, `MAX_TRAINING_ATTEMPTS`, `VERBOSE_TENSORFLOW_LOGGING`, `VERBOSE_PROCESSING_LOGGING`, `USE_FOCAL_LOSS`, `FOCAL_LOSS_ALPHA`, `FOCAL_LOSS_GAMMA`). Removed duplicate `TEMPORAL_MULTIPLIER` in CONFIG_TYPES. CONFIG dict now has 89 keys, all registered as required + type-checked. Files: chunk_01 (only). Verified clean in iter9.log. | Defense-in-depth — every CONFIG key now validated. No behavioral change (all keys exist with correct types). Sets stage for Step 2: converting all remaining config.get(fallback) calls to direct config[] access. |
 | 3.26 | 2026-06-09 | **Config consolidation — Step 2: all remaining config.get(KEY, fallback) → config[KEY].** Converted ~80 calls across 11 consumer files where fallback ≠ CONFIG value. All target keys guaranteed by validate_config_structure (registered in Step 1). Includes MATCH (zero-risk) conversions missed in Phase A-C. Import cleanup: removed 5 stale imports (DEFAULT_THRESHOLD_STEP ×4, DEFAULT_HPO_TRIALS ×1). Dead code removal: deleted 4 unused module-level constants from chunk_01_config (DEFAULT_FIRST_THRESHOLD, DEFAULT_LAST_THRESHOLD, DEFAULT_THRESHOLD_STEP, DEFAULT_HPO_TRIALS). Kept PREDICTION_THRESHOLD_DEFAULT (still used by chunk_04/chunk_21 function signatures). CONFIG dict: 89 keys, 0 remaining config.get(fallback) calls for pipeline config keys. Files: chunk_01, chunk_02, chunk_05, chunk_12, chunk_14, chunk_16, chunk_17, chunk_18, chunk_19, chunk_20, chunk_21, chunk_XX_feature_importance, chunk_XX_phase_feature_analysis_b. | Completes config consolidation. Single source of truth — all pipeline config reads go through direct config[KEY] access. Fail-fast on missing keys. Ready for pipeline re-run (iter10). |
 | 3.27 | 2026-06-09 | **Best-model fallback for zero-models-above-threshold edge case.** iter10 crashed (`AssertionError: Missing final_metrics`) because ALL 9 architectures scored below `ENSEMBLE_MIN_PRECISION=0.53` (best CNN at 0.5276). Phase 4 model-saving loop at `chunk_18:1805` skipped every model — only metadata saved to `./saved_models/`. Phase 5 found no `.keras` files → `validate_pipeline_execution` raised AssertionError. Fix: track `best_fallback_model/arch/prec` during the skip loop; after loop, if `arch_names_to_save` is empty, save the best-performing model unconditionally. Metadata loop now iterates `arch_names_to_save` instead of re-filtering `arch_names`. Final log message conditional: shows model count or fallback warning. **Key finding**: iter10 crash was NOT a regression from config consolidation — pre-existing edge case confirmed by comparing iter9 (CNN passed at 0.5330) vs iter10 (CNN failed at 0.5276). All `0.53` threshold values existed before and after consolidation. | Fixes pre-existing edge case exposed in iter10: zero architectures meeting the ensemble precision threshold. Pipeline now degrades gracefully by saving the best available model. |
+| 3.28 | 2026-06-09 | **GIS tier documentation restructured + config alignment + TOP_DATES_HELD_OUT code fix + expanded ranking table + temporal gap config.** Added §2.13 GIS Tier Reference. Fixed stale config values in §2.7. Removed dead config key `ENSEMBLE_VOTE_THRESHOLD`. Updated §2.12 to 5-trial cap. Wired `TOP_DATES_HELD_OUT` into Phase 1 and Phase 4. Expanded ARCHITECTURE RANKING to all 24 validation metrics. Added `TEMPORAL_GAP_N_DAYS`/`TEMPORAL_GAP_TAIL_FRACTION` config keys for Phase Xb temporal precision gap analysis (replaced hardcoded 0.67/0.33 split). Temporal Gap log now shows exact date ranges and specifies validation set. | GIS tier consolidation, config-spec sync, dead key removal, strategy doc alignment, TOP_DATES_HELD_OUT code fix, expanded ranking metrics, temporal gap config. |
+| 3.29 | 2026-06-10 | **Removed broken auto-apply from METRICS REVIEW + standardized log formats across pipeline.** Deleted `[recommended actions]`, `[auto-apply]`, and `[ADDITIONAL AUTO-TUNE RULES]` from chunk_20:346-516 (~170 lines). Standardized Phase 5 `FINAL PREDICTION RESULTS` from pipe-delimited to `key=value` (chunk_19:400-416). Converted `architecture: X | inference_precision: Y` to `X inference_precision=Y` (chunk_19:307). Standardized chunk_12 threshold evaluation from mixed `|`/`:`/`=` to pure `key=value` (chunk_12:389-393). Converted `inference_precision: {val}` to `inference_precision={val}` in chunk_20 Final Results section (8 lines, both consensus and fallback paths). All `key: value` data pairs across pipeline now use consistent `key=value`. | GIS alignment + log format standardization. All data key-value pairs use `key=value` convention. |
+| 3.30 | 2026-06-10 | **Dataset CSV preview after LN4 + feature importance log standardization + remaining arch log cleanup + column reorder.** Added header, newest-date first/last ticker, oldest-date first/last ticker lines after Dataset shape in `chunk_20_pipeline_main.py` (LN5-LN9). CSV columns reordered: `date` first, `Ticker_id` last. Standardized `chunk_XX_feature_importance.py` method headers (`Method 1/6: Name (...)`→`method=1 ...`), consolidated ranking (`#N Feature=val | ...`→`rank=N Feature=val ...`), consolidated pruning, cross-threshold summary (Python list→comma-separated `key=val`). Standardized `chunk_18_phase_4_ensemble.py` (`[arch] loss: val | pred_threshold: val`→`arch loss=val pred_threshold=val`). | Completes log format standardization — all pipeline data key=value pairs use consistent space-separated format. Dataset preview aids quick human inspection. |
+| 3.31 | 2026-06-10 | **Feature stability & permutation importance: removed top-N limits; diagnostic format overhaul; timing bug fix; report label cleanup; config dead-key removal.** `chunk_18`: Feature Stability and Permutation Importance now list ALL features (removed `[:5]`/`[:10]` slices). `chunk_04_utils_metrics.py`: `percentiles: p1=...` → `cumulative binary_split_predictions (1%) ≤ ...`, removed `|` before histogram, replaced 20-bin histogram with round-threshold `binary_split_predictions distribution: 48% ≤ 0.01, ...`. `chunk_XX_feature_importance.py`: fixed bug where individual method timings were always 0.0s (missing `results['correlation_timing']` → `self.timings['correlation']` copy); collapsed 6 timing report lines into 1 `key=value` line; `RF+GBM` → `Random Forest + Gradient Boosting`; removed blank line after header; removed `nsmallest(5)` → shows all features; renamed `TOP FEATURES PER METHOD` → `FEATURE IMPORTANCE RANKING PER METHOD`. `chunk_12`: `[reject] Skipping threshold ... (min=5)` → `[reject] threshold=... action=skipped reason=insufficient_positive_predictions positive_predictions=... minimum_positive_required=...`. **Config Step 1**: removed deprecated `MIN_POSITIVE_PREDICTIONS` (static 1000) — replaced with dynamic safeguard read in chunk_18 HPO/final threshold search. **Step 2**: removed top-level `MIN_POSITIVE_PERCENTAGE`/`MIN_POSITIVE_ABSOLUTE` duplicates (already in SKLEARN_SAFEGUARDS/NEURAL_SAFEGUARDS) — removed dead `config.get(fallback)` patterns in evaluator. **Step 3**: removed `HPO_MIN_POSITIVE_PERCENTAGE`/`HPO_MIN_POSITIVE_ABSOLUTE` dead keys (defined but never read) — deleted from config dict, REQUIRED_CONFIG_KEYS, CONFIG_TYPES. **Step 4**: fixed stale safeguard comments referencing removed values. | Config deduplication (4 keys removed) + timing bug fix + remaining diagnostic standardization. All safeguard min-positive values now read from arch-specific dicts. Changelog entry consolidation across live session edits. |
 
 ---
 
@@ -1239,7 +1319,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 
 *Document generated: 2026-04-15*  
 *Last updated: 2026-06-09*  
-*Version: 3.27*
+*Version: 3.28*
 
 ---
 
