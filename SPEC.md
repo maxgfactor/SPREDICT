@@ -1,6 +1,6 @@
 # Software Specification Requirements (SSR) - Stock Analysis Ensemble
 
-**Version**: 3.32  
+**Version**: 3.33  
 **Date**: 2026-06-12  
 **Status**: Living Document - Update After Each Run  
 
@@ -9,7 +9,7 @@
 # QUICK START GUIDE
 
 ## What Is This Document?
-SPEC.md is a living document for the Stock Analysis Ensemble Pipeline. It defines logging formats and metrics (Section 1), documents the code and architecture (Section 2), maintains history (Section 3), and tracks permanent failures (Section 4). Run results are archived in shortmemory.txt.
+SPEC.md is a living document for the Stock Analysis Ensemble Pipeline. It defines logging formats and metrics (Section 1), documents the code and architecture (Section 2), maintains history (Section 3), and tracks permanent failures (Section 4). GIS strategy details are in [GIS.md](./GIS.md). Run results are archived in shortmemory.txt.
 
 ## Document Structure
 
@@ -33,6 +33,7 @@ SPEC.md is a living document for the Stock Analysis Ensemble Pipeline. It define
 
 | Need | Section |
 |------|---------|
+| GIS strategy details | [GIS.md](./GIS.md) |
 | Log format reference | Section 1.1 |
 | Metrics definitions | Section 1.3 |
 | Code for architecture | Section 2.6, 3.4 |
@@ -718,7 +719,7 @@ Compare HPO precision vs pre-HPO precision at prediction binary split 0.5:
 - Uniform averaging (each eligible architecture gets equal weight)
 - Fallback: if no architecture meets 0.53, use the highest-precision arch alone
 
-> **Note**: Actual value is 0.53 (GIS Tier 3). The code comment in chunk_18 was previously 0.40 but the config value was raised. Uniform weighting (not precision-weighted) was adopted in GIS Tier 1 to prevent any single architecture from dominating the vote.
+> See GIS.md §2 (Stage 3: Filter) for the tier rationale behind these ensemble values.
 
 ### Normalization Scope
 
@@ -931,15 +932,15 @@ The tables below document which HPO parameters have the strongest effect on each
 | FIRST_THRESHOLD | 20.0 | Starting label threshold |
 | LAST_THRESHOLD | 0.0 | Ending label threshold |
 | THRESHOLD_STEP | -10.0 | Label threshold increment (reduced to 3 steps: 20→10→0) |
-| PREDICTION_THRESHOLD | 0.5 | Binary classification split threshold (kept at 0.5; not raised to 0.55 as initially planned in GIS Tier 1) |
+| PREDICTION_THRESHOLD | 0.5 | Binary classification split threshold (see GIS.md) |
 
 ### Ensemble Configuration
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| ENSEMBLE_MIN_PRECISION | 0.53 | Minimum precision for ensemble (raised from 0.52 for GIS Tier 3 — tighter ensemble filter) |
-| ENSEMBLE_WEIGHTING | uniform | Uniform averaging (changed from precision_weighted for GIS Tier 1 — prevents CatBoost dominance) |
-| FALLBACK_ARCHITECTURE | VAE | Highest val precision fallback (changed from RNN for GIS Tier 1) |
+| ENSEMBLE_MIN_PRECISION | 0.53 | Minimum precision for ensemble (see GIS.md §2 Stage 3) |
+| ENSEMBLE_WEIGHTING | uniform | Uniform averaging (see GIS.md §2 Stage 3) |
+| FALLBACK_ARCHITECTURE | VAE | Highest val precision fallback (see GIS.md §2 Stage 3) |
 
 ### HPO Configuration
 
@@ -954,11 +955,11 @@ The tables below document which HPO parameters have the strongest effect on each
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| WINSORIZE_PERCENTILE_LOW | 2 | Lower percentile for winsorization (raised from 1 for GIS Tier 2) |
-| WINSORIZE_PERCENTILE_HIGH | 95 | Upper percentile for winsorization (lowered from 98 for GIS Tier 3 — tighter outlier removal) |
-| MIN_PRECISION_OVER_BASELINE | 0.02 | Precision must beat baseline by 2% (raised from 1% for GIS Tier 2) |
-| MIN_POS_PRED_RATIO | 0.001 | Min 0.1% of predictions must be positive (raised from 0.01% for GIS Tier 2) |
-| MAX_POS_PRED_RATIO | 0.60 | Max 60% of predictions can be positive (lowered from 70% for GIS Tier 2) |
+| WINSORIZE_PERCENTILE_LOW | 2 | Lower percentile for winsorization (see GIS.md §2 Stage 5) |
+| WINSORIZE_PERCENTILE_HIGH | 95 | Upper percentile for winsorization (see GIS.md §2 Stage 5) |
+| MIN_PRECISION_OVER_BASELINE | 0.02 | Precision must beat baseline by 2% (see GIS.md §2 Stage 5) |
+| MIN_POS_PRED_RATIO | 0.001 | Min 0.1% of predictions must be positive (see GIS.md §2 Stage 5) |
+| MAX_POS_PRED_RATIO | 0.60 | Max 60% of predictions can be positive (see GIS.md §2 Stage 5) |
 | SKLEARN_SAFEGUARDS | dict | Arch-specific safeguard overrides for sklearn models (MIN_PRECISION_OVER_BASELINE=0.01, MIN_POSITIVE_PERCENTAGE=0.001, MIN_POSITIVE_ABSOLUTE=10) |
 | NEURAL_SAFEGUARDS | dict | Arch-specific safeguard overrides for neural models (MIN_POSITIVE_PERCENTAGE=0, MIN_POSITIVE_ABSOLUTE=5, PATIENCE=10) |
 
@@ -994,7 +995,7 @@ The tables below document which HPO parameters have the strongest effect on each
 
 ---
 
-## 2.8 Hyperparameter Search Spaces (GIS (Global Iteration Strategy) Reconfiguration - May 13, 2026)
+## 2.8 Hyperparameter Search Spaces
 
 Each architecture's current HPO search space. All 6 NNs required major expansion (MaxPred << 0.5 in initial runs); trees required broader regularization parameters.
 
@@ -1139,11 +1140,53 @@ Each architecture's current HPO search space. All 6 NNs required major expansion
 
 ---
 
-## 2.9 System Constraints
+## 2.9 GIS (Global Iteration Strategy)
+
+### What It Is
+
+GIS is an iterative optimization framework that tunes pipeline configuration parameters across successive runs, driving each architecture toward P ≥ 0.60 inference precision.
+
+### The Cycle
+
+```
+Run pipeline → Evaluate pipeline_cpu.log → Analyze gaps → Adjust config → Re-run
+```
+
+### Iteration Plan (5 Groups)
+
+| Iteration | Architectures | Focus |
+|-----------|--------------|-------|
+| 1 | CatBoost → LightGBM → XGBoost | Feature importance, tree depth, scale_pos_weight |
+| 2 | Dense → CNN | Global vs local pattern effectiveness |
+| 3 | RNN → LSTM | Temporal signal strength |
+| 4 | VAE → Transformer | Latent dimension, attention patterns |
+| 5 | Ensemble | Combined precision |
+
+### Decision Rules
+
+| Condition | Action |
+|-----------|--------|
+| P ≥ 0.60 AND TP > 0 | Save config, proceed to next architecture |
+| P < 0.60 after 5 HPO trials | Document findings, proceed |
+| MaxPred < 0.3 | Architecture limitation — document, move on |
+
+### Key Results
+
+- **Iter 1 completed**: CatBoost reached 0.7204 inference P (>0.60 target)
+- **Iter 2 completed**: CNN reached 0.6537 validation P (decision gate: enter Optimize Phase)
+- 5 strategic stages applied (Explore → Diagnose → Filter → Refine → Stabilize)
+
+→ For full detail (tier reference, precision levers, run results, historical evolution): see [GIS.md](./GIS.md)
+
+---
+
+## 2.10 System Constraints
 
 See [README.md §Prerequisites](./README.md#prerequisites) for system constraints.
 
----## 2.10 Risks and Mitigations
+---
+
+## 2.11 Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
@@ -1170,6 +1213,7 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.20–3.27 | 2026-06-08–09 | Metric log standardization (31 lines), 2 functional error fixes, log cosmetics, config consolidation (Steps 1–2, 89 keys), best-model fallback edge case | Format consistency, config single-source-of-truth |
 | 3.28–3.31 | 2026-06-09–10 | GIS tier docs restructured, config alignment, auto-apply removal, log format standardization, dataset preview, feature stability/diagnostic overhaul, timing bug fix, config dead-key removal (4 keys) | Spec-code sync, cleanup |
 | 3.32 | 2026-06-12 | SPEC restructured: stale run results archived to shortmemory, version history consolidated (40→12 entries), HPO search-space evolution comments removed, cross-phase hygiene patterns summarized (details archived), PROJECT_LEXICON G2–G10 moved to shortmemory, empty template tables deleted | SPEC document focus — remove stale/dynamic/duplicative content |
+| 3.33 | 2026-06-12 | GIS info extracted to standalone GIS.md (428 lines). SPEC retains only GIS overview (§2.9) and cross-references. Inline GIS tier evolution notes stripped from config descriptions. §4.7 hyperparameter reconfiguration detail moved to GIS.md §6. | GIS strategy documentation — standalone reference, cleaner SPEC |
 
 ---
 
@@ -1383,58 +1427,15 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 
 ### GIS (Global Iteration Strategy) Hyperparameter Reconfiguration
 
-**Root Cause**: All 6 NNs (CNN/LSTM/RNN/VAE/Transformer/Dense) produced MaxPred << 0.5 — search space too conservative. Gradient boosting trees stagnated due to small search spaces and missing key parameters.
+**Root Cause**: All 6 NNs (CNN/LSTM/RNN/VAE/Transformer/Dense) produced MaxPred << 0.5 — search space too conservative. Gradient boosting trees stagnated due to small search spaces and missing key parameters. All 9 search spaces were expanded, HPO control parameters raised, and Phase 5 crash fixes A–D applied.
 
-#### All 9 Search Spaces Expanded (chunk_01_config.py lines 190-276)
-| Architecture | Key Changes | Rationale |
-|--------------|------------|-----------|
-| CatBoost | iterations [300-500], depth [4-6] | Maximize phase — closer to 0.60 target |
-| LightGBM | +colsample_bytree, +min_split_gain, num_leaves up to 127 | Wider regularization range |
-| XGBoost | +colsample_bytree, +gamma, depth [3-7], lower spw | Combat severe train-val gap (AUC 0.88→0.00) |
-| Dense | units [64-1024], layers [2-4], +batch_size, +activation | Deeper networks, larger capacity |
-| CNN | filters [64-512], kernel 11, +pooling, +layers | Much larger capacity, more training |
-| LSTM | lstm_units [32-256], +bidirectional, +layers | Major expansion from [8-32] |
-| RNN | units [64-256], epochs [20-50], +layers | Larger RNNs |
-| VAE | latent_dim [32-256], epochs, +encoder_layers, +decoder_layers | Architectural depth |
-| Transformer | dim [64-256], heads [2-8], +ff_dim, +layers | Restore 128 dim with lower LR |
-
-#### HPO Control Parameters Updated (chunk_01_config.py)
-| Parameter | Was | Now |
-|-----------|-----|-----|
-| `HPO_STAGNATION_THRESHOLD` | 30 | **50** |
-| `HYPERPARAM_OPTIMIZATION_TRIALS` | 30 | **5** |
-
-#### max_trials Raised (chunk_21_hyperparam_optimizer.py)
-| Parameter | Was | Now |
-|-----------|-----|-----|
-| Safety cap | 500 | **1000** |
-
-#### Phase 5 Fixes A-D (chunk_19 + chunk_22)
-- **Fix A**: initialized `sorted_results = []` before `if architecture_results:` block (chunk_19 line 328)
-- **Fix B**: added pruned_feature_indices lookup for 24→19 pruning in Phase 5 (chunk_19 line 131)
-- **Fix C**: patched model loader to detect sklearn archs and load via joblib + SklearnModelWrapper (chunk_22 lines 113-122)
-- **Fix D**: wrapped prediction output section in `if df_with_all_cols is not None` guard (chunk_19 line 272)
-
-### Files Modified
-| File | Changes |
-|------|---------|
-| chunk_01_config.py | All 9 search spaces expanded, HPO thresholds raised |
-| chunk_21_hyperparam_optimizer.py | max_trials 500→1000 |
-| chunk_19_phase_5_optimization.py | Fixes A, B, D applied |
-| chunk_22_model_loader.py | Fix C applied (SklearnModelWrapper) |
-| SPEC.md | Sections 1.1, 2.8, 2.12, 3.1, 4, Implementation Summary updated |
-
-### Validation
-- All syntax verified with `python3 -m py_compile`
-- Model loading verified: all 9 architectures load successfully
-- sklearn models wrapped in SklearnModelWrapper with `_is_fitted = True`
-- Phase 5 re-run pending — fixes not yet validated end-to-end
+→ Full detail in GIS.md §6 (GIS Hyperparameter Reconfiguration Detail)
 
 ---
 
 *Document generated: 2026-04-15*  
 *Last updated: 2026-06-12*  
-*Version: 3.32*
+*Version: 3.33*
 
 
 ## PROJECT_LEXICON
