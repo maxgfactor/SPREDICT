@@ -297,7 +297,7 @@ The pipeline calculates and reports the following metrics:
 |----|-----------|--------------|
 | AC-9 | Pipeline completes without crash | Run full pipeline |
 | AC-10 | All 9 architectures train successfully | Check logs |
-| AC-11 | Ensemble precision ≥ 0.60 OR fallback used | Check metrics |
+| AC-11 | Inference precision ≥ 0.60 OR fallback used | Check metrics |
 | AC-12 | Minimum 50 positive predictions | Check threshold validation |
 | AC-13 | Models saved to ./saved_models/ | Verify directory |
 | AC-14 | Signal predictions CSV generated | Check output file |
@@ -563,13 +563,13 @@ All 24 inference metrics are reported in Phase 5 with INFERENCE_ prefix:
 | | Predict | `val_pred = model.predict(X_val)` | Raw probabilities |
 | | Binary | `val_binary = (val_pred >= 0.5).astype(int)` | Binary predictions |
 | | Metrics | `calculate_precision(y_val_optimal, val_binary)` | **Val metrics** |
-| | Usage | Selected for ensemble if P >= 0.53 | Architecture selection |
+| | Usage | Selected for ensemble if val precision >= 0.53 | Architecture selection |
 | **Inference** (Phase 5) | Input | `X_inference, y_raw` | N_inference samples (varies by run) |
 | | Label Transform | `y_binary = (y_raw >= 2.0).astype(int)` | Same threshold as training |
 | | Predict | `inf_pred = model.predict(X_inference)` | Raw probabilities |
 | | Binary | `inf_binary = (inf_pred >= 0.5).astype(int)` | Binary predictions |
 | | Metrics | `calculate_metrics(y_binary, inf_binary, inf_pred)` | **Inference metrics** |
-| | Usage | Final signal predictions output | Ranked by precision |
+| | Usage | Final signal predictions output | Ranked by inference precision |
 
 ### Key Points
 
@@ -652,7 +652,7 @@ The following features were removed during preprocessing:
 | Phase 4b | Hyperparameter optimization (Optuna) | best_hyperparams per architecture | → See Section 1.1.3, Section 1.3 |
 | Phase 4c | Ensemble creation | Combined predictions | → See Section 1.1.4, Section 1.3 |
 | Phase 4d | Model persistence | ./saved_models/ | → See Section 1.2 |
-| Phase Xb | Temporal precision gap analysis | Recent vs older precision gap | → Precision analysis |
+| Phase Xb | Temporal validation precision gap analysis | Recent vs older validation precision gap | → Precision analysis |
 | Phase 5 | Final inference (raw data, no temporal weighting) | Predictions, metrics, rankings | → See Section 1.2, Section 1.3 |
 
 **Note**: Train/Val use temporal weighting; Inference uses RAW data from context (no weighting)
@@ -689,16 +689,16 @@ Section 5 FINAL (uses Section 4's elected model+threshold)
 #### Section 2 — Hyperparameter Optimization (HPO)
 - Run Optuna Bayesian optimization (5–30 trials) using the `optimal_threshold` from Section 1 with the same 0.5 prediction binary split
 - **Output**: `hpo_best_model` + `hpo_val_precision` + `best_hyperparams`
-- HPO trials that fail MaxPred, TP, or min-precision gates are rejected silently; the surviving best trial is the "HPO best"
+- HPO trials that fail MaxPred, TP, or minimum validation precision gates are rejected silently; the surviving best trial is the "HPO best"
 
 #### Section 3 — HPO Election Gate
-Compare HPO precision vs pre-HPO precision at prediction binary split 0.5:
+Compare HPO validation precision vs pre-HPO validation precision at prediction binary split 0.5:
 
 - **Branch 1** (HPO did NOT improve — 7 archs: CatBoost through Transformer): The pre-HPO model (`threshold_opt_model`) is the best. Model and threshold are identical to Section 1. **No re-evaluation** — copy all metrics from Section 1's `section2_TP/FP/TN/FN/AUC/F1/R/pred` directly. Tag: `[PRE-HYPERPARAMETER_OPTIMIZATION]`
 
-- **Branch 2** (HPO improved — 2 archs: LSTM, VAE): The HPO model (`hpo_best_model`) is better. Re-evaluate on validation data and compute precision from own TP/FP. Tag: `[HYPERPARAMETER_OPTIMIZATION]`
+- **Branch 2** (HPO improved — 2 archs: LSTM, VAE): The HPO model (`hpo_best_model`) is better. Re-evaluate on validation data and compute validation precision from own TP/FP. Tag: `[HYPERPARAMETER_OPTIMIZATION]`
 
-- **Branch 3** (all HPO trials rejected): No HPO model exists. Use Section 1 baseline metrics; compute precision from `baseline_cm` TP/FP. Tag: `[PRE-HYPERPARAMETER_OPTIMIZATION]`
+- **Branch 3** (all HPO trials rejected): No HPO model exists. Use Section 1 baseline metrics; compute validation precision from `baseline_cm` TP/FP. Tag: `[PRE-HYPERPARAMETER_OPTIMIZATION]`
 
 - **Safety net**: `section3_precision = section3_TP / (section3_TP + section3_FP)` recalculated after all branches to guarantee self-consistency.
 
@@ -717,7 +717,7 @@ Compare HPO precision vs pre-HPO precision at prediction binary split 0.5:
 #### Ensemble Assembly (after Section 5)
 - All architectures with `VAL_PRECISION ≥ ENSEMBLE_MIN_PRECISION` (0.53) are eligible for the ensemble
 - Uniform averaging (each eligible architecture gets equal weight)
-- Fallback: if no architecture meets 0.53, use the highest-precision arch alone
+- Fallback: if no architecture meets 0.53, use the highest-validation-precision arch alone
 
 > See GIS.md §2 (Stage 3: Filter) for the tier rationale behind these ensemble values.
 
@@ -770,14 +770,14 @@ Ten bug patterns were identified and fixed during development (Patterns 1–10, 
 | FR-08 | Create precision-weighted ensemble | Required | chunk_10_models_ensemble.py | → See Section 1.1.4, Section 1.3 |
 | FR-09 | Save trained models to `./saved_models/` | Required | chunk_18_phase_4_ensemble.py | → See Section 1.2 |
 | FR-10 | Generate predictions on new data | Required | legacy files/predict.py, chunk_22_model_loader.py | → See Section 1.1.5, Section 1.3 |
-| FR-11 | Evaluate model against precision threshold | Required | chunk_12_evaluation_evaluator.py | → See Section 1.3 |
+| FR-11 | Evaluate model against validation precision threshold | Required | chunk_12_evaluation_evaluator.py | → See Section 1.3 |
 | FR-12 | Apply log transform (Option C: sign * log1p(|y|)) to handle extreme target values | Improvement (Step 1) | chunk_05_data_manager.py, chunk_04_utils_metrics.py | → See Section 2.7 |
 
 ### Edge Cases
 
 | Scenario | Handling |
 |----------|----------|
-| No architectures meet precision threshold | Use fallback (RNN) |
+| No architectures meet validation precision threshold | Use fallback (RNN) |
 | All predictions negative | Log warning, output empty |
 | HPO worse than baseline | Keep pre-HPO model |
 | Precision = 0 | REJECT threshold, try next |
@@ -938,7 +938,7 @@ The tables below document which HPO parameters have the strongest effect on each
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| ENSEMBLE_MIN_PRECISION | 0.53 | Minimum precision for ensemble (see GIS.md §2 Stage 3) |
+| ENSEMBLE_MIN_PRECISION | 0.53 | Minimum validation precision for ensemble (see GIS.md §2 Stage 3) |
 | ENSEMBLE_WEIGHTING | uniform | Uniform averaging (see GIS.md §2 Stage 3) |
 | FALLBACK_ARCHITECTURE | VAE | Highest val precision fallback (see GIS.md §2 Stage 3) |
 
@@ -1144,7 +1144,7 @@ Each architecture's current HPO search space. All 6 NNs required major expansion
 
 ### What It Is
 
-GIS is an iterative optimization framework that tunes pipeline configuration parameters across successive runs, driving each architecture toward P ≥ 0.60 inference precision.
+GIS is an iterative optimization framework that tunes pipeline configuration parameters across successive runs, driving each architecture toward both validation and inference precision ≥ 0.60.
 
 ### The Cycle
 
@@ -1160,14 +1160,14 @@ Run pipeline → Evaluate pipeline_cpu.log → Analyze gaps → Adjust config �
 | 2 | Dense → CNN | Global vs local pattern effectiveness |
 | 3 | RNN → LSTM | Temporal signal strength |
 | 4 | VAE → Transformer | Latent dimension, attention patterns |
-| 5 | Ensemble | Combined precision |
+| 5 | Ensemble | Combined both validation and inference precision |
 
 ### Decision Rules
 
 | Condition | Action |
 |-----------|--------|
-| P ≥ 0.60 AND TP > 0 | Save config, proceed to next architecture |
-| P < 0.60 after 5 HPO trials | Document findings, proceed |
+| inference precision ≥ 0.60 AND TP > 0 | Save config, proceed to next architecture |
+| validation precision < 0.60 after 5 HPO trials | Document findings, proceed |
 | MaxPred < 0.3 | Architecture limitation — document, move on |
 
 ### Key Results
@@ -1408,7 +1408,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 | TP | 45,811 | 0 | -45,811 |
 | TN | 35,833 | 0 | -35,833 |
 
-**Root Cause**: scale_pos_weight=500 + max_depth=7 + n_estimators=500 → extreme overfitting. Phase 4 threshold search produces TP=0 on validation due to optimal_threshold=2.0 producing zero TPs (all confusion matrix = 0). TRAIN_PRECISION=0.2134 but VALIDATION_PRECISION=0.2527 only because Val predictions at threshold 0.5 yield 0 TP + 0 FP → precision undefined → zero_division=1.0 default, but confusion matrix shows all zeros. **Fix Applied**: Lower n_estimators [100-300], shallower depth [3-7], lower scale_pos_weight [200-500], higher regularization, add colsample_bytree, gamma. **Evidence**: pipeline_cpu.log lines 1140-1152.
+**Root Cause**: scale_pos_weight=500 + max_depth=7 + n_estimators=500 → extreme overfitting. Phase 4 threshold search produces TP=0 on validation due to optimal_threshold=2.0 producing zero TPs (all confusion matrix = 0). TRAIN_PRECISION=0.2134 but VALIDATION_PRECISION=0.2527 only because Val predictions at threshold 0.5 yield 0 TP + 0 FP → validation precision undefined → zero_division=1.0 default, but confusion matrix shows all zeros. **Fix Applied**: Lower n_estimators [100-300], shallower depth [3-7], lower scale_pos_weight [200-500], higher regularization, add colsample_bytree, gamma. **Evidence**: pipeline_cpu.log lines 1140-1152.
 
 ## 4.7 Phase 5 Crash — df_with_all_cols AttributeError (May 11, 2026)
 
