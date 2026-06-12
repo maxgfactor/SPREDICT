@@ -207,7 +207,6 @@ CONFIG = {
             'n_estimators': [100, 200, 300, 500],  # was [200, 500] — add smaller to reduce overfit
             'max_depth': [3, 5, 7],             # was [5, 7] — added shallower depth
             'learning_rate': [0.01, 0.03, 0.05, 0.1],  # lower start, finer grid
-            'scale_pos_weight': [200, 400, 500],  # lower min to reduce over-prediction
             'min_child_weight': [10, 50, 100, 200],  # was [50, 100, 200]
             'reg_alpha': [0.0, 0.1, 0.5, 1.0],  # wider L1
             'reg_lambda': [1.0, 5.0, 10.0],     # higher L2 for overfit control

@@ -1,6 +1,6 @@
 # Software Specification Requirements (SSR) - Stock Analysis Ensemble
 
-**Version**: 3.33  
+**Version**: 3.35  
 **Date**: 2026-06-12  
 **Status**: Living Document - Update After Each Run  
 
@@ -997,186 +997,19 @@ The tables below document which HPO parameters have the strongest effect on each
 
 ## 2.8 Hyperparameter Search Spaces
 
-Each architecture's current HPO search space. All 6 NNs required major expansion (MaxPred << 0.5 in initial runs); trees required broader regularization parameters.
-
-### CatBoost
-```python
-{
-    'iterations': [300, 400, 500],
-    'depth': [4, 5, 6],
-    'learning_rate': [0.03, 0.05, 0.08, 0.1],
-    'auto_class_weights': ['Balanced', 'SqrtBalanced'],
-    'l2_leaf_reg': [1, 3, 5, 7],
-}
-```
-
-### LightGBM
-```python
-{
-    'n_estimators': [300, 500, 800],
-    'num_leaves': [31, 63, 127],
-    'learning_rate': [0.03, 0.05, 0.08],
-    'min_child_samples': [50, 100, 200],
-    'reg_alpha': [0.01, 0.1, 0.5, 1.0],
-    'reg_lambda': [0.5, 1.0, 5.0, 10.0],
-    'subsample': [0.6, 0.7, 0.8, 0.9],
-    'colsample_bytree': [0.6, 0.8, 1.0],
-    'min_split_gain': [0.0, 0.01, 0.1],
-}
-```
-
-### XGBoost
-```python
-{
-    'n_estimators': [100, 200, 300, 500],
-    'max_depth': [3, 5, 7],
-    'learning_rate': [0.01, 0.03, 0.05, 0.1],
-    'scale_pos_weight': [200, 400, 500],
-    'min_child_weight': [10, 50, 100, 200],
-    'reg_alpha': [0.0, 0.1, 0.5, 1.0],
-    'reg_lambda': [1.0, 5.0, 10.0],
-    'subsample': [0.6, 0.7, 0.8],
-    'colsample_bytree': [0.5, 0.7, 1.0],
-    'gamma': [0, 0.1, 0.5],
-}
-```
-
-### Dense
-```python
-{
-    'units': [64, 128, 256, 512, 1024],
-    'layers': [2, 3, 4],
-    'dropout': [0.1, 0.2, 0.3, 0.4],
-    'learning_rate': [0.0001, 0.0003, 0.0005, 0.001],
-    'epochs': [15, 20, 30, 40],
-    'alpha': [1.0, 1.25, 1.5],
-    'gamma': [2.0, 2.5, 3.0, 4.0],
-    'batch_size': [32, 64, 128, 256],
-    'activation': ['relu', 'leaky_relu', 'selu'],
-}
-```
-
-### CNN
-```python
-{
-    'loss_function': ['binary_crossentropy', 'focal_loss'],
-    'filters': [64, 128, 256, 512],
-    'kernel_size': [3, 5, 7, 11],
-    'dropout': [0.0, 0.05, 0.1, 0.2],
-    'learning_rate': [0.0005, 0.001, 0.002, 0.005, 0.01],
-    'epochs': [30, 50, 80, 100],
-    'alpha': [0.75, 1.0],
-    'gamma': [2.0, 2.5, 3.0],
-    'layers': [1, 2, 3],
-    'pooling': ['max', 'avg', 'none'],
-}
-```
-
-### RNN
-```python
-{
-    'loss_function': ['binary_crossentropy', 'focal_loss'],
-    'units': [64, 128, 256],
-    'dropout': [0.0, 0.05, 0.1],
-    'learning_rate': [0.0005, 0.001, 0.002, 0.005],
-    'epochs': [20, 30, 50],
-    'alpha': [0.75, 1.0, 1.25],
-    'gamma': [2.0, 2.5, 3.0, 3.5],
-    'layers': [1, 2],
-}
-```
-
-### LSTM
-```python
-{
-    'lstm_units': [32, 64, 128, 256],
-    'dropout': [0.0, 0.05, 0.1, 0.2],
-    'learning_rate': [0.0005, 0.001, 0.002, 0.005],
-    'epochs': [20, 30, 50],
-    'alpha': [0.75, 1.0],
-    'gamma': [2.0, 2.5, 3.0],
-    'layers': [1, 2],
-    'bidirectional': [True, False],
-}
-```
-
-### VAE
-```python
-{
-    'loss_function': ['binary_crossentropy', 'focal_loss'],
-    'latent_dim': [32, 64, 128, 256],
-    'learning_rate': [0.0005, 0.001, 0.002, 0.005],
-    'dropout': [0.0, 0.02, 0.05, 0.1],
-    'epochs': [30, 50, 80],
-    'alpha': [0.75, 1.0, 1.25],
-    'gamma': [2.0, 2.5, 3.0],
-    'encoder_layers': [1, 2, 3],
-    'decoder_layers': [1, 2, 3],
-}
-```
-
-### Transformer
-```python
-{
-    'loss_function': ['binary_crossentropy'],
-    'dim': [64, 128, 256],
-    'heads': [2, 4, 8],
-    'dropout': [0.0, 0.05, 0.1, 0.2],
-    'learning_rate': [0.00005, 0.0001, 0.0002],
-    'epochs': [20, 30, 50],
-    'alpha': [0.75, 1.0, 1.25],
-    'gamma': [1.5, 2.0, 2.5, 3.0],
-    'ff_dim': [64, 128, 256],
-    'layers': [1, 2, 4],
-}
-```
-
-### HPO Control Parameters (updated May 13, 2026)
-| Parameter | Was | Now | Rationale |
-|-----------|-----|-----|-----------|
-| `HPO_STAGNATION_THRESHOLD` | 30 | **50** | More room for exploration in wider search spaces |
-| `HYPERPARAM_OPTIMIZATION_TRIALS` | 30 | **5** | Reduced from 30 to 5 for faster pipeline runs |
-| `max_trials` (safety cap in chunk_21) | 500 | **1000** | Allow deeper maximization phases |
+Each architecture's HPO search space is defined in `chunk_01_config.py`. Runtime-impact tags, footnotes, and the HPO control parameter table are maintained in **GIS.md §7**.
 
 ---
 
 ## 2.9 GIS (Global Iteration Strategy)
 
-### What It Is
-
 GIS is an iterative optimization framework that tunes pipeline configuration parameters across successive runs, driving each architecture toward both validation and inference precision ≥ 0.60.
-
-### The Cycle
 
 ```
 Run pipeline → Evaluate pipeline_cpu.log → Analyze gaps → Adjust config → Re-run
 ```
 
-### Iteration Plan (5 Groups)
-
-| Iteration | Architectures | Focus |
-|-----------|--------------|-------|
-| 1 | CatBoost → LightGBM → XGBoost | Feature importance, tree depth, scale_pos_weight |
-| 2 | Dense → CNN | Global vs local pattern effectiveness |
-| 3 | RNN → LSTM | Temporal signal strength |
-| 4 | VAE → Transformer | Latent dimension, attention patterns |
-| 5 | Ensemble | Combined both validation and inference precision |
-
-### Decision Rules
-
-| Condition | Action |
-|-----------|--------|
-| inference precision ≥ 0.60 AND TP > 0 | Save config, proceed to next architecture |
-| validation precision < 0.60 after 5 HPO trials | Document findings, proceed |
-| MaxPred < 0.3 | Architecture limitation — document, move on |
-
-### Key Results
-
-- **Iter 1 completed**: CatBoost reached 0.7204 inference P (>0.60 target)
-- **Iter 2 completed**: CNN reached 0.6537 validation P (decision gate: enter Optimize Phase)
-- 5 strategic stages applied (Explore → Diagnose → Filter → Refine → Stabilize)
-
-→ For full detail (tier reference, precision levers, run results, historical evolution): see [GIS.md](./GIS.md)
+→ For full detail (iteration log, precision lever dimensions, search spaces, execution plan): see [GIS.md](./GIS.md)
 
 ---
 
@@ -1214,6 +1047,8 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.28–3.31 | 2026-06-09–10 | GIS tier docs restructured, config alignment, auto-apply removal, log format standardization, dataset preview, feature stability/diagnostic overhaul, timing bug fix, config dead-key removal (4 keys) | Spec-code sync, cleanup |
 | 3.32 | 2026-06-12 | SPEC restructured: stale run results archived to shortmemory, version history consolidated (40→12 entries), HPO search-space evolution comments removed, cross-phase hygiene patterns summarized (details archived), PROJECT_LEXICON G2–G10 moved to shortmemory, empty template tables deleted | SPEC document focus — remove stale/dynamic/duplicative content |
 | 3.33 | 2026-06-12 | GIS info extracted to standalone GIS.md (428 lines). SPEC retains only GIS overview (§2.9) and cross-references. Inline GIS tier evolution notes stripped from config descriptions. §4.7 hyperparameter reconfiguration detail moved to GIS.md §6. | GIS strategy documentation — standalone reference, cleaner SPEC |
+| 3.34 | 2026-06-12 | §2.8 stale alpha/loss_function values synced across all 9 search spaces, runtime tags added to all params, footnotes added (FOCAL_LOSS_CONFIG override, XGBoost scale_pos_weight removal) | Spec-code alignment after GIS extraction |
+| 3.35 | 2026-06-12 | §2.8 search spaces + HPO table + footnotes moved to GIS.md §7; §2.9 GIS overview collapsed to brief summary with cross-reference | SPEC → informational; GIS → actionable tracking |
 
 ---
 
@@ -1435,7 +1270,7 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 
 *Document generated: 2026-04-15*  
 *Last updated: 2026-06-12*  
-*Version: 3.33*
+*Version: 3.35*
 
 
 ## PROJECT_LEXICON
