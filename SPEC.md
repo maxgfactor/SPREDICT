@@ -1,7 +1,7 @@
 # Software Specification Requirements (SSR) - Stock Analysis Ensemble
 
-**Version**: 3.35  
-**Date**: 2026-06-12  
+**Version**: 3.36  
+**Date**: 2026-06-15  
 **Status**: Living Document - Update After Each Run  
 
 ---
@@ -1049,6 +1049,7 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.33 | 2026-06-12 | GIS info extracted to standalone GIS.md (428 lines). SPEC retains only GIS overview (§2.9) and cross-references. Inline GIS tier evolution notes stripped from config descriptions. §4.7 hyperparameter reconfiguration detail moved to GIS.md §6. | GIS strategy documentation — standalone reference, cleaner SPEC |
 | 3.34 | 2026-06-12 | §2.8 stale alpha/loss_function values synced across all 9 search spaces, runtime tags added to all params, footnotes added (FOCAL_LOSS_CONFIG override, XGBoost scale_pos_weight removal) | Spec-code alignment after GIS extraction |
 | 3.35 | 2026-06-12 | §2.8 search spaces + HPO table + footnotes moved to GIS.md §7; §2.9 GIS overview collapsed to brief summary with cross-reference | SPEC → informational; GIS → actionable tracking |
+| 3.36 | 2026-06-15 | GIS Iter 18 (full 9-arch run after HPO bug fixes): 5/9 archs pass ensemble filter (≥0.53 val_p), best val_p=0.5473 (Transformer), 5/5 loaded archs hit inf P ≥ 0.60, ensemble P=0.6525/R=0.020. HPO dimension bugs 2–8 validated fixed. GIS.md Key Results updated, Iteration Log + Execution Plan revised. shortmemory.txt appended with iter18 results. | Full production run after Jun 14 bug fixes; entering Phase A zero-runtime lever sweep |
 
 ---
 
@@ -1269,8 +1270,8 @@ All 5 NNs: every threshold rejected with "only N positive VALIDATION predictions
 ---
 
 *Document generated: 2026-04-15*  
-*Last updated: 2026-06-12*  
-*Version: 3.35*
+*Last updated: 2026-06-15*  
+*Version: 3.36*
 
 
 ## PROJECT_LEXICON
