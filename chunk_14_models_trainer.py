@@ -447,7 +447,7 @@ if __name__ == "__main__":
         'latent_dim': 32,
         'units': 64,
         'dropout': 0.1,
-        'cnn_filters': 64,
+        'filters': 64,
         'lstm_units': 32,
         'heads': 4,
         'dim': 64,

@@ -232,7 +232,8 @@ class Phase4_NeuralEnsemble(BasePhase):
         # Define architectures to train (Discovery sequence - May 11, 2026)
         # Gradient Boosting first (CatBoost→LightGBM→XGBoost) for feature insights
         # Then Neural Networks (Dense→CNN→RNN→LSTM→VAE→Transformer) per discovery sequence
-        architectures = [
+        # ACTIVE_ARCHITECTURES: empty list = run all; set subset (e.g. ['Dense','CNN']) for fast validation
+        architectures = self.config.get('ACTIVE_ARCHITECTURES', []) or [
             'CatBoost', 'LightGBM', 'XGBoost', 'Dense', 'CNN', 'RNN', 'LSTM', 'VAE', 'Transformer',
         ]
         
@@ -1395,6 +1396,10 @@ class Phase4_NeuralEnsemble(BasePhase):
         # ============================================================================
         unique_dates = np.unique(dates)
         
+        # Kept features for first trained model (diagnostics use unpruned X otherwise)
+        first_opt_key = round(float(optimal_thresholds[0]), 1) if optimal_thresholds else None
+        first_kept_for_diag = list(threshold_kept_indices.get(first_opt_key, range(X.shape[1]))) if first_opt_key is not None else list(range(X.shape[1]))
+        
         # Item 1: Feature Stability Analysis
         if self.config['FEATURE_STABILITY_ANALYSIS']:
             self.logger.log("Running Feature Stability Analysis...", 'info')
@@ -1461,7 +1466,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 if trained_models and trained_models[0] is not None:
                     start_time = time.time()
-                    _ = trained_models[0].predict(X_val[sample_idx], verbose=0)
+                    _ = trained_models[0].predict(X_val[sample_idx][:, first_kept_for_diag], verbose=0)
                     elapsed = (time.time() - start_time) / sample_size * 1000
                     self.logger.log(f"   Inference latency: {elapsed:.3f} ms/sample ({sample_size} samples)", 'info')
                 else:
@@ -1507,7 +1512,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 if X_train_sw.shape[0] > 100 and X_val_sw.shape[0] > 100 and trained_models and trained_models[0] is not None:
                     sw_model = trained_models[0]
-                    sw_val_pred = sw_model.predict(X_val_sw, verbose=0).flatten()
+                    sw_val_pred = sw_model.predict(X_val_sw[:, first_kept_for_diag], verbose=0).flatten()
                     
                     pred_threshold = self.config['PREDICTION_THRESHOLD']
                     sw_val_binary = (sw_val_pred >= pred_threshold).astype(int)
@@ -1527,7 +1532,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                             seg_dates = val_dates[seg_range]
                             seg_mask = np.isin(dates, seg_dates)
                             if seg_mask.sum() > 0:
-                                seg_pred = sw_model.predict(X[seg_mask], verbose=0).flatten()
+                                seg_pred = sw_model.predict(X[seg_mask][:, first_kept_for_diag], verbose=0).flatten()
                                 seg_binary = (seg_pred >= pred_threshold).astype(int)
                                 # PRIORITY 4 FIX: Use binarized y_binary not continuous y_binary
                                 seg_y_binary = y_binary_binarized[seg_mask]
@@ -2022,7 +2027,7 @@ if __name__ == "__main__":
         'latent_dim': 32,
         'units': 64,
         'dropout': 0.1,
-        'cnn_filters': 64,
+        'filters': 64,
         'lstm_units': 32,
         'heads': 4,
         'dim': 64,

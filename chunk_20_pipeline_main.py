@@ -68,14 +68,11 @@ class PipelineOrchestrator:
                 num_cols = len(header_cols)
                 tid_col = header_cols.index('Ticker_id')
                 date_col = header_cols.index('date')
+                market_cap_col = header_cols.index('Market_Cap')
                 reorder_cols = [date_col] + [i for i in range(num_cols) if i not in (date_col, tid_col)] + [tid_col]
-                max_date = None
-                min_date = None
-                newest_first = None
-                newest_last = None
-                oldest_first = None
-                oldest_last = None
                 num_rows = 0
+                ticker_max_cap = {}
+                ticker_extremes = {}
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -84,34 +81,40 @@ class PipelineOrchestrator:
                     num_rows += 1
                     tid = int(parts[tid_col])
                     date = int(parts[date_col])
-                    if max_date is None or date > max_date:
-                        max_date = date
-                        newest_first = (date, tid, line)
-                        newest_last = (date, tid, line)
-                    elif date == max_date:
-                        if tid < newest_first[1]:
-                            newest_first = (date, tid, line)
-                        if tid > newest_last[1]:
-                            newest_last = (date, tid, line)
-                    if min_date is None or date < min_date:
-                        min_date = date
-                        oldest_first = (date, tid, line)
-                        oldest_last = (date, tid, line)
-                    elif date == min_date:
-                        if tid < oldest_first[1]:
-                            oldest_first = (date, tid, line)
-                        if tid > oldest_last[1]:
-                            oldest_last = (date, tid, line)
+                    cap = float(parts[market_cap_col])
+                    ticker_max_cap[tid] = max(ticker_max_cap.get(tid, cap), cap)
+                    if tid not in ticker_extremes:
+                        ticker_extremes[tid] = {'newest': [(date, line)], 'oldest': [(date, line)]}
+                    else:
+                        ext = ticker_extremes[tid]
+                        if len(ext['newest']) < 2:
+                            ext['newest'].append((date, line))
+                        elif date > ext['newest'][0][0]:
+                            ext['newest'][1] = ext['newest'][0]
+                            ext['newest'][0] = (date, line)
+                        elif date > ext['newest'][1][0]:
+                            ext['newest'][1] = (date, line)
+                        if len(ext['oldest']) < 2:
+                            ext['oldest'].append((date, line))
+                        elif date < ext['oldest'][0][0]:
+                            ext['oldest'][1] = ext['oldest'][0]
+                            ext['oldest'][0] = (date, line)
+                        elif date < ext['oldest'][1][0]:
+                            ext['oldest'][1] = (date, line)
             file_size_mb = os.path.getsize(data_path) / 1024 / 1024
             self.logger.log(f"   Dataset shape: {num_rows:,} rows x {num_cols} columns ({file_size_mb:.1f} MB)", 'info')
             def _reorder(line):
                 parts = line.split(',')
                 return ','.join(parts[i] for i in reorder_cols)
+            largest_ticker = max(ticker_max_cap, key=ticker_max_cap.get)
+            ext = ticker_extremes[largest_ticker]
+            oldest_sorted = sorted(ext['oldest'], key=lambda x: x[0])
+            newest_sorted = sorted(ext['newest'], key=lambda x: x[0], reverse=True)
             self.logger.log(_reorder(header_line), 'info')
-            self.logger.log(_reorder(newest_first[2]), 'info')
-            self.logger.log(_reorder(newest_last[2]), 'info')
-            self.logger.log(_reorder(oldest_first[2]), 'info')
-            self.logger.log(_reorder(oldest_last[2]), 'info')
+            self.logger.log(_reorder(newest_sorted[0][1]), 'info')
+            self.logger.log(_reorder(newest_sorted[1][1]), 'info')
+            self.logger.log(_reorder(oldest_sorted[1][1]), 'info')
+            self.logger.log(_reorder(oldest_sorted[0][1]), 'info')
         except Exception as e:
             self.logger.log(f"   Could not read dataset: {e}", 'warning')
         self.logger.log(f"   Sampling: size={self.config['SAMPLE_SIZE']}, enabled={self.config['USE_SAMPLING']}, forced={self.config['FORCE_SAMPLING']}", 'info')

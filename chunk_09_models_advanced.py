@@ -57,16 +57,12 @@ class TabNet(keras.Model):
 
 def build_transformer_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
-    Build Simplified Transformer/Attention model for tabular data.
+    Build Transformer/Attention model for tabular data.
     
-    Key changes from original:
-    - Single attention head (multi-head adds complexity without benefit for small feature sets)
-    - Single transformer layer
-    - Stronger classifier head
-    - Attention mechanism for feature importance
+    Config keys: heads, dim, ff_dim, layers, dropout, learning_rate
     
     Args:
-        config: Configuration with 'heads', 'dim', 'dropout'
+        config: Configuration dictionary
         input_dim: Input dimension
         loss: Loss function (default: binary_crossentropy)
         
@@ -74,30 +70,28 @@ def build_transformer_model(config: Dict, input_dim: int, loss: str = 'binary_cr
         Compiled Transformer model
     """
     try:
-        heads = config.get('heads', 2)  # Reduced from 4
+        heads = config.get('heads', 2)
         dim = config.get('dim', 64)
         dropout = config.get('dropout', 0.2)
+        num_layers = config.get('layers', 1)
+        ff_dim = config.get('ff_dim', dim * 2)
         
         inputs = tf.keras.Input(shape=(input_dim,))
         
-        # Project to embedding dimension
         embeddings = tf.keras.layers.Dense(dim)(inputs)
-        # Expand for attention layer
         x = tf.keras.layers.Reshape((1, dim))(embeddings)
         
-        # Single transformer block
-        # Multi-head attention
-        attn_output = tf.keras.layers.MultiHeadAttention(
-            num_heads=heads, key_dim=dim // heads, dropout=dropout
-        )(x, x)
-        x = tf.keras.layers.LayerNormalization()(x + attn_output)
-        
-        # Feed-forward
-        ff_output = tf.keras.layers.Dense(dim * 2, activation='relu')(x)
-        ff_output = tf.keras.layers.Dropout(dropout)(ff_output)
-        ff_output = tf.keras.layers.Dense(dim)(ff_output)
-        ff_output = tf.keras.layers.Dropout(dropout)(ff_output)
-        x = tf.keras.layers.LayerNormalization()(x + ff_output)
+        for _ in range(num_layers):
+            attn_output = tf.keras.layers.MultiHeadAttention(
+                num_heads=heads, key_dim=dim // heads, dropout=dropout
+            )(x, x)
+            x = tf.keras.layers.LayerNormalization()(x + attn_output)
+            
+            ff_output = tf.keras.layers.Dense(ff_dim, activation='relu')(x)
+            ff_output = tf.keras.layers.Dropout(dropout)(ff_output)
+            ff_output = tf.keras.layers.Dense(dim)(ff_output)
+            ff_output = tf.keras.layers.Dropout(dropout)(ff_output)
+            x = tf.keras.layers.LayerNormalization()(x + ff_output)
         
         # Global average pooling
         x = tf.keras.layers.GlobalAveragePooling1D()(x)
@@ -333,47 +327,6 @@ def build_gnn_gat_model(config: Dict, input_dim: int, loss: str = 'binary_crosse
     
     return model
 
-
-def build_gnn_gat_model(config: Dict, input_dim: int) -> tf.keras.Model:
-    """
-    Build Graph Attention Network style model
-    
-    Args:
-        config: Configuration dictionary
-        input_dim: Input dimension
-        
-    Returns:
-        Compiled GAT model
-    """
-    units = config.get('units', 64)
-    heads = config.get('heads', 4)
-    dropout = config.get('dropout', 0.1)
-    
-    inputs = tf.keras.Input(shape=(input_dim,))
-    
-    # Attention mechanism
-    # For tabular data, use self-attention across features
-    x = tf.keras.layers.Reshape((input_dim, 1))(inputs)
-    
-    # Multi-head attention
-    attn_outputs = []
-    for _ in range(heads):
-        attn = tf.keras.layers.Dense(input_dim, activation='softmax')(inputs)
-        attn_outputs.append(inputs * attn)
-    
-    x = tf.keras.layers.Concatenate()(attn_outputs) if heads > 1 else attn_outputs[0]
-    x = tf.keras.layers.Dense(units, activation='relu')(x)
-    x = tf.keras.layers.Dropout(dropout)(x)
-    
-    x = tf.keras.layers.Dense(units // 2, activation='relu')(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
-    
-    model = tf.keras.Model(inputs, outputs)
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    
-    return model
-
-
 def build_hybrid_cnn_lstm_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
     Build hybrid CNN-LSTM model
@@ -386,14 +339,14 @@ def build_hybrid_cnn_lstm_model(config: Dict, input_dim: int, loss: str = 'binar
     Returns:
         Compiled hybrid model
     """
-    cnn_filters = config.get('cnn_filters', 64)
+    filters = config.get('filters', 64)
     lstm_units = config.get('lstm_units', 32)
     dropout = config.get('dropout', 0.1)
     
     inputs = tf.keras.Input(shape=(input_dim, 1))
     
     # CNN layers
-    x = tf.keras.layers.Conv1D(cnn_filters, 3, activation='relu', padding='same')(inputs)
+    x = tf.keras.layers.Conv1D(filters, 3, activation='relu', padding='same')(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.MaxPooling1D(2)(x)
     
@@ -484,7 +437,7 @@ if __name__ == "__main__":
         'heads': 4,
         'dim': 64,
         'units': 64,
-        'cnn_filters': 64,
+        'filters': 64,
         'lstm_units': 32,
         'dropout': 0.1
     }

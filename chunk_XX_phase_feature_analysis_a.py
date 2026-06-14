@@ -18,25 +18,35 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         self.name = "Phase Xa: Raw Feature Importance Analysis"
     
     def execute(self, context: Dict) -> Dict:
+        # Check master toggle
+        if not self.config.get('FEATURE_ANALYSIS_ENABLED', True):
+            if self.logger:
+                self.logger.log(f"{self.name} - Skipped (FEATURE_ANALYSIS_ENABLED=False)", 'info')
+            return context
+
+        # Read method toggles from config
+        method_config = self.config.get('FEATURE_IMPORTANCE_METHODS', {})
+        active_methods = [m for m, enabled in method_config.items() if enabled]
+
         self.analyzer = feature_importance.FeatureImportanceAnalyzer(self.config, logger=self.logger)
         if self.logger:
-            self.logger.log(f"{self.name} - Starting", 'info')
-        
+            self.logger.log(f"{self.name} - Starting with methods: {active_methods}", 'info')
+
         X = context.get('X')
         y_raw = context.get('raw_target_values')
         if y_raw is None:
             y_raw = context.get('y')
         feature_names = context.get('feature_names')
-        
+
         if X is None or y_raw is None:
             if self.logger:
                 self.logger.log("error: X or y not found in context", 'error')
             return context
-        
+
         n_features = X.shape[1]
         n_samples = X.shape[0]
         sample_size = self.config['FEATURE_ANALYSIS_SAMPLE_SIZE']
-        
+
         if n_samples > sample_size:
             if self.logger:
                 self.logger.log(f"Subsampling {n_samples} -> {sample_size} for feature analysis", 'info')
@@ -47,22 +57,23 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
         else:
             X_sub = X
             y_sub = y_raw
-        
+
         if feature_names is None:
             feature_names = [f'feature_{i}' for i in range(X_sub.shape[1])]
-        
+
         if self.logger:
             self.logger.log(f"Analyzing {n_features} raw features on {X_sub.shape[0]} samples", 'info')
-        
+
         trained_dense = None
-        
+
         analysis_results = self.analyzer.run_full_analysis(
             X=X_sub,
             y_raw=y_sub,
             feature_names=feature_names,
             dates=None,
             temporal_weights=None,
-            trained_dense_model=trained_dense
+            trained_dense_model=trained_dense,
+            active_methods=active_methods
         )
         
         report_path = self.config['FEATURE_ANALYSIS_REPORT_PATH']

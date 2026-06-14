@@ -48,94 +48,131 @@ class FeatureImportanceAnalyzer:
         feature_names: List[str],
         dates: Optional[np.ndarray] = None,
         temporal_weights: Optional[np.ndarray] = None,
-        trained_dense_model: Any = None
+        trained_dense_model: Any = None,
+        active_methods: Optional[List[str]] = None
     ) -> Dict[str, Any]:
+        if active_methods is None:
+            active_methods = ['correlation', 'tree', 'permutation', 'neural', 'shap', 'ablation']
+
         start_time = time.time()
-        results_by_threshold = {}  # Dict indexed by threshold
+        results_by_threshold = {}
         n_features = X.shape[1]
-        
-        # Get thresholds from config (synchronized with Phase 4)
+
         first_thresh = self.config['FIRST_THRESHOLD']
         last_thresh = self.config['LAST_THRESHOLD']
         thresh_step = self.config['THRESHOLD_STEP']
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
-        
-        self._log(f"Starting 6-method feature importance analysis")
-        self._log(f"Features: {n_features}, Samples: {X.shape[0]}")
-        # Moved to pipeline init (chunk_20) for log ordering after HPO config
-        
+
+        self._log(f"Starting feature importance analysis")
+        self._log(f"Features: {n_features}, Samples: {X.shape[0]}, Active methods: {active_methods}")
+
+        if not active_methods:
+            self._log(f"  No active methods — keeping all features, skipping analysis", 'warning')
+            return {
+                'results': {},
+                'results_by_threshold': {},
+                'kept_indices': list(range(n_features)),
+                'dropped_indices': [],
+                'kept_names': feature_names,
+                'dropped_names': [],
+                'corr_matrix': np.corrcoef(X.T) if X.shape[1] > 1 else np.array([[1.0]]),
+                'timings': {},
+                'n_features_original': n_features,
+                'n_features_pruned': n_features,
+                'thresholds': thresholds.tolist(),
+            }
+
         for thresh in thresholds:
             y_binary = (y_raw >= thresh).astype(int)
             X_train, X_val, y_train_bin, y_val_bin = train_test_split(
                 X, y_binary, test_size=0.2, random_state=42, stratify=y_binary
             )
-            
-            results = {}  # Results for this threshold
-            
-            # Method 1: Statistical Correlation
-            t0 = time.time()
-            results['correlation'] = self._analyze_correlation(X, y_raw, feature_names)
-            results['correlation_timing'] = time.time() - t0
-            
-            # Method 2: Tree-Based Importance
-            t0 = time.time()
-            results['tree'] = self._analyze_tree(X, y_binary, feature_names)
-            results['tree_timing'] = time.time() - t0
-            
-            # Method 3: Permutation Importance
-            t0 = time.time()
-            results['permutation'], results['permutation_baseline_auc'] = self._analyze_permutation(
-                X_train, y_train_bin, X_val, y_val_bin, feature_names
-            )
-            results['permutation_timing'] = time.time() - t0
-            
-            # Method 4: Neural Weight Analysis
-            t0 = time.time()
-            results['neural'] = self._analyze_neural(X_train, y_train_bin, feature_names, trained_dense_model)
-            results['neural_timing'] = time.time() - t0
-            
-            # Method 5: SHAP Values
-            t0 = time.time()
-            results['shap'] = self._analyze_shap(X_train, y_train_bin, feature_names, trained_dense_model)
-            results['shap_timing'] = time.time() - t0
-            
-            # Method 6: Ablation Study
-            t0 = time.time()
-            results['ablation'] = self._analyze_ablation(X_train, y_train_bin, X_val, y_val_bin, feature_names)
-            results['ablation_timing'] = time.time() - t0
-            
-            # Compute consolidated ranking
-            consolidated = self._compute_consolidated_ranking(results, feature_names)
+
+            results = {}
+
+            if 'correlation' in active_methods:
+                t0 = time.time()
+                results['correlation'] = self._analyze_correlation(X, y_raw, feature_names)
+                results['correlation_timing'] = time.time() - t0
+            else:
+                results['correlation'] = None
+                results['correlation_timing'] = 0
+
+            if 'tree' in active_methods:
+                t0 = time.time()
+                results['tree'] = self._analyze_tree(X, y_binary, feature_names)
+                results['tree_timing'] = time.time() - t0
+            else:
+                results['tree'] = None
+                results['tree_timing'] = 0
+
+            if 'permutation' in active_methods:
+                t0 = time.time()
+                results['permutation'], results['permutation_baseline_auc'] = self._analyze_permutation(
+                    X_train, y_train_bin, X_val, y_val_bin, feature_names
+                )
+                results['permutation_timing'] = time.time() - t0
+            else:
+                results['permutation'] = None
+                results['permutation_timing'] = 0
+
+            if 'neural' in active_methods:
+                t0 = time.time()
+                results['neural'] = self._analyze_neural(X_train, y_train_bin, feature_names, trained_dense_model)
+                results['neural_timing'] = time.time() - t0
+            else:
+                results['neural'] = None
+                results['neural_timing'] = 0
+
+            if 'shap' in active_methods:
+                t0 = time.time()
+                results['shap'] = self._analyze_shap(X_train, y_train_bin, feature_names, trained_dense_model)
+                results['shap_timing'] = time.time() - t0
+            else:
+                results['shap'] = None
+                results['shap_timing'] = 0
+
+            if 'ablation' in active_methods:
+                t0 = time.time()
+                results['ablation'] = self._analyze_ablation(X_train, y_train_bin, X_val, y_val_bin, feature_names)
+                results['ablation_timing'] = time.time() - t0
+            else:
+                results['ablation'] = None
+                results['ablation_timing'] = 0
+
+            consolidated = self._compute_consolidated_ranking(results, feature_names, active_methods)
             results['consolidated'] = consolidated
-            
-            # Determine pruned features
+
             prune_pct = self.config['FEATURE_PRUNE_PERCENTILE']
             n_keep = max(1, int(n_features * (100 - prune_pct) / 100))
             kept_indices = consolidated.head(n_keep)['index'].tolist()
             dropped_indices = [i for i in range(n_features) if i not in kept_indices]
             results['dropped_indices'] = dropped_indices
             results['kept_indices'] = kept_indices
-            
-            # Per-method all-feature logs (excluding pruned)
+
             pos_rate = y_binary.mean()
-            self._log_all_features(1, "Statistical_Correlation", results['correlation'], 'spearman_abs', dropped_indices, results['correlation_timing'], thresh, pos_rate)
-            self._log_all_features(2, "Tree_Based_Importance", results['tree'], 'combined_importance', dropped_indices, results['tree_timing'], thresh, pos_rate)
-            self._log_all_features(3, "Permutation_Importance", results['permutation'], 'auc_drop', dropped_indices, results['permutation_timing'], thresh, pos_rate, extra=f" baseline_auc={results['permutation_baseline_auc']:.4f}")
-            self._log_all_features(4, "Neural_Weight_Analysis", results['neural'], 'mean_abs_weight', dropped_indices, results['neural_timing'], thresh, pos_rate)
-            self._log_all_features(5, "SHAP_Values", results['shap'], 'mean_abs_shap', dropped_indices, results['shap_timing'], thresh, pos_rate)
-            self._log_all_features(6, "Ablation_Study", results['ablation'], 'auc', dropped_indices, results['ablation_timing'], thresh, pos_rate)
-            
-            # Consolidated ranking of all kept features
+            log_checks = [
+                (1, "Statistical_Correlation", 'correlation', 'spearman_abs'),
+                (2, "Tree_Based_Importance", 'tree', 'combined_importance'),
+                (3, "Permutation_Importance", 'permutation', 'auc_drop'),
+                (4, "Neural_Weight_Analysis", 'neural', 'mean_abs_weight'),
+                (5, "SHAP_Values", 'shap', 'mean_abs_shap'),
+                (6, "Ablation_Study", 'ablation', 'auc'),
+            ]
+            for num, name, key, score_col in log_checks:
+                if key in active_methods:
+                    extra = f" baseline_auc={results['permutation_baseline_auc']:.4f}" if key == 'permutation' else ""
+                    self._log_all_features(num, name, results[key], score_col, dropped_indices, results[f'{key}_timing'], thresh, pos_rate, extra=extra)
+
             kept_df = consolidated[~consolidated['index'].isin(dropped_indices)]
             parts = [f"rank={int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in kept_df.iterrows()]
             self._log(f"  consolidated_ranking label_threshold={thresh:.1f} signal_rate={pos_rate:.6f} kept={len(kept_df)} kept_total={len(feature_names)} {' '.join(parts)}")
-            
+
             results_by_threshold[thresh] = results
             pruned_df = consolidated[consolidated['index'].isin(dropped_indices)]
             parts = [f"rank={int(r['consolidated_rank'])} {r['feature']}={r['mean_rank']:.2f}" for _, r in pruned_df.iterrows()]
             self._log(f"  consolidated_pruning label_threshold={thresh:.1f} signal_rate={pos_rate:.6f} pruned={len(dropped_indices)} pruned_total={n_features} {' '.join(parts)}")
-        
-        # Cross-threshold stability summary
+
         n_thresh = len(thresholds)
         drop_counts = {name: sum(1 for t, r in results_by_threshold.items()
                                  if i in r['dropped_indices'])
@@ -146,25 +183,22 @@ class FeatureImportanceAnalyzer:
         self._log(f"cross_threshold always_pruned={' ,'.join(always_pruned)}")
         self._log(f"cross_threshold never_pruned={' ,'.join(never_pruned)}")
         self._log(f"cross_threshold borderline={' ,'.join(f'{k}:{v}' for k,v in sorted(borderline.items()))}")
-        
-        # Use results from first threshold for return (unless specified otherwise)
-        # This maintains backward compatibility while storing all thresholds
+
         first_thresh = thresholds[0]
         results = results_by_threshold[first_thresh]
-        
-        # Compute correlation matrix (using full data)
+
         self._log(f"Computing feature correlation matrix")
         corr_matrix = np.corrcoef(X.T) if X.shape[1] > 1 else np.array([[1.0]])
-        
+
         total_time = time.time() - start_time
         self.timings['total'] = total_time
         for key in ['correlation', 'tree', 'permutation', 'neural', 'shap', 'ablation']:
             self.timings[key] = results.get(f'{key}_timing', 0)
-        
+
         self._log(f"total time: {total_time:.1f}s ({total_time/60:.1f} min)")
         self._log(f"features: {n_features} total -> {len(results['kept_indices'])} kept, {len(results['dropped_indices'])} pruned")
         self._log(f"dropped: {[feature_names[i] for i in results['dropped_indices']]}")
-        
+
         return {
             'results': results,
             'results_by_threshold': results_by_threshold,
@@ -220,13 +254,15 @@ class FeatureImportanceAnalyzer:
             results.append(row)
         
         df = pd.DataFrame(results)
+        last_t = self.config['CORRELATION_THRESHOLDS'][-1]
+        auc_col = f'auc_t{last_t}_abs'
         df['spearman_abs'] = df['spearman_r'].abs()
         df['pearson_abs'] = df['pearson_r'].abs()
-        df['auc_t2_abs'] = (df['auc_t2.0'] - 0.5).abs()
+        df[auc_col] = (df[f'auc_t{last_t}'] - 0.5).abs()
         df['rank'] = (
             df['spearman_abs'].rank(ascending=False) +
             df['pearson_abs'].rank(ascending=False) +
-            df['auc_t2_abs'].rank(ascending=False)
+            df[auc_col].rank(ascending=False)
         )
         return df.sort_values('rank')
     
@@ -447,7 +483,7 @@ class FeatureImportanceAnalyzer:
         df['rank'] = df['auc'].rank(ascending=False)
         return df.sort_values('rank')
     
-    def _build_quick_dense(self, input_dim: int) -> Any:
+    def _build_quick_dense(self, input_dim: int, arch_key: str = 'Dense') -> Any:
         import tensorflow as tf
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=(input_dim,)),
@@ -456,34 +492,38 @@ class FeatureImportanceAnalyzer:
             tf.keras.layers.Dense(32, activation='relu'),
             tf.keras.layers.Dense(1, activation='sigmoid'),
         ])
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['AUC'])
+        opt = tf.keras.optimizers.Adam(learning_rate=self.config.get('learning_rate', 0.001))
+        arch_config = self.config.get('FOCAL_LOSS_CONFIG', {}).get(arch_key, {})
+        if arch_config.get('enabled', False):
+            from chunk_11_models_sklearn import FocalLoss
+            clf_loss = FocalLoss(
+                alpha=arch_config.get('alpha', 0.75),
+                gamma=arch_config.get('gamma', 2.0)
+            )
+            model.compile(optimizer=opt, loss=clf_loss, metrics=['AUC'])
+        else:
+            model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['AUC'])
         return model
     
     def _compute_consolidated_ranking(
         self,
         results: Dict,
-        feature_names: List[str]
+        feature_names: List[str],
+        active_methods: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        methods = ['correlation', 'tree', 'permutation', 'neural', 'shap', 'ablation']
-        rank_cols = {
-            'correlation': 'rank',
-            'tree': 'rank',
-            'permutation': 'rank',
-            'neural': 'rank',
-            'shap': 'rank',
-            'ablation': 'rank',
-        }
+        if active_methods is None:
+            active_methods = ['correlation', 'tree', 'permutation', 'neural', 'shap', 'ablation']
         
         all_ranks = pd.DataFrame({'feature': feature_names, 'index': range(len(feature_names))})
         
-        for method in methods:
+        for method in active_methods:
             df = results.get(method)
             if df is not None and 'rank' in df.columns:
                 all_ranks[method] = all_ranks['index'].map(
                     dict(zip(df['index'], df['rank']))
                 )
         
-        rank_cols_present = [m for m in methods if m in all_ranks.columns]
+        rank_cols_present = [m for m in active_methods if m in all_ranks.columns]
         all_ranks['mean_rank'] = all_ranks[rank_cols_present].mean(axis=1)
         all_ranks['consolidated_rank'] = all_ranks['mean_rank'].rank()
         

@@ -54,7 +54,7 @@ class VAEClassifier(tf.keras.Model):
     - Encoder (N layers, configurable via encoder_layers): 256 → 128 → 64
     - Latent space: z_mean, z_log_var → sampling → z
     - Classifier (from sampled z): 64 → 32 → 1 (sigmoid)
-    - Decoder (3 fixed layers): 64 → 128 → 256 → input_dim (linear)
+    - Decoder (N layers, configurable via decoder_layers): 64 → 128 → 256 → input_dim (linear)
     - Total loss: classifier_loss + 0.1 * MSE_reconstruction + kl_weight * KL
     """
     
@@ -90,16 +90,17 @@ class VAEClassifier(tf.keras.Model):
         self.clf_dropout2 = tf.keras.layers.Dropout(dropout_rate)
         self.clf_output = tf.keras.layers.Dense(1, activation='sigmoid', name='signal_output')
         
-        # Decoder (3 fixed layers: 64 → 128 → 256 → input_dim)
-        self.dec_dense1 = tf.keras.layers.Dense(64, activation='relu', kernel_initializer='he_normal')
-        self.dec_bn1 = tf.keras.layers.BatchNormalization()
-        self.dec_dropout1 = tf.keras.layers.Dropout(dropout_rate)
-        self.dec_dense2 = tf.keras.layers.Dense(128, activation='relu', kernel_initializer='he_normal')
-        self.dec_bn2 = tf.keras.layers.BatchNormalization()
-        self.dec_dropout2 = tf.keras.layers.Dropout(dropout_rate)
-        self.dec_dense3 = tf.keras.layers.Dense(256, activation='relu', kernel_initializer='he_normal')
-        self.dec_bn3 = tf.keras.layers.BatchNormalization()
-        self.dec_dropout3 = tf.keras.layers.Dropout(dropout_rate)
+        # Decoder - configurable depth via decoder_layers HPO param
+        self.num_decoder_layers = config.get('decoder_layers', 3)
+        num_decoder_layers = self.num_decoder_layers
+        decoder_widths = [64, 128, 256]
+        self.decoder_blocks = []
+        for i in range(min(num_decoder_layers, len(decoder_widths))):
+            self.decoder_blocks.append([
+                tf.keras.layers.Dense(decoder_widths[i], activation='relu', kernel_initializer='he_normal'),
+                tf.keras.layers.BatchNormalization(),
+                tf.keras.layers.Dropout(dropout_rate),
+            ])
         self.dec_output = tf.keras.layers.Dense(self.input_dim, activation='linear', name='reconstruction')
     
     def call(self, inputs):
@@ -125,15 +126,11 @@ class VAEClassifier(tf.keras.Model):
         classification = self.clf_output(c)
         
         # Decoder (reconstruction)
-        d = self.dec_dense1(z)
-        d = self.dec_bn1(d)
-        d = self.dec_dropout1(d)
-        d = self.dec_dense2(d)
-        d = self.dec_bn2(d)
-        d = self.dec_dropout2(d)
-        d = self.dec_dense3(d)
-        d = self.dec_bn3(d)
-        d = self.dec_dropout3(d)
+        d = z
+        for block in self.decoder_blocks:
+            d = block[0](d)
+            d = block[1](d)
+            d = block[2](d)
         reconstruction = self.dec_output(d)
         
         # Reconstruction loss (internal — not a model output)
@@ -150,6 +147,7 @@ class VAEClassifier(tf.keras.Model):
             'latent_dim': self.latent_dim,
             'dropout': self.dropout_rate,
             'encoder_layers': self.num_encoder_layers,
+            'decoder_layers': self.num_decoder_layers,
         })
         return config
 
@@ -160,6 +158,7 @@ class VAEClassifier(tf.keras.Model):
                 'latent_dim': config.get('latent_dim', 64),
                 'dropout': config.get('dropout', 0.1),
                 'encoder_layers': config.get('encoder_layers', 2),
+                'decoder_layers': config.get('decoder_layers', 3),
             },
             input_dim=config['input_dim'],
             loss_fn=config['loss_fn'],
@@ -174,7 +173,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     - Encoder (N layers, configurable via encoder_layers): 256 → 128 → 64
     - Latent space: z_mean, z_log_var → sampling → z
     - Classifier (from sampled z): 64 → 32 → 1 (sigmoid)
-    - Decoder (3 fixed layers): 64 → 128 → 256 → input_dim (linear)
+    - Decoder (N layers, configurable via decoder_layers): 64 → 128 → 256 → input_dim (linear)
     - Total loss: classifier_loss + 0.1 * MSE_reconstruction + kl_weight * KL
     
     Args:
@@ -231,42 +230,39 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
 
 def build_cnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
-    Build CNN model for 1D feature data with improved architecture.
+    Build CNN model for 1D feature data.
     
-    Key changes from original:
-    - No global pooling (loses local info)
-    - Larger kernels for wider receptive field
-    - GlobalAveragePooling instead of Flatten
-    - Skip connections for better gradient flow
+    Config keys: filters, kernel_size, layers, pooling, dropout, learning_rate
     
     Args:
-        config: Configuration with 'cnn_filters', 'dropout', 'kernel_sizes'
+        config: Configuration dictionary
         input_dim: Input dimension (number of features)
         loss: Loss function (default: binary_crossentropy)
         
     Returns:
         Compiled CNN model
     """
-    filters = config.get('cnn_filters', 64)
-    dropout = config.get('dropout', 0.1)  # Reduced dropout
-    kernel_size = config.get('kernel_size', 5)  # Larger kernel
+    filters = config.get('filters', 64)
+    dropout = config.get('dropout', 0.1)
+    kernel_size = config.get('kernel_size', 5)
+    num_layers = config.get('layers', 3)
+    pooling = config.get('pooling', 'global_avg')
     
-    inputs = tf.keras.Input(shape=(input_dim, 1))  # Add channel dimension
+    inputs = tf.keras.Input(shape=(input_dim, 1))
     
-    # CNN layers with larger kernel
-    x = tf.keras.layers.Conv1D(filters, kernel_size, activation='relu', padding='same')(inputs)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Dropout(dropout)(x)
+    x = inputs
+    for i in range(num_layers):
+        x = tf.keras.layers.Conv1D(filters * (2 ** i), kernel_size, activation='relu', padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        if i < num_layers - 1:
+            x = tf.keras.layers.Dropout(dropout)(x)
     
-    x = tf.keras.layers.Conv1D(filters * 2, kernel_size, activation='relu', padding='same')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Dropout(dropout)(x)
-    
-    x = tf.keras.layers.Conv1D(filters * 4, kernel_size, activation='relu', padding='same')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    
-    # Global pooling instead of flatten (preserves local patterns)
-    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    if pooling == 'global_max':
+        x = tf.keras.layers.GlobalMaxPooling1D()(x)
+    elif pooling == 'flatten':
+        x = tf.keras.layers.Flatten()(x)
+    else:
+        x = tf.keras.layers.GlobalAveragePooling1D()(x)
     
     # Dense classifier
     x = tf.keras.layers.Dense(128, activation='relu')(x)
@@ -324,7 +320,7 @@ def build_cnn_feature_extractor(config: Dict, input_dim: int, loss: str = 'binar
         Compiled CNN-Feature model
     """
     try:
-        filters = config.get('cnn_filters', 64)
+        filters = config.get('filters', 64)
         dropout = config.get('dropout', 0.2)
         kernel_size = config.get('kernel_size', 5)
         
@@ -394,29 +390,34 @@ def build_cnn_feature_extractor(config: Dict, input_dim: int, loss: str = 'binar
 
 def build_rnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
-    Build RNN/LSTM model
+    Build RNN model (bidirectional LSTM).
+    
+    Config keys: units, layers, dropout, learning_rate
     
     Args:
-        config: Configuration with 'lstm_units', 'dropout', 'learning_rate'
+        config: Configuration dictionary
         input_dim: Input dimension
         loss: Loss function (default: binary_crossentropy)
         
     Returns:
         Compiled RNN model
     """
-    lstm_units = config.get('lstm_units', 32)
+    units = config.get('units', 64)
+    num_layers = config.get('layers', 2)
     dropout = config.get('dropout', 0.1)
     learning_rate = config.get('learning_rate', 0.001)
     
-    inputs = tf.keras.Input(shape=(input_dim, 1))  # Add time step dimension
+    inputs = tf.keras.Input(shape=(input_dim, 1))
     
-    # Bidirectional LSTM layers (captures patterns in both directions)
-    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(lstm_units, return_sequences=True))(inputs)
-    x = tf.keras.layers.Dropout(dropout)(x)
-    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(lstm_units // 2))(x)
-    x = tf.keras.layers.Dropout(dropout)(x)
+    x = inputs
+    for i in range(num_layers):
+        return_seq = i < num_layers - 1
+        lstm_units = max(units // (2 ** i), 8)
+        x = tf.keras.layers.Bidirectional(
+            tf.keras.layers.LSTM(lstm_units, return_sequences=return_seq)
+        )(x)
+        x = tf.keras.layers.Dropout(dropout)(x)
     
-    # Dense layers
     x = tf.keras.layers.Dense(32, activation='relu')(x)
     outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
     
@@ -439,10 +440,12 @@ def build_rnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
 
 def build_lstm_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
-    Build LSTM model with dedicated architecture (separate from RNN)
+    Build LSTM model with dedicated architecture (separate from RNN).
+    
+    Config keys: lstm_units, layers, bidirectional, dropout, learning_rate
     
     Args:
-        config: Configuration dictionary with 'lstm_units', 'dropout', 'learning_rate'
+        config: Configuration dictionary
         input_dim: Input dimension (number of features)
         loss: Loss function (default: binary_crossentropy)
         
@@ -450,18 +453,23 @@ def build_lstm_model(config: Dict, input_dim: int, loss: str = 'binary_crossentr
         Compiled LSTM model
     """
     lstm_units = config.get('lstm_units', 64)
-    dropout = config.get('dropout', 0.1)  # Reduced dropout
-    learning_rate = config.get('learning_rate', 0.0001)  # Lower learning rate for stability
+    num_layers = config.get('layers', 2)
+    bidirectional = config.get('bidirectional', False)
+    dropout = config.get('dropout', 0.1)
+    learning_rate = config.get('learning_rate', 0.0001)
     
-    inputs = tf.keras.Input(shape=(input_dim, 1))  # 3D input for sequence models
+    inputs = tf.keras.Input(shape=(input_dim, 1))
     
-    # LSTM layers - standard (not bidirectional, separate from RNN which uses Bidirectional)
-    x = tf.keras.layers.LSTM(lstm_units, return_sequences=True)(inputs)
-    x = tf.keras.layers.Dropout(dropout)(x)
-    x = tf.keras.layers.LSTM(lstm_units // 2)(x)
-    x = tf.keras.layers.Dropout(dropout)(x)
+    x = inputs
+    for i in range(num_layers):
+        return_seq = i < num_layers - 1
+        units = max(lstm_units // (2 ** i), 8)
+        lstm_layer = tf.keras.layers.LSTM(units, return_sequences=return_seq)
+        if bidirectional:
+            lstm_layer = tf.keras.layers.Bidirectional(lstm_layer)
+        x = lstm_layer(x)
+        x = tf.keras.layers.Dropout(dropout)(x)
     
-    # Dense layers
     x = tf.keras.layers.Dense(32, activation='relu')(x)
     outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
     
@@ -484,42 +492,47 @@ def build_lstm_model(config: Dict, input_dim: int, loss: str = 'binary_crossentr
 
 def build_dense_model(config: Dict, input_dim: int, loss: str = 'binary_crossentropy') -> tf.keras.Model:
     """
-    Build simple dense neural network (fallback model)
-    
+    Build simple dense neural network
+
+    Config keys: units, layers, dropout, activation, learning_rate
+
     Args:
         config: Configuration dictionary
         input_dim: Input dimension
         loss: Loss function (default: binary_crossentropy)
-        
+
     Returns:
         Compiled dense model
     """
-    hidden_units = config.get('dense_hidden_units', [64, 32])
+    hidden_units = config.get('units', 64)
+    num_layers = config.get('layers', 2)
+    activation = config.get('activation', 'relu')
+    dropout_rate = config.get('dropout', 0.2)
+
     inputs = tf.keras.Input(shape=(input_dim,))
     x = inputs
-    
-    for units in hidden_units:
-        x = tf.keras.layers.Dense(units, activation='relu')(x)
+
+    for _ in range(num_layers):
+        x = tf.keras.layers.Dense(hidden_units, activation=activation)(x)
         x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.Dropout(0.2)(x)
-    
+        x = tf.keras.layers.Dropout(dropout_rate)(x)
+
     outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
-    
+
     model = tf.keras.Model(inputs, outputs)
-    
+    opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', 0.001))
+
     arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('Dense', {})
     if arch_config.get('enabled', False):
         try:
             from chunk_11_models_sklearn import FocalLoss
             clf_loss = FocalLoss(alpha=arch_config.get('alpha', 0.5), gamma=arch_config.get('gamma', 1.0))
-            opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', 0.001))
             model.compile(optimizer=opt, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
         except Exception:
-            opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', 0.001))
             model.compile(optimizer=opt, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
     else:
-        model.compile(optimizer='adam', loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
-    
+        model.compile(optimizer=opt, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
+
     return model
 
 
@@ -567,7 +580,7 @@ if __name__ == "__main__":
     
     config = {
         'latent_dim': 32,
-        'cnn_filters': 64,
+        'filters': 64,
         'lstm_units': 32,
         'dropout': 0.1
     }

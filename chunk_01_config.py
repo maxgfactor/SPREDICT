@@ -78,7 +78,6 @@ CONFIG = {
     
     # Model Architecture
     'latent_dim': 32,
-    'filters': [32, 64, 128],
     'kernel_sizes': [3, 5, 7],
     'units': 64,
     'layers': 2,
@@ -87,6 +86,9 @@ CONFIG = {
     'cnn_filters': 64,
     'lstm_units': 32,
     'dropout': 0.1,
+    
+    # Architecture subset — empty list = run all architectures
+    'ACTIVE_ARCHITECTURES': [],
     'MIN_ENSEMBLE_SIZE': 5,
     'MAX_TRAINING_ATTEMPTS': 5,
     'VERBOSE_TENSORFLOW_LOGGING': False,
@@ -167,6 +169,14 @@ CONFIG = {
     
     # Feature Importance Analysis (Phase X)
     'FEATURE_ANALYSIS_ENABLED': True,  # Enable feature importance analysis before Phase 4
+    'FEATURE_IMPORTANCE_METHODS': {    # Individual method toggles — disabled methods skipped entirely
+        'correlation': True,
+        'tree': True,
+        'permutation': True,
+        'neural': True,
+        'shap': True,
+        'ablation': True,
+    },
     'FEATURE_ANALYSIS_SAMPLE_SIZE': 100000,  # Subsample for faster analysis
     'FEATURE_PRUNE_PERCENTILE': 20,  # Drop bottom N% features by importance
     'FEATURE_ANALYSIS_REPORT_PATH': './feature_importance_report.txt',  # Output path
@@ -304,7 +314,7 @@ REQUIRED_CONFIG_KEYS = [
     'DATA_PATH', 'USE_SAMPLING', 'SAMPLE_SIZE', 'MIN_SAMPLES',
     'TARGET_TYPE', 'LOG_TRANSFORM_TARGET', 'DATE_COLUMN_INDEX',
     'TARGET_COLUMN_INDEX', 'INPUT_DIM', 'AUGMENTATION_MAX_SAMPLES',
-    'latent_dim', 'filters', 'units', 'dropout',
+    'latent_dim', 'units', 'dropout',
     'FIRST_THRESHOLD', 'LAST_THRESHOLD', 'THRESHOLD_STEP', 'PREDICTION_THRESHOLD',
     'ENABLE_HYPERPARAM_OPTIMIZATION', 'HYPERPARAM_OPTIMIZATION_EPOCHS', 'HYPERPARAM_OPTIMIZATION_TRIALS',
     'HPO_TARGET_PRECISION', 'HPO_CONTINUE_UNTIL_TARGET', 'HPO_STAGNATION_THRESHOLD',
@@ -322,8 +332,9 @@ REQUIRED_CONFIG_KEYS = [
     'MODELS_PATH', 'SAVE_TRAINED_MODELS', 'TEMPORAL_MULTIPLIER',
     'VAL_SPLIT_PERCENTAGE',
     # Feature importance analysis
-    'FEATURE_ANALYSIS_ENABLED', 'FEATURE_ANALYSIS_SAMPLE_SIZE',
-    'FEATURE_PRUNE_PERCENTILE', 'FEATURE_ANALYSIS_REPORT_PATH',
+    'FEATURE_ANALYSIS_ENABLED', 'FEATURE_IMPORTANCE_METHODS',
+    'FEATURE_ANALYSIS_SAMPLE_SIZE', 'FEATURE_PRUNE_PERCENTILE',
+    'FEATURE_ANALYSIS_REPORT_PATH',
     # Diagnostics and validation (Items 1, 2, 4)
     'FEATURE_STABILITY_ANALYSIS', 'TRACK_INFERENCE_LATENCY', 'SLIDING_WINDOW_VALIDATION',
     'PERMUTATION_IMPORTANCE', 'MIN_DATES_THRESHOLD', 'INFERENCE_LATENCY_SAMPLE_SIZE',
@@ -332,6 +343,7 @@ REQUIRED_CONFIG_KEYS = [
     'PERMUTATION_REPEATS', 'SHAP_SAMPLE_SIZE',
     # Additional global configs (defensive registration)
     'FORCE_SAMPLING', 'LOG_VERBOSITY',
+    'ACTIVE_ARCHITECTURES',
     'kernel_sizes', 'layers', 'heads', 'dim', 'cnn_filters', 'lstm_units',
     'MIN_ENSEMBLE_SIZE', 'MAX_TRAINING_ATTEMPTS',
     'VERBOSE_TENSORFLOW_LOGGING', 'VERBOSE_PROCESSING_LOGGING',
@@ -379,7 +391,6 @@ CONFIG_TYPES = {
     'MIN_DATES_THRESHOLD': int,
     'INFERENCE_LATENCY_SAMPLE_SIZE': int,
     'latent_dim': int,
-    'filters': list,
     'kernel_sizes': list,
     'units': int,
     'layers': int,
@@ -387,6 +398,7 @@ CONFIG_TYPES = {
     'dim': int,
     'cnn_filters': int,
     'lstm_units': int,
+    'ACTIVE_ARCHITECTURES': list,
     'dropout': (int, float),
     'MIN_ENSEMBLE_SIZE': int,
     'MAX_TRAINING_ATTEMPTS': int,
@@ -418,6 +430,7 @@ CONFIG_TYPES = {
     'MODELS_PATH': str,
     'VAL_SPLIT_PERCENTAGE': (int, float),
     'FEATURE_ANALYSIS_ENABLED': bool,
+    'FEATURE_IMPORTANCE_METHODS': dict,
     'FEATURE_ANALYSIS_SAMPLE_SIZE': int,
     'FEATURE_PRUNE_PERCENTILE': (int, float),
     'FEATURE_ANALYSIS_REPORT_PATH': str,
