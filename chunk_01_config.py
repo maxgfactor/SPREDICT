@@ -46,7 +46,7 @@ CONFIG = {
     'WINSORIZE_PERCENTILE_HIGH': 95,  # Upper percentile for winsorization (GIS Tier 3 — even tighter right-tail noise removal)
     'ADD_RATIO_FEATURES': True,  # Create ratio features
     'LOG_TRANSFORM_FEATURES': True,  # Apply log1p to skewed features
-    'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # Feature indices with high skew (from pipeline log)
+    'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # A3 reverted — log1p transforms re-enabled
     
     # ============================================================================
     # DIAGNOSTICS AND VALIDATION - New Features (Items 1, 2, 4)
@@ -109,8 +109,8 @@ CONFIG = {
     # Prevents precision gaming (predicting almost nothing → artificially high P)
     # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
     'MIN_PRECISION_OVER_BASELINE': 0.02,  # Precision must beat baseline by at least 2% (GIS Tier 2 — raised from 1%)
-    'MIN_POS_PRED_RATIO': 0.001,          # Min 0.1% of predictions must be positive (GIS Tier 2 — raised from 0.01%)
-    'MAX_POS_PRED_RATIO': 0.60,            # Max 60% of predictions can be positive (GIS Tier 2 — lowered from 70%)
+    'MIN_POS_PRED_RATIO': 0.0005,          # A4 — relaxed from 0.1% to 0.05% (pre-Tier-2 was 0.01%)
+    'MAX_POS_PRED_RATIO': 0.65,            # A4 — relaxed from 60% to 65% (pre-Tier-2 was 70%)
     
     # HPO-specific thresholds (Apr 4, 2026)
     # Lower thresholds during HPO to allow more exploration for struggling architectures
