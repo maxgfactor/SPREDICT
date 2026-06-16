@@ -43,7 +43,7 @@ CONFIG = {
     # ============================================================================
     'WINSORIZE_FEATURES': True,  # Clip features at percentiles
     'WINSORIZE_PERCENTILE_LOW': 3,  # Lower percentile for winsorization (A1 — tighter left-tail clipping)
-    'WINSORIZE_PERCENTILE_HIGH': 95,  # Upper percentile for winsorization (GIS Tier 3 — even tighter right-tail noise removal)
+    'WINSORIZE_PERCENTILE_HIGH': 97,  # A2 — relaxed right-tail clip (was 95); per-arch winsorization may be needed later
     'ADD_RATIO_FEATURES': True,  # Create ratio features
     'LOG_TRANSFORM_FEATURES': True,  # Apply log1p to skewed features
     'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # A3 reverted — log1p transforms re-enabled
