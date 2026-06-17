@@ -251,7 +251,7 @@ class PipelineOrchestrator:
             csv_lines.append("Architecture,Phase,Loss,Epochs,Precision,Recall,AUC,F1,TP,FP,TN,FN,MaxPred,MeanPred,StdPred,PctAboveThresh,BestEpoch,TrainingTime,LabelThresh,ThresholdSource,HPO_Trials,HPO_Improvement,KeyHyperparams,TrainLoss,ValLoss,LossDelta,MCC,PRAUC,Specificity,BalancedAccuracy,PredictionThreshold")
             
             # Known architecture order
-            arch_order = ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']
+            arch_order = self.config['ARCH_CSV_ORDER']
             
             # Loss function mapping (from HPO metadata or config)
             loss_map = {}

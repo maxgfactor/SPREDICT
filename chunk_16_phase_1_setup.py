@@ -35,10 +35,13 @@ class Phase1_PipelineSetup(BasePhase):
         Returns:
             Updated context with loaded data
         """
-        # Load data
+        # Load data (skip global winsorization when per-arch mode is active)
+        per_arch_active = bool(self.config.get('PER_ARCH_WINSORIZE', {}))
         try:
-            X, y, dates = self.data_manager.load_data()
+            X, y, dates = self.data_manager.load_data(winsorize=not per_arch_active)
             self.logger.log(f"Data loaded: {len(X)} samples, {X.shape[1]} features", 'info')
+            if per_arch_active:
+                self.logger.log("Per-arch winsorization active — global winsorization skipped in Phase 1", 'info')
             self.logger.log_temporal_coverage(dates)
         except FileNotFoundError as e:
             self.logger.log(f"critical: Data file not found - {e}", 'error')

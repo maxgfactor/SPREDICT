@@ -44,6 +44,17 @@ CONFIG = {
     'WINSORIZE_FEATURES': True,  # Clip features at percentiles
     'WINSORIZE_PERCENTILE_LOW': 3,  # Lower percentile for winsorization (A1 — tighter left-tail clipping)
     'WINSORIZE_PERCENTILE_HIGH': 97,  # A2 — relaxed right-tail clip (was 95); per-arch winsorization may be needed later
+    'PER_ARCH_WINSORIZE': {
+        'RNN':  {'low': 3, 'high': 97},
+        'Dense':  {'low': 3, 'high': 92},
+        'LSTM':  {'low': 3, 'high': 92},
+        'CNN':   {'low': 3, 'high': 95},
+        'VAE':  {'low': 3, 'high': 97},
+        'Transformer':  {'low': 3, 'high': 95},
+        'CatBoost':  {'low': 1, 'high': 99},
+        'LightGBM':  {'low': 1, 'high': 99},
+        'XGBoost':  {'low': 1, 'high': 99},
+    },
     'ADD_RATIO_FEATURES': True,  # Create ratio features
     'LOG_TRANSFORM_FEATURES': True,  # Apply log1p to skewed features
     'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # A3 reverted — log1p transforms re-enabled
@@ -89,6 +100,14 @@ CONFIG = {
     
     # Architecture subset — empty list = run all architectures
     'ACTIVE_ARCHITECTURES': [],
+    # Architecture classification groups (used for scaler/safeguard gating)
+    'NEURAL_ARCHITECTURES': ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer'],
+    'TREE_ARCHITECTURES': ['CatBoost', 'LightGBM', 'XGBoost'],
+    'MAXPRED_OBJECTIVE_ARCHS': ['CNN', 'RNN', 'LSTM', 'Transformer'],
+    'ARCH_CSV_ORDER': ['CatBoost', 'LightGBM', 'XGBoost', 'VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer'],
+    # Per-architecture epoch overrides (two contexts: fast HPO retrain vs final training)
+    'HPO_RETRAIN_EPOCHS': {'Dense': 15, 'VAE': 15, 'CNN': 15},
+    'FINAL_TRAIN_EPOCHS': {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20},
     'MIN_ENSEMBLE_SIZE': 5,
     'MAX_TRAINING_ATTEMPTS': 5,
     'VERBOSE_TENSORFLOW_LOGGING': False,
@@ -132,6 +151,7 @@ CONFIG = {
         'MIN_POSITIVE_PERCENTAGE': 0,  # Disable percentage-based, use only absolute
         'MIN_POSITIVE_ABSOLUTE': 5,  # 5 (lower floor for neural models)
         'PATIENCE': 10,  # Higher patience for neural models
+        'MIN_PRECISION_OVER_BASELINE': 0.01,  # 1% (relaxed for neural — matches SKLEARN_SAFEGUARDS)
     },
     'PATIENCE': 10,  # Top-level key for direct access (matching NEURAL_SAFEGUARDS value)
     
@@ -223,6 +243,7 @@ CONFIG = {
             'subsample': [0.6, 0.7, 0.8],       # keep
             'colsample_bytree': [0.5, 0.7, 1.0],  # NEW — feature subsampling
             'gamma': [0, 0.1, 0.5],             # NEW — min split loss reduction
+            'scale_pos_weight': [1, 10, 50, 100, 259],  # Restored — HPO now controls this (2a fix)
         },
         # Iteration 2: Dense (MaxPred max 1.0 but all thresholds rejected)
         'Dense': {
@@ -327,6 +348,7 @@ REQUIRED_CONFIG_KEYS = [
     'CALIBRATE_PREDICTIONS',
     # Feature engineering (Step 4)
     'WINSORIZE_FEATURES', 'WINSORIZE_PERCENTILE_LOW', 'WINSORIZE_PERCENTILE_HIGH',
+    'PER_ARCH_WINSORIZE',
     'ADD_RATIO_FEATURES', 'LOG_TRANSFORM_FEATURES', 'HIGHLY_SKEWED_FEATURES',
     # Model, path, temporal, split keys (defensive coverage)
     'MODELS_PATH', 'SAVE_TRAINED_MODELS', 'TEMPORAL_MULTIPLIER',
@@ -343,7 +365,7 @@ REQUIRED_CONFIG_KEYS = [
     'PERMUTATION_REPEATS', 'SHAP_SAMPLE_SIZE',
     # Additional global configs (defensive registration)
     'FORCE_SAMPLING', 'LOG_VERBOSITY',
-    'ACTIVE_ARCHITECTURES',
+    'ACTIVE_ARCHITECTURES', 'NEURAL_ARCHITECTURES', 'TREE_ARCHITECTURES', 'MAXPRED_OBJECTIVE_ARCHS', 'ARCH_CSV_ORDER', 'HPO_RETRAIN_EPOCHS', 'FINAL_TRAIN_EPOCHS',
     'kernel_sizes', 'layers', 'heads', 'dim', 'cnn_filters', 'lstm_units',
     'MIN_ENSEMBLE_SIZE', 'MAX_TRAINING_ATTEMPTS',
     'VERBOSE_TENSORFLOW_LOGGING', 'VERBOSE_PROCESSING_LOGGING',
@@ -380,6 +402,7 @@ CONFIG_TYPES = {
     'WINSORIZE_FEATURES': bool,
     'WINSORIZE_PERCENTILE_LOW': (int, float),
     'WINSORIZE_PERCENTILE_HIGH': (int, float),
+    'PER_ARCH_WINSORIZE': dict,
     'ADD_RATIO_FEATURES': bool,
     'LOG_TRANSFORM_FEATURES': bool,
     'HIGHLY_SKEWED_FEATURES': list,
@@ -399,6 +422,12 @@ CONFIG_TYPES = {
     'cnn_filters': int,
     'lstm_units': int,
     'ACTIVE_ARCHITECTURES': list,
+    'NEURAL_ARCHITECTURES': list,
+    'TREE_ARCHITECTURES': list,
+    'MAXPRED_OBJECTIVE_ARCHS': list,
+    'ARCH_CSV_ORDER': list,
+    'HPO_RETRAIN_EPOCHS': dict,
+    'FINAL_TRAIN_EPOCHS': dict,
     'dropout': (int, float),
     'MIN_ENSEMBLE_SIZE': int,
     'MAX_TRAINING_ATTEMPTS': int,
@@ -499,6 +528,22 @@ def validate_config_structure(config: Dict[str, Any]) -> bool:
     # Validate file path is string and not empty
     if not config['DATA_PATH'] or not isinstance(config['DATA_PATH'], str):
         raise ValueError(f"DATA_PATH must be non-empty string")
+    
+    # Validate PER_ARCH_WINSORIZE percentile ranges
+    per_arch = config.get('PER_ARCH_WINSORIZE', {})
+    for arch_name, bounds in per_arch.items():
+        if not isinstance(bounds, dict):
+            continue
+        low = bounds.get('low', 0)
+        high = bounds.get('high', 100)
+        if not isinstance(low, (int, float)) or not isinstance(high, (int, float)):
+            continue
+        if not (0 <= low < 100):
+            raise ValueError(f"PER_ARCH_WINSORIZE['{arch_name}']['low']={low} must be in [0, 100)")
+        if not (0 < high <= 100):
+            raise ValueError(f"PER_ARCH_WINSORIZE['{arch_name}']['high']={high} must be in (0, 100]")
+        if low >= high:
+            raise ValueError(f"PER_ARCH_WINSORIZE['{arch_name}']: low={low} must be < high={high}")
     
     return True
 

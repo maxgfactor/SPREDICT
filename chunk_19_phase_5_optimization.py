@@ -209,9 +209,18 @@ class Phase5_PredictionOptimization(BasePhase):
                 'info'
             )
             
+            # Apply per-architecture winsorization using Phase 4 training bounds (Phase B)
+            winsor_bounds = arch_metadata.get('winsor_bounds', {})
+            low_bounds = np.array(winsor_bounds.get('low', [])) if winsor_bounds else np.array([])
+            high_bounds = np.array(winsor_bounds.get('high', [])) if winsor_bounds else np.array([])
+
+            if len(low_bounds) > 0 and len(high_bounds) > 0 and kept_idx is not None:
+                X_arch = np.clip(X_arch, low_bounds[kept_idx], high_bounds[kept_idx])
+            elif not winsor_bounds and self.config.get('PER_ARCH_WINSORIZE', {}):
+                self.logger.log(f"   [warning] Per-arch winsor active but winsor_bounds missing from {arch_name} metadata", 'warning')
+            
             # Apply StandardScaler for NN architectures (Bug 2 fix: BN inference collapse)
-            nn_archs = ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']
-            if arch_name in nn_archs:
+            if arch_name in self.config['NEURAL_ARCHITECTURES']:
                 scaler = load_scaler(arch_name, models_path)
                 if scaler is not None:
                     X_arch = scaler.transform(X_arch)

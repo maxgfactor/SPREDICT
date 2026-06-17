@@ -190,6 +190,10 @@ class Phase4_NeuralEnsemble(BasePhase):
         y_val_continuous = y_raw[val_mask]
         weights_train = temporal_weights[train_mask]
         weights_val = temporal_weights[val_mask]
+
+        # Preserve non-winsorized copies for per-architecture winsorization (Phase B)
+        X_train_nonwins = X_train.copy()
+        X_val_nonwins = X_val.copy()
         
         # Log row counts as metrics
         n_train_rows = len(X_train)
@@ -280,10 +284,42 @@ class Phase4_NeuralEnsemble(BasePhase):
         
         pred_threshold = self.config['PREDICTION_THRESHOLD']
         
+        # Per-architecture winsorization bounds (Phase B — stored for Phase 5 inference)
+        arch_winsor_bounds = []  # list of {'low': np.ndarray, 'high': np.ndarray}
+        
         for arch_name in architectures:
             try:
                 arch_tag = f"[{arch_name.upper()}]"
                 arch_start_time = time.time()
+                
+                # Per-architecture winsorization (Phase B)
+                # Restore non-winsorized data each iteration to prevent cross-arch contamination
+                X_train = X_train_nonwins.copy()
+                X_val = X_val_nonwins.copy()
+                
+                per_arch_winsor = self.config.get('PER_ARCH_WINSORIZE', {})
+                if per_arch_winsor:
+                    if arch_name in per_arch_winsor:
+                        arch_w = per_arch_winsor[arch_name]
+                        low_pct = arch_w.get('low', self.config['WINSORIZE_PERCENTILE_LOW'])
+                        high_pct = arch_w.get('high', self.config['WINSORIZE_PERCENTILE_HIGH'])
+                    else:
+                        low_pct = self.config['WINSORIZE_PERCENTILE_LOW']
+                        high_pct = self.config['WINSORIZE_PERCENTILE_HIGH']
+                    
+                    low_bounds = np.zeros(X_train.shape[1])
+                    high_bounds = np.zeros(X_train.shape[1])
+                    for col in range(X_train.shape[1]):
+                        p_low, p_high = np.percentile(X_train[:, col], [low_pct, high_pct])
+                        low_bounds[col] = p_low
+                        high_bounds[col] = p_high
+                        X_train[:, col] = np.clip(X_train[:, col], p_low, p_high)
+                        X_val[:, col] = np.clip(X_val[:, col], p_low, p_high)
+                    arch_winsor_bounds.append({'low': low_bounds, 'high': high_bounds})
+                    
+                    self.logger.log(f"[{arch_name}] Winsorization: LOW={low_pct} HIGH={high_pct} (training-only percentiles)", 'info')
+                else:
+                    arch_winsor_bounds.append({'low': np.array([]), 'high': np.array([])})
                 
                 # === BASELINE DIAGNOSTICS: Get prediction stats before any threshold optimization ===
                 baseline_y_train = (y_train_continuous >= thresholds[0]).astype(int)  # Use first threshold
@@ -400,7 +436,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 # Normalize features for NNs only (trees scale-invariant). Applied at caller level,
                 # NOT inside train_model(), to keep fit() and predict() data consistent.
-                if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+                if arch_name in self.config['NEURAL_ARCHITECTURES']:
                     scaler = StandardScaler()
                     X_train_opt = scaler.fit_transform(X_train_opt)
                     X_val_opt = scaler.transform(X_val_opt)
@@ -589,9 +625,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                             self.config['PREDICTION_THRESHOLD_STEP']
                             ):
                                 hpo_binary_test = (hpo_val_pred >= pred_thresh).astype(int)
-                                if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+                                if arch_name in self.config['TREE_ARCHITECTURES']:
                                     _sg = self.config['SKLEARN_SAFEGUARDS']
-                                elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
+                                elif arch_name in self.config['NEURAL_ARCHITECTURES']:
                                     _sg = self.config['NEURAL_SAFEGUARDS']
                                 else:
                                     _sg = {'MIN_POSITIVE_ABSOLUTE': 100, 'MIN_POSITIVE_PERCENTAGE': 0.01}
@@ -794,7 +830,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                             X_val_opt = X_val[:, new_kept]
                             opt_kept = new_kept
                             arch_kept_indices[-1] = new_kept
-                            if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+                            if arch_name in self.config['NEURAL_ARCHITECTURES']:
                                 scaler = StandardScaler()
                                 X_train_opt = scaler.fit_transform(X_train_opt)
                                 X_val_opt = scaler.transform(X_val_opt)
@@ -975,8 +1011,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     else:
                         model = self.model_trainer.build_architecture(arch_name, X_train_opt.shape[1], y_train_continuous)
                         # Use architecture-specific epochs (increased for failing architectures)
-                        arch_epochs = {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20}
-                        train_epochs = arch_epochs.get(arch_name, 3)
+                        train_epochs = self.config['FINAL_TRAIN_EPOCHS'].get(arch_name, 3)
                         if hasattr(model, 'sklearn_model'):
                             trained_model, _ = self.model_trainer._train_sklearn_model(
                                 model, X_train_opt, y_train_optimal, sample_weight=np.sqrt(weights_train)
@@ -1028,9 +1063,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                         self.config['PREDICTION_THRESHOLD_STEP']
                     ):
                         val_binary_test = (val_pred >= pred_thresh).astype(int)
-                        if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+                        if arch_name in self.config['TREE_ARCHITECTURES']:
                             _sg = self.config['SKLEARN_SAFEGUARDS']
-                        elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
+                        elif arch_name in self.config['NEURAL_ARCHITECTURES']:
                             _sg = self.config['NEURAL_SAFEGUARDS']
                         else:
                             _sg = {'MIN_POSITIVE_ABSOLUTE': 100, 'MIN_POSITIVE_PERCENTAGE': 0.01}
@@ -1565,8 +1600,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                 arch_name = arch_names[i] if i < len(arch_names) else f"Model_{i}"
                 
                 try:
-                    X_val_arch = X_val[:, arch_kept_indices[i]] if i < len(arch_kept_indices) else X_val
-                    if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+                    X_val_arch = X_val_nonwins[:, arch_kept_indices[i]] if i < len(arch_kept_indices) else X_val_nonwins
+                    if arch_name in self.config['NEURAL_ARCHITECTURES']:
                         scaler = arch_scalers.get(arch_name)
                         if scaler is not None:
                             X_val_arch = scaler.transform(X_val_arch)
@@ -1590,8 +1625,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                     self.logger.log(f"   [warning] Permutation importance failed for {arch_name}: {e}", 'warning')
 
                 try:
-                    X_val_arch = X_val[:, arch_kept_indices[i]] if i < len(arch_kept_indices) else X_val
-                    if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+                    X_val_arch = X_val_nonwins[:, arch_kept_indices[i]] if i < len(arch_kept_indices) else X_val_nonwins
+                    if arch_name in self.config['NEURAL_ARCHITECTURES']:
                         scaler = arch_scalers.get(arch_name)
                         if scaler is not None:
                             X_val_arch = scaler.transform(X_val_arch)
@@ -1745,6 +1780,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         context.update({
             'models': trained_models,
             'arch_names': arch_names,
+            'arch_winsor_bounds': arch_winsor_bounds,  # Phase B: per-arch percentiles for Phase 5 inference
             'optimal_thresholds': final_thresholds if final_thresholds else optimal_thresholds,
             'best_hyperparams_list': best_hyperparams_list,
             'best_val_precision_list': best_val_precision_list,
@@ -1931,7 +1967,11 @@ class Phase4_NeuralEnsemble(BasePhase):
                             'optimal_threshold': float(final_thresholds[i]),
                             'best_hyperparams': best_hyperparams_list[i] if best_hyperparams_list[i] else {},
                             'best_val_precision': float(best_val_precision_list[i]) if i < len(best_val_precision_list) else 0.0,
-                            'kept_feature_indices': list(arch_kept_indices[i]) if i < len(arch_kept_indices) else []
+                            'kept_feature_indices': list(arch_kept_indices[i]) if i < len(arch_kept_indices) else [],
+                            'winsor_bounds': {
+                                'low': arch_winsor_bounds[i]['low'].tolist() if i < len(arch_winsor_bounds) else [],
+                                'high': arch_winsor_bounds[i]['high'].tolist() if i < len(arch_winsor_bounds) else [],
+                            },
                         }
                         metadata_path = os.path.join(models_path, f'{arch_name}_metadata.json')
                         with open(metadata_path, 'w') as f:

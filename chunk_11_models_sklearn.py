@@ -297,8 +297,11 @@ def build_xgboost_model(config: Dict, input_dim: int, y_train: np.ndarray = None
     except ImportError:
         raise ImportError("XGBoost not installed. Install with: pip install xgboost")
     
-    # Calculate dynamic weight if enabled and y_train provided
-    if y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
+    # HPO-provided scale_pos_weight takes priority over dynamic calculation
+    hpo_spw = config.get('scale_pos_weight')
+    if hpo_spw is not None:
+        scale_pos_weight = hpo_spw
+    elif y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
         scale_pos_weight = calculate_dynamic_class_weight(y_train, config)
     else:
         scale_pos_weight = config.get('scale_pos_weight', 259)

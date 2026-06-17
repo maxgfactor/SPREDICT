@@ -1,7 +1,7 @@
 # Software Specification Requirements (SSR) - Stock Analysis Ensemble
 
-**Version**: 3.36  
-**Date**: 2026-06-15  
+**Version**: 3.47  
+**Date**: 2026-06-17  
 **Status**: Living Document - Update After Each Run  
 
 ---
@@ -723,8 +723,8 @@ Compare HPO validation precision vs pre-HPO validation precision at prediction b
 
 ### Normalization Scope
 
-- `StandardScaler` is applied only to NN architectures (CNN, RNN, LSTM, Dense, VAE, Transformer)
-- Gradient boosting models (CatBoost, LightGBM, XGBoost) are tree-based and scale-invariant — skip normalization
+- `StandardScaler` is applied only to architectures in `NEURAL_ARCHITECTURES` (config key)
+- Architectures in `TREE_ARCHITECTURES` are tree-based and scale-invariant — skip normalization
 - Normalization must be applied at the **caller level** (chunk_18, chunk_12), NOT inside `train_model()`, to ensure both `model.fit()` and `model.predict()` receive consistent scaled data
 
 ### HPO Architecture-Specific Objectives
@@ -736,9 +736,24 @@ Each architecture uses a different objective function during Bayesian optimizati
 | CatBoost, LightGBM, XGBoost | precision | Standard — well-calibrated trees |
 | VAE | precision | Standard — falls through to else branch |
 | Dense | precision * log(TP + 1) | Balances precision and TP count |
-| CNN, RNN, LSTM, Transformer | precision * MaxPred | Push predictions toward 0.5 threshold |
+| Archs in `MAXPRED_OBJECTIVE_ARCHS` | precision * MaxPred | Push predictions toward 0.5 threshold |
 
-Implementation details: Dense uses `balanced_score = precision * np.log(tp + 1 + 1e-6)`; CNN/RNN/LSTM/Transformer use `balanced_score = precision * max_pred` (RNN additionally rejects trials with TP < 100); tree archs and VAE use `balanced_score = precision`.
+Implementation details: Dense uses `balanced_score = precision * np.log(tp + 1 + 1e-6)`; archs in `MAXPRED_OBJECTIVE_ARCHS` use `balanced_score = precision * max_pred` (RNN additionally rejects trials with TP < 100); tree archs and VAE use `balanced_score = precision`.
+
+### Architecture Classification Groups
+
+All architecture grouping is centralized in `chunk_01_config.py` as CONFIG keys:
+
+| Key | Value | Purpose |
+|-----|-------|---------|
+| `NEURAL_ARCHITECTURES` | `['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']` | StandardScaler gating, neural safeguard lookup |
+| `TREE_ARCHITECTURES` | `['CatBoost', 'LightGBM', 'XGBoost']` | Sklearn safeguard lookup |
+| `MAXPRED_OBJECTIVE_ARCHS` | `['CNN', 'RNN', 'LSTM', 'Transformer']` | HPO objective: precision * MaxPred |
+| `ARCH_CSV_ORDER` | All 9 archs in display order | metrics_summary.csv row ordering |
+| `HPO_RETRAIN_EPOCHS` | `{'Dense':15, 'VAE':15, 'CNN':15}` | Fast HPO threshold retrain epochs (fallback=3) |
+| `FINAL_TRAIN_EPOCHS` | `{'Dense':15, 'VAE':30, 'CNN':20, 'LSTM':20, 'Transformer':20}` | Final training epochs (fallback=3) |
+
+Adding a new architecture to a group = 1 config change, not N scattered list updates. All 6 keys registered in `CONFIG_KEYS` and `CONFIG_TYPES`.
 
 ### Cross-Phase Variable Hygiene
 
@@ -1058,7 +1073,9 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.42 | 2026-06-15 | GIS Iter 4 (A3 reverted, A4+A1 kept): Total 12,826s. Best val P 0.5443 (Transformer). 5/9 pass filter (Transformer, VAE, Dense, LSTM, LightGBM). LSTM entered ensemble (0.5365). Transformer fully recovered (0.0617→0.5443). RNN still collapsed (0.0615). CNN dropped out (0.5403→0.5252). Dense inf P 0.6810 (best). Ensemble inf P 0.6511 / R 0.0832. 0 degenerate members. 0/9 positive temporal gap (Dense lost iter3's +0.2273 — was A3 artifact). | Val P ceiling ~0.544 confirmed. Phase A nearly exhausted. |
 | 3.43 | 2026-06-15 | GIS Iter 5 (A2: WINSORIZE_PERCENTILE_HIGH 95→97): Total 17,820s (+39%). Best val P RNN 0.5454 (fully recovered from 0.0615). Dense collapsed to 0.1931, LSTM collapsed to 0.0648. Only 2/9 pass filter (RNN, VAE). Ensemble inf P 0.6495 / R 0.7310 (best recall ever). 0/9 positive temporal gap. Phase A definitively exhausted. | A2 highly arch-specific. Phase A complete. → Phase B: per-arch winsorization. |
 | 3.44 | 2026-06-15 | Phase B planned: per-architecture winsorization. Move from Phase 1 global to Phase 4 per-arch. RNN HIGH=97, Dense/LSTM HIGH=92, VAE HIGH=97, rest 95. Pipeline code change required (chunk_16 + chunk_18). | Per-arch winsorization planned for iter6 |
----
+| 3.45 | 2026-06-16 | **GIS Iter 6 (Phase B: per-architecture winsorization)**: Total 13,715s. 5 files modified (chunk_01, chunk_05, chunk_16, chunk_18, chunk_19). Pipeline validated end-to-end. **Best val P Transformer 0.5505** (new record, first above 0.55). 3/9 pass filter (LSTM 0.5305, VAE 0.5449, Transformer 0.5505). LSTM recovered from collapse (iter5 0.0648→0.5305). Dense partially recovered (0.1931→0.5203, still below 0.53). Best inf P VAE 0.6541. Ensemble inf P 0.5417 / R 0.0203 (288 consensus rows). Phase B validated — per-arch winsorization was key to breaking 0.55 ceiling. | Phase B complete; evaluate Dense pathology for Phase C |
+| 3.46 | 2026-06-17 | **Iter7 code fixes (§8e)**: Fix 1 — XGBoost `scale_pos_weight` HPO control: HPO-provided value now takes priority over `DYNAMIC_CLASS_WEIGHTS`. Added `[1,10,50,100,259]` to XGBoost HPO space. Fix 2 — Neural safeguard relaxation: `MIN_PRECISION_OVER_BASELINE` reduced from 0.02→0.01 for all 6 NN archs (matching SKLEARN_SAFEGUARDS). Fixes RNN threshold mismatch (Section 1 rejected LT=0.0 by 0.0002). RNN now passes LT=0.0 baseline check, HPO runs at correct threshold. | Run iter7 to validate both fixes |
+| 3.47 | 2026-06-17 | **Architecture list centralization**: 6 new CONFIG keys (`NEURAL_ARCHITECTURES`, `TREE_ARCHITECTURES`, `MAXPRED_OBJECTIVE_ARCHS`, `ARCH_CSV_ORDER`, `HPO_RETRAIN_EPOCHS`, `FINAL_TRAIN_EPOCHS`). 19 hardcoded architecture lists across 5 files relocated to `chunk_01_config.py`. Replaced lists in `chunk_12_evaluation_evaluator.py` (5 refs), `chunk_18_phase_4_ensemble.py` (8 refs), `chunk_19_phase_5_optimization.py` (1 ref), `chunk_20_pipeline_main.py` (1 ref), `chunk_21_hyperparam_optimizer.py` (3 refs). `ARCH_CSV_ORDER` expanded from 6→9 archs (trees were missing from CSV output). | Single-source-of-truth for architecture groups; zero hardcoded arch lists remain in logic gates |
 
 ## 3.2 Cross-Reference Guide
 

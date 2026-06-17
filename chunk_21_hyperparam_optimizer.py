@@ -163,7 +163,7 @@ class HyperparameterOptimizer:
                     if self.arch_name == 'Dense':
                         # Use log-scaled TP to prevent precision from dominating
                         balanced_score = precision * np.log(tp + 1 + 1e-6)
-                    elif self.arch_name in ['CNN', 'RNN', 'LSTM', 'Transformer']:
+                    elif self.arch_name in self.config['MAXPRED_OBJECTIVE_ARCHS']:
                         # MaxPred-prioritized objective for CNN/RNN/LSTM/Transformer: maximize precision * MaxPred
                         # All have 100% TP=0 or collapse risk, so we optimize for pushing predictions toward threshold (Apr 4, 2026)
                         balanced_score = precision * max_pred
@@ -233,7 +233,7 @@ class HyperparameterOptimizer:
                             self.best_trial_opt_thresh = trial_opt_thresh
                             self.best_trial_params = hyperparams
                             self.best_trial_model = trained
-                    elif self.arch_name in ['CNN', 'RNN', 'LSTM', 'Transformer']:
+                    elif self.arch_name in self.config['MAXPRED_OBJECTIVE_ARCHS']:
                         # For CNN/RNN/LSTM/Transformer: track by precision * MaxPred
                         if balanced_score > getattr(self, 'best_trial_balanced_score', 0):
                             self.best_trial_balanced_score = balanced_score
@@ -296,7 +296,7 @@ class HyperparameterOptimizer:
                     # Dense: precision * log(TP+1), CNN/RNN/LSTM/Transformer: precision * MaxPred, others: precision
                     if self.arch_name == 'Dense':
                         return balanced_score
-                    elif self.arch_name in ['CNN', 'RNN', 'LSTM', 'Transformer']:
+                    elif self.arch_name in self.config['MAXPRED_OBJECTIVE_ARCHS']:
                         return balanced_score
                     else:
                         return precision

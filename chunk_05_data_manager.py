@@ -26,9 +26,13 @@ class DataManager:
         self._raw_target_column = None
         self._sampled_indices = None  # Store sampled indices for Phase 1
     
-    def load_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def load_data(self, winsorize: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Load and comprehensively validate stock data CSV file
+        
+        Args:
+            winsorize: If True, apply global winsorization (current behavior).
+                      If False, skip winsorization (per-arch mode in Phase 4).
         
         Returns:
             Tuple of (X, y, dates) where:
@@ -52,14 +56,15 @@ class DataManager:
             )
         
         # Load and validate CSV structure
-        return self._load_and_validate_csv(data_path)
+        return self._load_and_validate_csv(data_path, winsorize=winsorize)
     
-    def _load_and_validate_csv(self, data_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _load_and_validate_csv(self, data_path: str, winsorize: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Comprehensive CSV loading and validation
         
         Args:
             data_path: Path to CSV file
+            winsorize: If True, apply global winsorization in _apply_feature_engineering
             
         Returns:
             Tuple of (X, y, dates)
@@ -125,7 +130,7 @@ class DataManager:
             X, y, dates = self._apply_stratified_sampling(X, y, dates)
         
         # Apply feature engineering (Step 4)
-        X = self._apply_feature_engineering(X)
+        X = self._apply_feature_engineering(X, winsorize=winsorize)
         
         # Validate data contract
         self._validate_data_output(X, y, dates, min_samples, self.config)
@@ -136,12 +141,14 @@ class DataManager:
         """Check if log transform was applied to target variable."""
         return getattr(self, '_log_transform_applied', False)
     
-    def _apply_feature_engineering(self, X: np.ndarray) -> np.ndarray:
+    def _apply_feature_engineering(self, X: np.ndarray, winsorize: bool = True) -> np.ndarray:
         """
         Apply feature engineering: winsorization, ratio features, log transform.
         
         Args:
             X: Feature matrix
+            winsorize: If True and WINSORIZE_FEATURES is enabled, apply global winsorization.
+                      If False, skip winsorization (for per-arch mode).
             
         Returns:
             Transformed feature matrix
@@ -151,8 +158,8 @@ class DataManager:
         
         original_features = X.shape[1]
         
-        # Step 4a: Winsorize features
-        if self.config['WINSORIZE_FEATURES']:
+        # Step 4a: Winsorize features (skipped when winsorize=False for per-arch mode)
+        if winsorize and self.config['WINSORIZE_FEATURES']:
             low_pct = self.config['WINSORIZE_PERCENTILE_LOW']
             high_pct = self.config['WINSORIZE_PERCENTILE_HIGH']
             for col in range(X.shape[1]):

@@ -371,7 +371,7 @@ class Evaluator:
             
             # Normalize features for NNs only (trees scale-invariant). Applied at caller level,
             # NOT inside train_model(), to keep fit() and predict() data consistent.
-            if arch_name in ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']:
+            if arch_name in self.config['NEURAL_ARCHITECTURES']:
                 scaler = StandardScaler()
                 X_train_t = scaler.fit_transform(X_train_t)
                 X_val_t = scaler.transform(X_val_t)
@@ -411,7 +411,7 @@ class Evaluator:
                     if hasattr(model, 'sklearn_model'):
                         trained, _ = model_trainer._train_sklearn_model(model, X_train_t, y_train_binary)
                     else:
-                        epochs = 15 if arch_name in ['Dense', 'VAE', 'CNN'] else 3
+                        epochs = self.config['HPO_RETRAIN_EPOCHS'].get(arch_name, 3)
                         trained, _ = model_trainer.train_model(model, X_train_t, y_train_binary, epochs=epochs, verbose=0)
                 else:
                     # No model provided - build fresh model (original behavior)
@@ -419,8 +419,7 @@ class Evaluator:
                     if hasattr(fresh_model, 'sklearn_model'):
                         trained, _ = model_trainer._train_sklearn_model(fresh_model, X_train_t, y_train_binary)
                     else:
-                        # Dense, VAE, and CNN need more epochs to learn effectively
-                        epochs = 15 if arch_name in ['Dense', 'VAE', 'CNN'] else 3
+                        epochs = self.config['HPO_RETRAIN_EPOCHS'].get(arch_name, 3)
                         trained, _ = model_trainer.train_model(fresh_model, X_train_t, y_train_binary, epochs=epochs, verbose=0)
             except Exception as e:
                 if self.logger: self.logger.log(f"Training failed for {arch_name} at threshold {thresh}: {e}", 'warning')
@@ -457,11 +456,11 @@ class Evaluator:
             # to prevent precision gaming (e.g., predicting almost nothing → artificially high P)
             # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
             # Architecture-specific thresholds (May 6, 2026)
-            if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+            if arch_name in self.config['TREE_ARCHITECTURES']:
                 sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
                 min_positive_percentage = sklearn_safeguards['MIN_POSITIVE_PERCENTAGE']
                 min_positive_absolute = sklearn_safeguards['MIN_POSITIVE_ABSOLUTE']
-            elif arch_name in ['VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
+            elif arch_name in self.config['NEURAL_ARCHITECTURES']:
                 neural_safeguards = self.config['NEURAL_SAFEGUARDS']
                 min_positive_percentage = neural_safeguards['MIN_POSITIVE_PERCENTAGE']
                 min_positive_absolute = neural_safeguards['MIN_POSITIVE_ABSOLUTE']
@@ -497,10 +496,13 @@ class Evaluator:
             # Safeguard 3: Reject if precision doesn't beat baseline by minimum margin
             # Prevents convergence to degenerate solutions where P ≈ base rate
             baseline_precision = min(y_val_binary.mean(), 0.5)  # Cap at 0.5 to avoid degenerate rejections at high baseline prevalence (t=0.0)
-            # Check for sklearn architecture-specific overrides
-            if arch_name in ['LightGBM', 'XGBoost', 'CatBoost']:
+            # Check for architecture-specific overrides
+            if arch_name in self.config['TREE_ARCHITECTURES']:
                 sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
                 min_improvement = sklearn_safeguards.get('MIN_PRECISION_OVER_BASELINE', 0.05)
+            elif arch_name in self.config['NEURAL_ARCHITECTURES']:
+                neural_safeguards = self.config.get('NEURAL_SAFEGUARDS', {})
+                min_improvement = neural_safeguards.get('MIN_PRECISION_OVER_BASELINE', self.config['MIN_PRECISION_OVER_BASELINE'])
             else:
                 min_improvement = self.config['MIN_PRECISION_OVER_BASELINE']
             current_precision = val_metrics['P']

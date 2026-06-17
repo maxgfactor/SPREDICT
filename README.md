@@ -18,7 +18,7 @@
 
 **Vision**: Use machine learning on technical indicators to identify stocks with signals of strength — serving as a starting point for deciding which stocks might be worth deep-dive fundamental analysis.
 
-**Mission**: An automated ML pipeline that loads market data, engineers temporal features to account for recency bias, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), and ensembles 9 diverse architectures to produce more reliable strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (VAE, CNN, RNN, LSTM, Transformer, GNN) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class.
+**Mission**: An automated ML pipeline that loads market data, engineers temporal features to account for recency bias, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), and ensembles 9 diverse architectures to produce more reliable strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (Dense, VAE, CNN, RNN, LSTM, Transformer) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class.
 
 ### Why 9 Architectures
 
@@ -27,14 +27,16 @@ Each architecture reveals different dataset characteristics:
 | Order | Architecture | Data Insight |
 |-------|-------------|--------------|
 | 1 | CatBoost | Feature importance, splits |
-| 2 | Dense | Global feature interactions |
-| 3 | CNN | Local pattern scales |
-| 4 | RNN | Temporal/sequential patterns |
-| 5 | LSTM | Temporal/sequential patterns |
-| 6 | VAE | Latent distribution shape |
-| 7 | Transformer | Feature attention maps |
+| 2 | LightGBM | Leaf-wise splits, efficient feature learning |
+| 3 | XGBoost | Regularized splitting, sparsity-aware learning |
+| 4 | Dense | Global feature interactions |
+| 5 | VAE | Latent distribution shape |
+| 6 | CNN | Local pattern scales |
+| 7 | RNN | Temporal/sequential patterns |
+| 8 | LSTM | Temporal/sequential patterns |
+| 9 | Transformer | Feature attention maps |
 
-**Principle**: Foundation → Specific, Fast → Slow, Simple → Complex.
+**Principle**: Designed for extreme class imbalance (259:1). Methodically discovers which architectures capture signal by tuning configurables in ascending training-cost impact: zero (gates, thresholds, percentiles) → low (preprocessing) → moderate (HPO spaces) → high (architectural changes).
 
 ## Dataset Quick Facts
 
