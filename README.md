@@ -142,9 +142,9 @@ cicd/
 ├── chunk_05_data_manager.py            # Data loading and management
 ├── chunk_07_data_temporal.py           # Temporal feature extraction
 ├── chunk_08_models_base.py             # Base neural architectures (VAE, CNN, RNN)
-├── chunk_09_models_advanced.py         # Advanced architectures (Transformer, GNN)
+├── chunk_09_models_advanced.py         # Transformer, attention, and hybrid architectures
 ├── chunk_10_models_ensemble.py         # Ensemble builders and aggregators
-├── chunk_11_models_sklearn.py          # Scikit-learn model wrappers
+├── chunk_11_models_sklearn.py          # Model wrappers (sklearn, LightGBM, XGBoost, CatBoost)
 ├── chunk_12_evaluation_evaluator.py    # Model evaluation utilities
 ├── chunk_13_state_manager.py           # Pipeline state management
 ├── chunk_14_models_trainer.py          # Model training orchestration
@@ -159,9 +159,7 @@ cicd/
 ├── chunk_XX_feature_importance.py      # 6-method feature importance engine
 ├── chunk_XX_phase_feature_analysis_a.py # Phase Xa: Raw feature analysis (prunes raw features only; temporal features not model inputs)
 ├── chunk_XX_phase_feature_analysis_b.py # Phase Xb: Temporal precision gap
-├── legacy files/                       # Moved non-functional/legacy code and logs
-├── for_train_x_2025_10_24_clean.csv    # Input data (~938 MB)
-└── ... (output artifacts, config backups, documentation)
+└── requirements.txt                    # Python dependencies
 ```
 
 ## Usage
