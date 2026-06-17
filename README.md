@@ -210,19 +210,6 @@ orchestrator = PipelineOrchestrator(CONFIG)
 context = orchestrator.run()
 ```
 
-## Contributing
-
-See [AGENTS.md](./AGENTS.md) for coding guidelines.
-
-### Getting Started as a Developer
-
-1. Review [longmemory.txt](./longmemory.txt) for principles and SOPs
-2. Examine [shortmemory.txt](./shortmemory.txt) for current project state
-3. Read [chunk_01_config.py](./chunk_01_config.py) to understand configuration
-4. Run the full pipeline once (`python chunk_20_pipeline_main.py`)
-5. Review `pipeline_cpu.log` for output
-6. Identify one improvement opportunity
-
 ## License
 
 MIT
