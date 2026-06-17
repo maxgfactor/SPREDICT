@@ -1,0 +1,9 @@
+tensorflow==2.18.1
+scikit-learn
+numpy
+pandas
+scipy
+optuna
+catboost
+lightgbm
+xgboost
