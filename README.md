@@ -166,19 +166,50 @@ cicd/
 
 ### Testing Individual Chunks
 
-Each chunk can be tested independently:
+All 23 chunk files include `if __name__ == "__main__"` self-test blocks and can be run independently:
 
 ```bash
-python chunk_01_config.py          # Test configuration
-python chunk_08_models_base.py     # Test base models
-python chunk_16_phase_1_setup.py   # Test Phase 1
+# Configuration & utilities
+python chunk_01_config.py             # Config validation
+python chunk_02_utils_logging.py      # Logger
+python chunk_04_utils_metrics.py      # Metric calculations
+
+# Data pipeline
+python chunk_05_data_manager.py       # Data loading
+python chunk_07_data_temporal.py      # Temporal features
+
+# Models (each builds + validates its architecture)
+python chunk_08_models_base.py        # VAE, CNN, RNN, LSTM, Dense
+python chunk_09_models_advanced.py    # Transformer, attention, hybrids
+python chunk_10_models_ensemble.py    # Ensemble builders
+python chunk_11_models_sklearn.py     # sklearn, LightGBM, XGBoost, CatBoost
+
+# Training & evaluation
+python chunk_12_evaluation_evaluator.py  # Evaluator
+python chunk_13_state_manager.py         # State manager
+python chunk_14_models_trainer.py        # Trainer
+
+# Pipeline phases (each runs independently)
+python chunk_15_phase_base.py         # Base phase interface
+python chunk_16_phase_1_setup.py      # Phase 1: Setup
+python chunk_17_phase_3_temporal.py   # Phase 3: Temporal weighting
+python chunk_18_phase_4_ensemble.py   # Phase 4: Neural ensemble
+python chunk_19_phase_5_optimization.py # Phase 5: Prediction optimization
+
+# Analysis & orchestration
+python chunk_20_pipeline_main.py      # Full pipeline
+python chunk_21_hyperparam_optimizer.py # HPO (Optuna)
+python chunk_22_model_loader.py       # Model loading
+python chunk_XX_feature_importance.py      # 6-method feature importance
+python chunk_XX_phase_feature_analysis_a.py # Feature analysis A
+python chunk_XX_phase_feature_analysis_b.py # Feature analysis B
 ```
 
 ### Running Complete Pipeline
 
 ```bash
 # Activate virtual environment (recommended)
-./.venv/bin/python chunk_20_pipeline_main.py
+./tf_venv/bin/python chunk_20_pipeline_main.py
 
 # Or run directly
 python chunk_20_pipeline_main.py
