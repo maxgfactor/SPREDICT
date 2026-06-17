@@ -5,6 +5,7 @@
 *.log
 !pipeline_cpu_iter5.log
 *.txt
+!requirements.txt
 memory*.txt
 
 # Config backups (generated)
