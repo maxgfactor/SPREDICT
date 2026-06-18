@@ -237,9 +237,9 @@ class Phase4_NeuralEnsemble(BasePhase):
         # Gradient Boosting first (CatBoost→LightGBM→XGBoost) for feature insights
         # Then Neural Networks (Dense→CNN→RNN→LSTM→VAE→Transformer) per discovery sequence
         # ACTIVE_ARCHITECTURES: empty list = run all; set subset (e.g. ['Dense','CNN']) for fast validation
-        architectures = self.config.get('ACTIVE_ARCHITECTURES', []) or [
-            'CatBoost', 'LightGBM', 'XGBoost', 'Dense', 'CNN', 'RNN', 'LSTM', 'VAE', 'Transformer',
-        ]
+        architectures = self.config.get('ACTIVE_ARCHITECTURES', []) or (
+            self.config.get('NEURAL_ARCHITECTURES', []) + self.config.get('TREE_ARCHITECTURES', [])
+        )
         
         self.logger.log(f"[section 1] [baseline] Training {len(architectures)} architectures", 'info')
         
@@ -1000,7 +1000,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                         train_epochs = best_hyperparams.get('epochs', 3)
                         if hasattr(model, 'sklearn_model'):
                             trained_model, _ = self.model_trainer._train_sklearn_model(
-                                model, X_train_opt, y_train_optimal, sample_weight=np.sqrt(weights_train)
+                                model, X_train_opt, y_train_optimal,
+                                sample_weight=np.sqrt(weights_train),
+                                validation_data=(X_val_opt, y_val_binarized)
                             )
                             training_history = {}
                         else:
@@ -1014,7 +1016,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                         train_epochs = self.config['FINAL_TRAIN_EPOCHS'].get(arch_name, 3)
                         if hasattr(model, 'sklearn_model'):
                             trained_model, _ = self.model_trainer._train_sklearn_model(
-                                model, X_train_opt, y_train_optimal, sample_weight=np.sqrt(weights_train)
+                                model, X_train_opt, y_train_optimal,
+                                sample_weight=np.sqrt(weights_train),
+                                validation_data=(X_val_opt, y_val_binarized)
                             )
                             training_history = {}
                         else:

@@ -1,6 +1,9 @@
-# Stock Analysis Ensemble Pipeline
+# Machine Learning Ensemble Pipeline
 
-**Python 3.12** · **TensorFlow 2.18.1** · **MIT License**
+**Python 3.12** · **TensorFlow 2.18.1** · **MIT License**  
+
+**Last updated**: 2026-06-17  
+**References**: [SPEC.md](SPEC.md) (technical specification) · [GIS.md](GIS.md) (iteration strategy & results)
 
 ## Table of Contents
 1. [Overview](#overview)

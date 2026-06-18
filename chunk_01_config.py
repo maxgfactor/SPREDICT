@@ -328,6 +328,7 @@ CONFIG = {
     # Temporal Precision Gap Analysis (Phase Xb)
     'TEMPORAL_GAP_N_DAYS': 3,        # Number of unique dates in each tail (overrides FRACTION if > 0)
     'TEMPORAL_GAP_TAIL_FRACTION': 0.33,  # Fraction fallback if N_DAYS <= 0
+    'TREE_EARLY_STOPPING_ROUNDS': 10,  # Early stopping patience for XGBoost/LightGBM/CatBoost
 }
 
 # Required configuration keys for validation
@@ -375,6 +376,7 @@ REQUIRED_CONFIG_KEYS = [
     'ENABLE_POST_HPO_THRESHOLD_SEARCH', 'TOP_DATES_HELD_OUT',
     'HYPERPARAM_SEARCH_SPACE',
     'TEMPORAL_GAP_N_DAYS', 'TEMPORAL_GAP_TAIL_FRACTION',
+    'TREE_EARLY_STOPPING_ROUNDS',
 ]
 
 # Configuration key types for validation
@@ -480,6 +482,7 @@ CONFIG_TYPES = {
     'HYPERPARAM_SEARCH_SPACE': dict,
     'TEMPORAL_GAP_N_DAYS': int,
     'TEMPORAL_GAP_TAIL_FRACTION': float,
+    'TREE_EARLY_STOPPING_ROUNDS': int,
 }
 
 

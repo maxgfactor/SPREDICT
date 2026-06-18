@@ -123,7 +123,7 @@ def load_models_with_metadata(models_path: str = './saved_models', logger=None) 
     """
     models = {}
     metadata = {}
-    sklearn_archs = {'CatBoost', 'LightGBM', 'XGBoost'}
+    sklearn_archs = set(config.get('TREE_ARCHITECTURES', ['CatBoost', 'LightGBM', 'XGBoost']))
     if logger is None:
         from chunk_02_utils_logging import Logger
         logger = Logger({'LOG_VERBOSITY': 1})

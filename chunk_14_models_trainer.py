@@ -225,7 +225,9 @@ class ModelTrainer:
             if arch_name in ['Boosting_Adaptive']:
                 return builder(merged_config, input_dim)
             else:
-                return builder(merged_config, input_dim, effective_loss_fn)
+                model = builder(merged_config, input_dim, effective_loss_fn)
+                model._is_focal = (loss_function == 'focal_loss')
+                return model
         except Exception as e:
             raise RuntimeError(f"Failed to build {arch_name} with params {hyperparams}: {e}") from e
     
@@ -251,7 +253,7 @@ class ModelTrainer:
         """
         # Check if sklearn model - route to sklearn trainer
         if hasattr(model, 'sklearn_model'):
-            return self._train_sklearn_model(model, X, y)
+            return self._train_sklearn_model(model, X, y, validation_data=validation_data)
         
         # Create validation split if not provided
         if validation_data is None:
@@ -270,10 +272,15 @@ class ModelTrainer:
             sw_train = sample_weight
         
         # Compute class weights for balanced training. Prevents (~99% negative) class bias.
-        from sklearn.utils.class_weight import compute_class_weight
-        classes = np.unique(y_train)
-        cw = compute_class_weight('balanced', classes=classes, y=y_train)
-        class_weight_dict = dict(zip(classes, cw))
+        # Skip when focal_loss is active — focal loss handles class imbalance internally.
+        # Combining both creates contradictory gradients (gamma modulation vs 259x weight).
+        if getattr(model, '_is_focal', False):
+            class_weight_dict = None
+        else:
+            from sklearn.utils.class_weight import compute_class_weight
+            classes = np.unique(y_train)
+            cw = compute_class_weight('balanced', classes=classes, y=y_train)
+            class_weight_dict = dict(zip(classes, cw))
         
         # Handle models that expect 3D input
         model_input_shape = getattr(model, 'input_shape', None)
@@ -315,7 +322,8 @@ class ModelTrainer:
     
     def _train_sklearn_model(self, model_wrapper, X: np.ndarray, 
                             y: np.ndarray,
-                            sample_weight: Optional[np.ndarray] = None) -> Tuple[Any, Dict]:
+                            sample_weight: Optional[np.ndarray] = None,
+                            validation_data: Optional[Tuple[np.ndarray, np.ndarray]] = None) -> Tuple[Any, Dict]:
         """
         Train scikit-learn model
         
@@ -323,14 +331,19 @@ class ModelTrainer:
             model_wrapper: SklearnModelWrapper instance
             X: Training features
             y: Training labels
+            sample_weight: Optional sample weights
+            validation_data: Optional (X_val, y_val) tuple for early stopping
             
         Returns:
             Tuple of (trained_model, dummy_history)
         """
+        fit_kwargs = {}
         if sample_weight is not None:
-            model_wrapper.fit(X, y, sample_weight=sample_weight)
-        else:
-            model_wrapper.fit(X, y)
+            fit_kwargs['sample_weight'] = sample_weight
+        if validation_data is not None:
+            fit_kwargs['eval_set'] = [validation_data]
+            fit_kwargs['verbose'] = False
+        model_wrapper.fit(X, y, **fit_kwargs)
         
         # Create dummy history for consistency
         history = {
