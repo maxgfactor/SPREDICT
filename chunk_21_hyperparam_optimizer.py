@@ -122,7 +122,7 @@ class HyperparameterOptimizer:
                 hyperparams = {}
                 for param_name, param_values in self.space.items():
                     hyperparams[param_name] = trial.suggest_categorical(param_name, param_values)
-                hyperparams.setdefault('early_stopping_rounds', self.config.get('TREE_EARLY_STOPPING_ROUNDS', 10))
+
                 
                 try:
                     model = self.model_builder(hyperparams)

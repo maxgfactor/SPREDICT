@@ -22,7 +22,6 @@ CONFIG = {
     'MIN_SAMPLES': 30,  # Reduced from 100 for clean dataset
     'TARGET_TYPE': 'continuous',  # Continuous targets (price changes) for stock analysis
     'LOG_TRANSFORM_TARGET': False,  # Disabled (May 5, 2026) - use raw ChangeY values, restore April 8 behavior
-    'DATE_COLUMN_INDEX': -1,  # Auto-detect date column
     'TARGET_COLUMN_INDEX': -1,  # Auto-detect target column
     'TEMPORAL_MULTIPLIER': 9.0,
     'LOG_VERBOSITY': 2,
@@ -36,7 +35,6 @@ CONFIG = {
     'PREDICTION_THRESHOLD_MIN': 0.1,  # Start of prediction threshold search
     'PREDICTION_THRESHOLD_MAX': 0.5,  # End of prediction threshold search
     'PREDICTION_THRESHOLD_STEP': 0.05,  # Step size for prediction threshold search
-    'CALIBRATE_PREDICTIONS': False,  # Apply isotonic calibration
     
     # ============================================================================
     # FEATURE ENGINEERING CONFIGURATION - Step 4
@@ -89,12 +87,12 @@ CONFIG = {
     
     # Model Architecture
     'latent_dim': 32,
-    'kernel_sizes': [3, 5, 7],
     'units': 64,
     'layers': 2,
     'heads': 4,
     'dim': 64,
-    'cnn_filters': 64,
+    'kernel_size': 5,
+    'filters': 64,
     'lstm_units': 32,
     'dropout': 0.1,
     
@@ -109,9 +107,6 @@ CONFIG = {
     'HPO_RETRAIN_EPOCHS': {'Dense': 15, 'VAE': 15, 'CNN': 15},
     'FINAL_TRAIN_EPOCHS': {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20},
     'MIN_ENSEMBLE_SIZE': 5,
-    'MAX_TRAINING_ATTEMPTS': 5,
-    'VERBOSE_TENSORFLOW_LOGGING': False,
-    'VERBOSE_PROCESSING_LOGGING': False,
     'INPUT_DIM': 37,
     
     # Hyperparameter Optimization Configuration
@@ -202,7 +197,6 @@ CONFIG = {
     'FEATURE_ANALYSIS_REPORT_PATH': './feature_importance_report.txt',  # Output path
     
     # Feature importance analysis internals (moved from CONFIG_FEATURE_ANALYSIS)
-    'ABLATON_THRESHOLD': 2.0,
     'CORRELATION_THRESHOLDS': [0.0, 0.5, 1.0, 2.0],
     'TREE_ESTIMATORS': 200,
     'PERMUTATION_REPEATS': 5,
@@ -334,7 +328,7 @@ CONFIG = {
 # Required configuration keys for validation
 REQUIRED_CONFIG_KEYS = [
     'DATA_PATH', 'USE_SAMPLING', 'SAMPLE_SIZE', 'MIN_SAMPLES',
-    'TARGET_TYPE', 'LOG_TRANSFORM_TARGET', 'DATE_COLUMN_INDEX',
+    'TARGET_TYPE', 'LOG_TRANSFORM_TARGET',
     'TARGET_COLUMN_INDEX', 'INPUT_DIM', 'AUGMENTATION_MAX_SAMPLES',
     'latent_dim', 'units', 'dropout',
     'FIRST_THRESHOLD', 'LAST_THRESHOLD', 'THRESHOLD_STEP', 'PREDICTION_THRESHOLD',
@@ -346,7 +340,6 @@ REQUIRED_CONFIG_KEYS = [
     # Imbalance handling (Step 3)
     'DYNAMIC_CLASS_WEIGHTS', 'PREDICTION_THRESHOLD_SEARCH',
     'PREDICTION_THRESHOLD_MIN', 'PREDICTION_THRESHOLD_MAX', 'PREDICTION_THRESHOLD_STEP',
-    'CALIBRATE_PREDICTIONS',
     # Feature engineering (Step 4)
     'WINSORIZE_FEATURES', 'WINSORIZE_PERCENTILE_LOW', 'WINSORIZE_PERCENTILE_HIGH',
     'PER_ARCH_WINSORIZE',
@@ -362,14 +355,13 @@ REQUIRED_CONFIG_KEYS = [
     'FEATURE_STABILITY_ANALYSIS', 'TRACK_INFERENCE_LATENCY', 'SLIDING_WINDOW_VALIDATION',
     'PERMUTATION_IMPORTANCE', 'MIN_DATES_THRESHOLD', 'INFERENCE_LATENCY_SAMPLE_SIZE',
     # Feature importance analysis internals
-    'ABLATON_THRESHOLD', 'CORRELATION_THRESHOLDS', 'TREE_ESTIMATORS',
+    'CORRELATION_THRESHOLDS', 'TREE_ESTIMATORS',
     'PERMUTATION_REPEATS', 'SHAP_SAMPLE_SIZE',
     # Additional global configs (defensive registration)
     'FORCE_SAMPLING', 'LOG_VERBOSITY',
     'ACTIVE_ARCHITECTURES', 'NEURAL_ARCHITECTURES', 'TREE_ARCHITECTURES', 'MAXPRED_OBJECTIVE_ARCHS', 'ARCH_CSV_ORDER', 'HPO_RETRAIN_EPOCHS', 'FINAL_TRAIN_EPOCHS',
-    'kernel_sizes', 'layers', 'heads', 'dim', 'cnn_filters', 'lstm_units',
-    'MIN_ENSEMBLE_SIZE', 'MAX_TRAINING_ATTEMPTS',
-    'VERBOSE_TENSORFLOW_LOGGING', 'VERBOSE_PROCESSING_LOGGING',
+    'layers', 'heads', 'dim', 'kernel_size', 'filters', 'lstm_units',
+    'MIN_ENSEMBLE_SIZE',
     'USE_FOCAL_LOSS', 'FOCAL_LOSS_ALPHA', 'FOCAL_LOSS_GAMMA',
     'MIN_PRECISION_OVER_BASELINE', 'MIN_POS_PRED_RATIO', 'MAX_POS_PRED_RATIO',
     'SKLEARN_SAFEGUARDS', 'NEURAL_SAFEGUARDS',
@@ -388,7 +380,6 @@ CONFIG_TYPES = {
     'MIN_SAMPLES': int,
     'TARGET_TYPE': str,
     'LOG_TRANSFORM_TARGET': bool,
-    'DATE_COLUMN_INDEX': int,
     'TARGET_COLUMN_INDEX': int,
     'TEMPORAL_MULTIPLIER': (int, float),
     'LOG_VERBOSITY': int,
@@ -399,7 +390,6 @@ CONFIG_TYPES = {
     'PREDICTION_THRESHOLD_MIN': (int, float),
     'PREDICTION_THRESHOLD_MAX': (int, float),
     'PREDICTION_THRESHOLD_STEP': (int, float),
-    'CALIBRATE_PREDICTIONS': bool,
     # Feature engineering (Step 4)
     'WINSORIZE_FEATURES': bool,
     'WINSORIZE_PERCENTILE_LOW': (int, float),
@@ -416,12 +406,12 @@ CONFIG_TYPES = {
     'MIN_DATES_THRESHOLD': int,
     'INFERENCE_LATENCY_SAMPLE_SIZE': int,
     'latent_dim': int,
-    'kernel_sizes': list,
     'units': int,
     'layers': int,
     'heads': int,
     'dim': int,
-    'cnn_filters': int,
+    'kernel_size': int,
+    'filters': int,
     'lstm_units': int,
     'ACTIVE_ARCHITECTURES': list,
     'NEURAL_ARCHITECTURES': list,
@@ -432,9 +422,6 @@ CONFIG_TYPES = {
     'FINAL_TRAIN_EPOCHS': dict,
     'dropout': (int, float),
     'MIN_ENSEMBLE_SIZE': int,
-    'MAX_TRAINING_ATTEMPTS': int,
-    'VERBOSE_TENSORFLOW_LOGGING': bool,
-    'VERBOSE_PROCESSING_LOGGING': bool,
     'INPUT_DIM': int,
     'FIRST_THRESHOLD': (int, float),
     'LAST_THRESHOLD': (int, float),
@@ -466,7 +453,6 @@ CONFIG_TYPES = {
     'FEATURE_PRUNE_PERCENTILE': (int, float),
     'FEATURE_ANALYSIS_REPORT_PATH': str,
     # Feature importance analysis internals
-    'ABLATON_THRESHOLD': (int, float),
     'CORRELATION_THRESHOLDS': list,
     'TREE_ESTIMATORS': int,
     'PERMUTATION_REPEATS': int,

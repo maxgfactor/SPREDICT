@@ -87,7 +87,7 @@ class Phase5_PredictionOptimization(BasePhase):
         data_path = self.config['DATA_PATH']
         
         self.logger.log(f"Loading saved models from {models_path}...", 'info')
-        models, metadata = load_models_with_metadata(models_path)
+        models, metadata = load_models_with_metadata(models_path, config=self.config)
         
         if not models:
             self.logger.log("No models found in saved_models directory", 'warning')
@@ -216,6 +216,15 @@ class Phase5_PredictionOptimization(BasePhase):
 
             if len(low_bounds) > 0 and len(high_bounds) > 0 and kept_idx is not None:
                 X_arch = np.clip(X_arch, low_bounds[kept_idx], high_bounds[kept_idx])
+                lp = winsor_bounds.get('low_pct', '?')
+                hp = winsor_bounds.get('high_pct', '?')
+                if isinstance(lp, (int, float)):
+                    self.logger.log(
+                        f"   Winsor bounds applied: percentiles [{lp}%, {hp}%], "
+                        f"n_features={len(kept_idx)}, "
+                        f"clip_range=[{low_bounds[kept_idx].min():.4f}, {high_bounds[kept_idx].max():.4f}]",
+                        'info'
+                    )
             elif not winsor_bounds and self.config.get('PER_ARCH_WINSORIZE', {}):
                 self.logger.log(f"   [warning] Per-arch winsor active but winsor_bounds missing from {arch_name} metadata", 'warning')
             

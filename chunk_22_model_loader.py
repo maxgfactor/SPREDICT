@@ -109,7 +109,7 @@ def load_model_metadata(arch_name: str, models_path: str = './saved_models') -> 
     return None
 
 
-def load_models_with_metadata(models_path: str = './saved_models', logger=None) -> Tuple[Dict[str, tf.keras.Model], Dict[str, Dict]]:
+def load_models_with_metadata(models_path: str = './saved_models', config: Dict = None, logger=None) -> Tuple[Dict[str, tf.keras.Model], Dict[str, Dict]]:
     """
     Load all saved models along with their metadata.
     
@@ -123,40 +123,41 @@ def load_models_with_metadata(models_path: str = './saved_models', logger=None) 
     """
     models = {}
     metadata = {}
-    sklearn_archs = set(config.get('TREE_ARCHITECTURES', ['CatBoost', 'LightGBM', 'XGBoost']))
+    sklearn_archs = set(config['TREE_ARCHITECTURES'])
     if logger is None:
         from chunk_02_utils_logging import Logger
         logger = Logger({'LOG_VERBOSITY': 1})
 
     if os.path.exists(models_path):
         for filename in os.listdir(models_path):
-            if filename.endswith('_model.keras'):
-                arch_name = filename.replace('_model.keras', '')
-                filepath = os.path.join(models_path, filename)
+            if not (filename.endswith('_model.keras') or filename.endswith('_model.joblib')):
+                continue
+            arch_name = filename.replace('_model.keras', '').replace('_model.joblib', '')
+            filepath = os.path.join(models_path, filename)
 
-                if arch_name in sklearn_archs:
-                    try:
-                        import joblib
-                        from chunk_11_models_sklearn import SklearnModelWrapper
-                        sklearn_model = joblib.load(filepath)
-                        wrapped = SklearnModelWrapper(sklearn_model)
-                        wrapped._is_fitted = True
-                        models[arch_name] = wrapped
-                        logger.log(f"Loaded {arch_name} model (sklearn)", 'info')
-                    except Exception as e:
-                        logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
-                else:
-                    try:
-                        models[arch_name] = load_model(arch_name, models_path)
-                        logger.log(f"Loaded {arch_name} model", 'info')
-                    except Exception as e:
-                        logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
+            if arch_name in sklearn_archs:
+                try:
+                    import joblib
+                    from chunk_11_models_sklearn import SklearnModelWrapper
+                    sklearn_model = joblib.load(filepath)
+                    wrapped = SklearnModelWrapper(sklearn_model)
+                    wrapped._is_fitted = True
+                    models[arch_name] = wrapped
+                    logger.log(f"Loaded {arch_name} model (sklearn)", 'info')
+                except Exception as e:
+                    logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
+            else:
+                try:
+                    models[arch_name] = load_model(arch_name, models_path)
+                    logger.log(f"Loaded {arch_name} model", 'info')
+                except Exception as e:
+                    logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
 
-                # Load metadata for this architecture
-                meta = load_model_metadata(arch_name, models_path)
-                if meta:
-                    metadata[arch_name] = meta
-                    logger.log(f"Loaded {arch_name} metadata: label_threshold={meta.get('optimal_threshold')}", 'info')
+            # Load metadata for this architecture
+            meta = load_model_metadata(arch_name, models_path)
+            if meta:
+                metadata[arch_name] = meta
+                logger.log(f"Loaded {arch_name} metadata: label_threshold={meta.get('optimal_threshold')}", 'info')
     
     return models, metadata
 
@@ -177,8 +178,21 @@ def load_all_models(models_path: str = './saved_models', logger=None) -> dict:
         logger = Logger({'LOG_VERBOSITY': 1})
     if os.path.exists(models_path):
         for filename in os.listdir(models_path):
-            if filename.endswith('_model.keras'):
-                arch_name = filename.replace('_model.keras', '')
+            if not (filename.endswith('_model.keras') or filename.endswith('_model.joblib')):
+                continue
+            arch_name = filename.replace('_model.keras', '').replace('_model.joblib', '')
+            if filename.endswith('_model.joblib'):
+                try:
+                    import joblib
+                    from chunk_11_models_sklearn import SklearnModelWrapper
+                    sklearn_model = joblib.load(os.path.join(models_path, filename))
+                    wrapped = SklearnModelWrapper(sklearn_model)
+                    wrapped._is_fitted = True
+                    models[arch_name] = wrapped
+                    logger.log(f"Loaded {arch_name} model (sklearn)", 'info')
+                except Exception as e:
+                    logger.log(f"Failed to load {arch_name} model: {e}", 'warning')
+            else:
                 try:
                     models[arch_name] = load_model(arch_name, models_path)
                     logger.log(f"Loaded {arch_name} model", 'info')

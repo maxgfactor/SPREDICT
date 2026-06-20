@@ -315,7 +315,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                         high_bounds[col] = p_high
                         X_train[:, col] = np.clip(X_train[:, col], p_low, p_high)
                         X_val[:, col] = np.clip(X_val[:, col], p_low, p_high)
-                    arch_winsor_bounds.append({'low': low_bounds, 'high': high_bounds})
+                    arch_winsor_bounds.append({'low': low_bounds, 'high': high_bounds, 'low_pct': low_pct, 'high_pct': high_pct})
                     
                     self.logger.log(f"[{arch_name}] Winsorization: LOW={low_pct} HIGH={high_pct} (training-only percentiles)", 'info')
                 else:
@@ -364,7 +364,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                             'learning_rate': config.get('learning_rate', 0.001),
                             'dropout': config.get('dropout', 0.0),
                         }
-                except:
+                except Exception:
                     pass
                 
                 # Section 1: Baseline Summary
@@ -1733,8 +1733,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     logger=self.logger.log
                 )
                 self.logger.log(f"ensemble: {len(filtered_models)} architectures ({', '.join(filtered_arch_names)})", 'info')
-                if ensemble_weighting == 'precision_weighted':
-                    self.logger.log(f"  Using precision-weighted averaging", 'info')
+                self.logger.log(f"  Ensemble weighting: {ensemble_weighting}", 'info')
             else:
                 ensemble = create_precision_ensemble(trained_models, np.array(val_predictions), "main_ensemble")
             
@@ -1872,6 +1871,7 @@ class Phase4_NeuralEnsemble(BasePhase):
             # ============================================================================
             # Save trained models to ./saved_models/ for later predictions:
             # - {ARCH}_model.keras: Trained Keras model (RNN_model.keras, LSTM_model.keras)
+            # - {ARCH}_model.joblib: Trained sklearn model (LightGBM_model.joblib, XGBoost_model.joblib, CatBoost_model.joblib)
             # - temporal_weights.json: Weights used for temporal feature scaling
             # - feature_names.json: List of feature column names
             # - split_date.txt: Date used for train/val split
@@ -1912,7 +1912,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                                 best_fallback_arch = arch_name
                             continue
                         arch_names_to_save.append(arch_name)
-                        model_path = os.path.join(models_path, f'{arch_name}_model.keras')
+                        is_tree = arch_name in self.config.get('TREE_ARCHITECTURES', [])
+                        ext = '.joblib' if is_tree else '.keras'
+                        model_path = os.path.join(models_path, f'{arch_name}_model{ext}')
                         model.save(model_path)
                         self.logger.log(f"   Saved {arch_name} model to {model_path}", 'info')
                     # Save scaler for NN architectures (Bug 2 fix: persist for Phase 5 inference)
@@ -1924,7 +1926,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                 # Fallback: if no models met precision threshold, save the best one anyway
                 if not arch_names_to_save and best_fallback_model is not None:
                     arch_names_to_save.append(best_fallback_arch)
-                    model_path = os.path.join(models_path, f'{best_fallback_arch}_model.keras')
+                    is_tree = best_fallback_arch in self.config.get('TREE_ARCHITECTURES', [])
+                    ext = '.joblib' if is_tree else '.keras'
+                    model_path = os.path.join(models_path, f'{best_fallback_arch}_model{ext}')
                     best_fallback_model.save(model_path)
                     self.logger.log(f"   [fallback] Saved {best_fallback_arch} model (precision {best_fallback_prec:.4f} below threshold {ensemble_min_precision})", 'info')
                 
@@ -1975,6 +1979,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                             'winsor_bounds': {
                                 'low': arch_winsor_bounds[i]['low'].tolist() if i < len(arch_winsor_bounds) else [],
                                 'high': arch_winsor_bounds[i]['high'].tolist() if i < len(arch_winsor_bounds) else [],
+                                'low_pct': arch_winsor_bounds[i].get('low_pct', '?') if i < len(arch_winsor_bounds) else '?',
+                                'high_pct': arch_winsor_bounds[i].get('high_pct', '?') if i < len(arch_winsor_bounds) else '?',
                             },
                         }
                         metadata_path = os.path.join(models_path, f'{arch_name}_metadata.json')

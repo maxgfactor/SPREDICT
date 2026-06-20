@@ -21,7 +21,9 @@
 
 **Vision**: A general-purpose ML framework for imbalanced classification — deploy multiple architectures across any domain, iteratively narrow in on optimal hyperparameter spaces via systematic cost-tiered tuning, and discover which models capture signal from rare events.
 
-**Mission**: An automated ML pipeline that loads market data, engineers temporal features to account for recency bias, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), and ensembles 9 diverse architectures to produce more reliable strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (Dense, VAE, CNN, RNN, LSTM, Transformer) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class. Developed and validated on stock market data, this pipeline uses technical indicators to identify equities with signals of strength — serving as a starting point for deciding which stocks might be worth deep-dive fundamental analysis.
+**Mission**: An automated ML pipeline that loads market data, engineers temporal features to account for recency bias, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), and ensembles 9 diverse architectures to produce more reliable strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (Dense, VAE, CNN, RNN, LSTM, Transformer) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class. Trained and evaluated on historical market data, this pipeline demonstrates the methodology on technical indicators — serving as a reference implementation for the ensemble classification approach.
+
+*Disclaimer: This software is for educational and research purposes only. It does not constitute financial advice, investment recommendation, or solicitation to buy or sell securities. Past performance or model outputs do not guarantee future results. Use at your own risk.*
 
 ### Why 9 Architectures
 

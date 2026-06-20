@@ -125,6 +125,41 @@ class PipelineOrchestrator:
         thresholds = np.arange(first_thresh, last_thresh + thresh_step, thresh_step)
         self.logger.log(f"   Label_Thresholds: {first_thresh} to {last_thresh} ({len(thresholds)} thresholds)", 'info')
         
+        # Configuration Summary — logs all active lever values for audit
+        self.logger.log("--- Configuration Summary ---", 'info')
+        c = self.config
+        per_arch_items = c.get('PER_ARCH_WINSORIZE', {})
+        per_arch_str = ', '.join(
+            f"{k} low={v.get('low','?'):d} high={v.get('high','?'):d}"
+            for k, v in sorted(per_arch_items.items())
+        )
+        self.logger.log(
+            f"  [config] Preprocessing: winsor_features={c['WINSORIZE_FEATURES']}, "
+            f"winsor_low={c['WINSORIZE_PERCENTILE_LOW']} (global), "
+            f"log1p={c['LOG_TRANSFORM_FEATURES']}, skewed_cols={c['HIGHLY_SKEWED_FEATURES']}, "
+            f"log1p_target={c['LOG_TRANSFORM_TARGET']}", 'info'
+        )
+        self.logger.log(f"  [config] Per-arch winsor: {per_arch_str}", 'info')
+        self.logger.log(f"  [config] Top dates held out: {c['TOP_DATES_HELD_OUT']}", 'info')
+        self.logger.log(
+            f"  [config] Gates: min_pos_ratio={c['MIN_POS_PRED_RATIO']}, "
+            f"max_pos_ratio={c['MAX_POS_PRED_RATIO']}", 'info'
+        )
+        self.logger.log(f"  [config] Safeguards: NN={c['NEURAL_SAFEGUARDS']}, trees={c['SKLEARN_SAFEGUARDS']}", 'info')
+        self.logger.log(
+            f"  [config] Training: hpo_epochs={c['HYPERPARAM_OPTIMIZATION_EPOCHS']}, "
+            f"retrain_epochs={dict(c['HPO_RETRAIN_EPOCHS'])}, "
+            f"final_epochs={dict(c['FINAL_TRAIN_EPOCHS'])}, "
+            f"tree_early_stopping={c['TREE_EARLY_STOPPING_ROUNDS']}", 'info'
+        )
+        self.logger.log(f"  [config] Archs: NN={c['NEURAL_ARCHITECTURES']}, trees={c['TREE_ARCHITECTURES']}", 'info')
+        self.logger.log(
+            f"  [config] Ensemble: min_precision={c['ENSEMBLE_MIN_PRECISION']}, "
+            f"weighting={c['ENSEMBLE_WEIGHTING']}, fallback={c['FALLBACK_ARCHITECTURE']}", 'info'
+        )
+        self.logger.log(f"  [config] Feature analysis: enabled={c['FEATURE_ANALYSIS_ENABLED']}", 'info')
+        self.logger.log(f"  [config] Temporal: multiplier={c['TEMPORAL_MULTIPLIER']}", 'info')
+        
         # Phase execution sequence
         phase_sequence = [
             ('Pipeline Setup', Phase1_PipelineSetup, validate_phase1_output),

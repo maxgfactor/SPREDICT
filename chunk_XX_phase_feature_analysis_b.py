@@ -141,7 +141,7 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
                 from sklearn.metrics import roc_auc_score
                 recent_auc = roc_auc_score(signal_mask[is_recent], preds[is_recent]) if len(np.unique(signal_mask[is_recent])) > 1 else 0.5
                 older_auc = roc_auc_score(signal_mask[is_older], preds[is_older]) if len(np.unique(signal_mask[is_older])) > 1 else 0.5
-            except:
+            except Exception:
                 recent_auc = 0.0
                 older_auc = 0.0
             

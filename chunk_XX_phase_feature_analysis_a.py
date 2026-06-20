@@ -30,7 +30,7 @@ class PhaseXa_FeatureAnalysis(phase_base.BasePhase):
 
         self.analyzer = feature_importance.FeatureImportanceAnalyzer(self.config, logger=self.logger)
         if self.logger:
-            self.logger.log(f"{self.name} - Starting with methods: {active_methods}", 'info')
+            self.logger.log(f"{self.name} - Starting with methods: {active_methods} ({len(active_methods)}/{len(method_config)} active)", 'info')
 
         X = context.get('X')
         y_raw = context.get('raw_target_values')

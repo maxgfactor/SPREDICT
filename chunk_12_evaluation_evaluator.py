@@ -505,6 +505,24 @@ class Evaluator:
                 min_improvement = neural_safeguards.get('MIN_PRECISION_OVER_BASELINE', self.config['MIN_PRECISION_OVER_BASELINE'])
             else:
                 min_improvement = self.config['MIN_PRECISION_OVER_BASELINE']
+            
+            # Per-architecture safeguard summary (logs once per arch, not per-threshold)
+            if not hasattr(self, '_safeguard_logged'):
+                self._safeguard_logged = set()
+            if arch_name not in self._safeguard_logged:
+                self._safeguard_logged.add(arch_name)
+                safe_type = 'tree' if arch_name in self.config['TREE_ARCHITECTURES'] else (
+                    'neural' if arch_name in self.config['NEURAL_ARCHITECTURES'] else 'global')
+                if self.logger:
+                    self.logger.log(
+                        f"[{arch_name}] Safeguards: type={safe_type}, "
+                        f"min_precision_over_baseline={min_improvement:.4f}, "
+                        f"min_pos_pct={min_positive_percentage:.4f}, "
+                        f"min_pos_abs={min_positive_absolute}, "
+                        f"patience={patience}",
+                        'info'
+                    )
+            
             current_precision = val_metrics['P']
             if current_precision <= baseline_precision + min_improvement:
                 if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: validation_precision={current_precision:.4f} <= baseline+{min_improvement:.4f}={baseline_precision+min_improvement:.4f}", 'info')
@@ -558,22 +576,26 @@ class Evaluator:
         # Basic metrics
         try:
             metrics['accuracy'] = accuracy_score(y_true, y_pred)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"accuracy_score failed: {e}", 'warning')
             metrics['accuracy'] = 0.0
         
         try:
             metrics['precision'] = precision_score(y_true, y_pred, zero_division=1.0)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"precision_score failed: {e}", 'warning')
             metrics['precision'] = 0.0
         
         try:
             metrics['recall'] = recall_score(y_true, y_pred, zero_division=1.0)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"recall_score failed: {e}", 'warning')
             metrics['recall'] = 0.0
         
         try:
             metrics['f1'] = f1_score(y_true, y_pred, zero_division=1.0)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"f1_score failed: {e}", 'warning')
             metrics['f1'] = 0.0
         
         # AUC (requires probabilities or at least 2 classes)
@@ -582,7 +604,8 @@ class Evaluator:
                 metrics['auc'] = roc_auc_score(y_true, y_pred_proba)
             else:
                 metrics['auc'] = roc_auc_score(y_true, y_pred)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"roc_auc_score failed: {e}", 'warning')
             metrics['auc'] = 0.0
         
         # Average Precision
@@ -591,13 +614,15 @@ class Evaluator:
                 metrics['average_precision'] = average_precision_score(y_true, y_pred_proba)
             else:
                 metrics['average_precision'] = average_precision_score(y_true, y_pred)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"average_precision_score failed: {e}", 'warning')
             metrics['average_precision'] = 0.0
         
         # Matthews Correlation Coefficient (MCC)
         try:
             metrics['mcc'] = matthews_corrcoef(y_true, y_pred)
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"matthews_corrcoef failed: {e}", 'warning')
             metrics['mcc'] = 0.0
         
         # Specificity (True Negative Rate)
@@ -606,7 +631,8 @@ class Evaluator:
             fp = np.sum((y_pred == 1) & (y_true == 0))
             specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
             metrics['specificity'] = specificity
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"specificity calculation failed: {e}", 'warning')
             metrics['specificity'] = 0.0
         
         # Balanced Accuracy
@@ -614,7 +640,8 @@ class Evaluator:
             recall = metrics.get('recall', 0.0)
             specificity = metrics.get('specificity', 0.0)
             metrics['balanced_accuracy'] = (recall + specificity) / 2.0
-        except:
+        except Exception as e:
+            if self.logger: self.logger.log(f"balanced_accuracy calculation failed: {e}", 'warning')
             metrics['balanced_accuracy'] = 0.0
         
         return metrics

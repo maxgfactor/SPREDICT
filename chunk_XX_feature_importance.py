@@ -228,12 +228,14 @@ class FeatureImportanceAnalyzer:
             
             try:
                 row['pearson_r'] = np.corrcoef(feature, y_raw)[0, 1]
-            except:
+            except Exception as e:
+                self._log(f"pearson_r failed for feature {name}: {e}", 'warning')
                 row['pearson_r'] = 0.0
             
             try:
                 row['spearman_r'], _ = spearmanr(feature, y_raw)
-            except:
+            except Exception as e:
+                self._log(f"spearman_r failed for feature {name}: {e}", 'warning')
                 row['spearman_r'] = 0.0
             
             for t in thresholds:
@@ -244,11 +246,13 @@ class FeatureImportanceAnalyzer:
                 else:
                     try:
                         row[f'pb_r_t{t}'], _ = pointbiserialr(y_bin, feature)
-                    except:
+                    except Exception as e:
+                        self._log(f"pointbiserialr failed for feature {name}: {e}", 'warning')
                         row[f'pb_r_t{t}'] = 0.0
                     try:
                         row[f'auc_t{t}'] = roc_auc_score(y_bin, feature)
-                    except:
+                    except Exception as e:
+                        self._log(f"roc_auc_score failed for feature {name}: {e}", 'warning')
                         row[f'auc_t{t}'] = 0.5
             
             results.append(row)
@@ -473,7 +477,8 @@ class FeatureImportanceAnalyzer:
             pred = model.predict(X_va, verbose=0).flatten()
             try:
                 auc = roc_auc_score(y_val, pred)
-            except:
+            except Exception as e:
+                self._log(f"ablation auc failed for feature {name}: {e}", 'warning')
                 auc = 0.5
             
             results.append({'feature': name, 'index': i, 'auc': auc, 'pred_mean': np.mean(pred)})

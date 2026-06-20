@@ -115,6 +115,8 @@ class DataManager:
             self._log_transform_applied = True
         else:
             self._log_transform_applied = False
+        if hasattr(self, 'logger') and self.logger:
+            self.logger.log(f"   [feature] Log-transformed target (LOG_TRANSFORM_TARGET={self.config['LOG_TRANSFORM_TARGET']})", 'info')
         
         # Store feature column names (excluding date and target)
         self._feature_columns = [df.columns[i] for i in feature_cols]
@@ -176,7 +178,7 @@ class DataManager:
                     X[:, idx] = np.sign(X[:, idx]) * np.log1p(np.abs(X[:, idx]))
                     transformed_count += 1
             if transformed_count > 0:
-                print(f"   [feature] Log-transformed {transformed_count} skewed features")
+                print(f"   [feature] Log-transformed {transformed_count} skewed features: columns {skewed_indices}")
         
         # Step 4b: Add ratio features (must be after winsorization and log-transform)
         if self.config['ADD_RATIO_FEATURES'] and self._feature_columns:
@@ -234,7 +236,7 @@ class DataManager:
                 values = pd.to_numeric(df.iloc[:, col_idx], errors='coerce')
                 if values.min() > 19000000 and values.max() < 21000000:
                     return col_idx
-            except:
+            except Exception:
                 continue
         
         # Default to second-to-last column

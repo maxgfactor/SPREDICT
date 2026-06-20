@@ -276,11 +276,13 @@ class ModelTrainer:
         # Combining both creates contradictory gradients (gamma modulation vs 259x weight).
         if getattr(model, '_is_focal', False):
             class_weight_dict = None
+            self.logger.log(f"   class_weight=None (focal_loss active — skipping balanced class_weight)", 'info')
         else:
             from sklearn.utils.class_weight import compute_class_weight
             classes = np.unique(y_train)
             cw = compute_class_weight('balanced', classes=classes, y=y_train)
             class_weight_dict = dict(zip(classes, cw))
+            self.logger.log(f"   class_weight=balanced (no focal_loss)", 'info')
         
         # Handle models that expect 3D input
         model_input_shape = getattr(model, 'input_shape', None)
@@ -338,12 +340,28 @@ class ModelTrainer:
             Tuple of (trained_model, dummy_history)
         """
         fit_kwargs = {}
+        esr = self.config.get('TREE_EARLY_STOPPING_ROUNDS', 10)
+        self.logger.log(f"   _train_sklearn_model: early_stopping_rounds={esr}, "
+                        f"eval_set={'provided' if validation_data is not None else 'None'}", 'info')
         if sample_weight is not None:
             fit_kwargs['sample_weight'] = sample_weight
         if validation_data is not None:
             fit_kwargs['eval_set'] = [validation_data]
             fit_kwargs['verbose'] = False
+            if hasattr(model_wrapper, 'sklearn_model') and hasattr(model_wrapper.sklearn_model, 'set_params'):
+                model_wrapper.sklearn_model.set_params(early_stopping_rounds=esr)
         model_wrapper.fit(X, y, **fit_kwargs)
+        
+        # Log tree model params for lever audit
+        if hasattr(model_wrapper.sklearn_model, 'get_params'):
+            p = model_wrapper.sklearn_model.get_params()
+            mt = type(model_wrapper.sklearn_model).__name__
+            if 'XGB' in mt or 'CatBoost' in mt:
+                v = p.get('scale_pos_weight', 'N/A')
+                self.logger.log(f"   scale_pos_weight={v} (model={mt})", 'info')
+            if 'LGBM' in mt:
+                v = p.get('class_weight', 'N/A')
+                self.logger.log(f"   class_weight={v} (model={mt})", 'info')
         
         # Create dummy history for consistency
         history = {

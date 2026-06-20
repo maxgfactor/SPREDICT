@@ -1,6 +1,6 @@
 # Software Specification Requirements (SSR) — Dataset Classification Ensemble
 
-**Version**: 3.49  
+**Version**: 3.51  
 **Date**: 2026-06-17  
 **Status**: Living Document - Update After Each Run  
 
@@ -935,7 +935,6 @@ The tables below document which HPO parameters have the strongest effect on each
 | MIN_SAMPLES | 30 | Minimum samples required |
 | TARGET_TYPE | continuous | Target type |
 | LOG_TRANSFORM_TARGET | False | Apply log1p transform to target (disabled May 5, 2026 — use raw ChangeY values) |
-| DATE_COLUMN_INDEX | -1 | Auto-detect date column |
 | TARGET_COLUMN_INDEX | -1 | Auto-detect target column |
 | TEMPORAL_MULTIPLIER | 9.0 | Temporal weighting multiplier |
 | INPUT_DIM | Auto-detected | Number of features |
@@ -1005,8 +1004,6 @@ The tables below document which HPO parameters have the strongest effect on each
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | LOG_VERBOSITY | 2 | Log level (0=quiet, 2=verbose) |
-| VERBOSE_TENSORFLOW_LOGGING | False | TF internal log suppression |
-| VERBOSE_PROCESSING_LOGGING | False | Chunk-level log suppression |
 
 ---
 
@@ -1078,6 +1075,8 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.47 | 2026-06-17 | **Architecture list centralization**: 6 new CONFIG keys (`NEURAL_ARCHITECTURES`, `TREE_ARCHITECTURES`, `MAXPRED_OBJECTIVE_ARCHS`, `ARCH_CSV_ORDER`, `HPO_RETRAIN_EPOCHS`, `FINAL_TRAIN_EPOCHS`). 23 hardcoded architecture lists across 5 files relocated to `chunk_01_config.py`. Replaced lists in `chunk_12_evaluation_evaluator.py` (5 refs), `chunk_18_phase_4_ensemble.py` (8 refs), `chunk_19_phase_5_optimization.py` (1 ref), `chunk_20_pipeline_main.py` (1 ref), `chunk_21_hyperparam_optimizer.py` (3 refs). `ARCH_CSV_ORDER` expanded from 6→9 archs (trees were missing from CSV output). | Single-source-of-truth for architecture groups; zero hardcoded arch lists remain in logic gates |
 | 3.48 | 2026-06-17 | **GIS Iter 7 (Fix 1+2 + arch centralization + CNN/XGBoost root cause fixes)**: Total 14,773s, 9/9 archs trained, no crashes. Fix 1 (XGBoost scale_pos_weight HPO) partially successful — HPO trial used weight=100, val P 0.0867→0.0924, root cause deeper (early stopping). Fix 2 (neural safeguard) fully successful — RNN progressed to HPO (0.5101→0.5275). Architecture list centralization flawless — zero config reference errors. CNN unexpectedly recovered from pathological 0.0000 to 0.5339 (1st place). Best val P CNN 0.5339. 2/9 pass 0.53 filter (Dense 0.5303, CNN 0.5339). Ensemble val P 0.5273 / R 0.7050. Best inf P ever: Dense 0.6739, CNN 0.6695. CNN focal_loss+class_weight conflict diagnosed and fixed (model._is_focal flag). XGBoost root cause diagnosed: missing eval_set+early_stopping_rounds; fix applied (validation_data forwarding, TREE_EARLY_STOPPING_ROUNDS=10). | Fix 1+2 validated; CNN/XGBoost root causes found and fixed; iter8 pending |
 | 3.49 | 2026-06-17 | **Section 4 LIVING RECORD refresh**: Replaced pre-GIS failure records (§4.5-4.7, May 2026) with 18 GIS-era entries across §4.1 Preprocessing (6), §4.2 Model Training (6), §4.3 Strategic Approaches (3), §4.4 False Signals (3). Old records archived to shortmemory.txt under `SPEC.md SECTION 4 ARCHIVE`. Header updated: "STATIC - NEVER CHANGES" → "LIVING RECORD — ARCHIVE TRACEABLE". Subtitle updated to domain-agnostic: "Dataset Classification Ensemble". | Focus Section 4 on GIS-era findings; archive historical records with traceability |
+| 3.50 | 2026-06-18 | **GIS Iter 8 (All 5 fixes) + Fix 4 repair + Fix 5 completion**: Total 18,071s. VAE 0.5409 best val P (reclaims #1). 3/9 pass 0.53 filter (VAE, Dense, CNN). CNN 0.6818 best inf P (new record). Ensemble P 0.6898 / R 0.2917. Fix 3 (CNN focal_loss) **validated** — all 6 NNs selected focal_loss in HPO, no collapse. Fix 4 (XGBoost early stopping) **BROKEN** — early_stopping_rounds passed to .fit() crashes all XGBoost/LightGBM HPO trials. Fix 5 completed — last 2 hardcoded arch lists replaced. Fix 4 repair applied: early_stopping_rounds moved to tree constructors (chunk_11), removed from fit_kwargs (chunk_14), injected into HPO trial params (chunk_21). GIS.md up-revved to v1.7 with §8g Phase C lever catalog. | Fix 3 fully validated; Fix 4 repaired; iter9 pending |
+| 3.51 | 2026-06-18 | **Comprehensive lever audit trail**: Added ~30 per-cycle log lines across 8 files (chunk_05, chunk_12, chunk_14, chunk_18, chunk_19, chunk_20, chunk_XX_feature_analysis_a). Every config lever is now directly verifiable from the .log at the pipeline stage where it takes effect. Startup config dump logs all lever values. Per-arch safeguard summary (1×/arch), early_stopping_rounds + scale_pos_weight source per tree training, class_weight skip reason per NN training, ensemble weighting scheme, winsor bounds at inference with percentiles + clip range, FI method active count. GIS.md §8h catalogs 7 previously undocumented levers (L1–L7). All 10 blind spots closed; .log is now the single source of truth for lever state. | All levers traceable in .log; no new logic or data paths |
 
 ## 3.2 Cross-Reference Guide
 
@@ -1281,7 +1280,7 @@ The original §4.5 (NN Prediction Range Failures), §4.6 (XGBoost Train-Val Gap)
 
 *Document generated: 2026-04-15*  
 *Last updated: 2026-06-17*  
-*Version: 3.49*
+*Version: 3.51*
 
 
 ## PROJECT_LEXICON
