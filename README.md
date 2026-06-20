@@ -2,7 +2,7 @@
 
 **Python 3.12** · **TensorFlow 2.18.1** · **MIT License**  
 
-**Last updated**: 2026-06-17  
+**Last updated**: 2026-06-20  
 **References**: [SPEC.md](SPEC.md) (technical specification) · [GIS.md](GIS.md) (iteration strategy & results)
 
 ## Table of Contents
@@ -22,6 +22,8 @@
 **Vision**: A general-purpose ML framework for imbalanced classification — deploy multiple architectures across any domain, iteratively narrow in on optimal hyperparameter spaces via systematic cost-tiered tuning, and discover which models capture signal from rare events.
 
 **Mission**: An automated ML pipeline that loads market data, engineers temporal features to account for recency bias, optimizes classification thresholds, tunes hyperparameters via Bayesian optimization (Optuna), and ensembles 9 diverse architectures to produce more reliable strength signals. These architectures span gradient-boosted trees (CatBoost, LightGBM, XGBoost) and neural networks (Dense, VAE, CNN, RNN, LSTM, Transformer) — a diversity required by the dataset's extreme class imbalance, where no single model can reliably detect the minority class. Trained and evaluated on historical market data, this pipeline demonstrates the methodology on technical indicators — serving as a reference implementation for the ensemble classification approach.
+
+> **Iter10 Milestone (2026-06-20)**: XGBoost achieved **validation precision 0.9767** — proving the data contains predictive signal and the prior 0.55 ceiling was a threshold artifact. The mission is re-oriented: each architecture is driven toward a per-architecture calibrated prediction threshold replicating XGBoost's result class (high precision, low false positives, reliable predictions). XGBoost is frozen as the reference benchmark. See [GIS.md §1](./GIS.md#1-overview) and [§10 (Freeze Register)](./GIS.md#10-xgboost-freeze-register).
 
 *Disclaimer: This software is for educational and research purposes only. It does not constitute financial advice, investment recommendation, or solicitation to buy or sell securities. Past performance or model outputs do not guarantee future results. Use at your own risk.*
 
@@ -164,6 +166,8 @@ cicd/
 ├── chunk_XX_feature_importance.py      # 6-method feature importance engine
 ├── chunk_XX_phase_feature_analysis_a.py # Phase Xa: Raw feature analysis (prunes raw features only; temporal features not model inputs)
 ├── chunk_XX_phase_feature_analysis_b.py # Phase Xb: Temporal precision gap
+├── archived_models/                    # Frozen model snapshots (see GIS.md §10)
+├── iter10_reference_snapshot/          # Self-contained XGBoost reference (source + deps + verify)
 └── requirements.txt                    # Python dependencies
 ```
 
