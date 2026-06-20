@@ -29,7 +29,7 @@ SPEC.md is a living document for the Dataset Classification Ensemble Pipeline. I
 5. **UPDATE**: If code changed, update Sections 2-3
 6. **RECORD FAILURES**: If strategy failed, add to Section 4 with .log evidence
 
-> **IMPORTANT — Mission Re-orientation**: XGBoost iter10 achieved val P 0.9767, proving the 0.55 ceiling was a threshold artifact. The target is now per-architecture calibrated precision ≥ 0.60. XGBoost is frozen as the reference. See [GIS.md §1](./GIS.md#1-overview) and [§10](./GIS.md#10-xgboost-freeze-register).
+> **IMPORTANT — Mission Re-orientation**: XGBoost iter10 achieved val P 0.9767 (126 TP, 3 FP — see [`pipeline_cpu_iter10.log:LN900`](./pipeline_cpu_iter10.log)), proving the 0.55 ceiling was a threshold artifact. The target is now per-architecture calibrated precision ≥ 0.60. XGBoost is frozen as the reference. See [GIS.md §1](./GIS.md#1-overview) and [§10](./GIS.md#10-xgboost-freeze-register).
 
 ## Quick Lookups
 
