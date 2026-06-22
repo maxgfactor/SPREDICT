@@ -482,8 +482,17 @@ class Evaluator:
                 continue
             
             # Safeguard 2: Reject if positive prediction ratio is too extreme
-            min_pos_ratio = self.config['MIN_POS_PRED_RATIO']
-            max_pos_ratio = self.config['MAX_POS_PRED_RATIO']
+            if arch_name in self.config['TREE_ARCHITECTURES']:
+                sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
+                min_pos_ratio = sklearn_safeguards.get('MIN_POS_PRED_RATIO', self.config['MIN_POS_PRED_RATIO'])
+                max_pos_ratio = sklearn_safeguards.get('MAX_POS_PRED_RATIO', self.config['MAX_POS_PRED_RATIO'])
+            elif arch_name in self.config['NEURAL_ARCHITECTURES']:
+                neural_safeguards = self.config.get('NEURAL_SAFEGUARDS', {})
+                min_pos_ratio = neural_safeguards.get('MIN_POS_PRED_RATIO', self.config['MIN_POS_PRED_RATIO'])
+                max_pos_ratio = neural_safeguards.get('MAX_POS_PRED_RATIO', self.config['MAX_POS_PRED_RATIO'])
+            else:
+                min_pos_ratio = self.config['MIN_POS_PRED_RATIO']
+                max_pos_ratio = self.config['MAX_POS_PRED_RATIO']
             pos_pred_ratio = val_total_positive_preds / len(y_val_binary)
             if pos_pred_ratio < min_pos_ratio or pos_pred_ratio > max_pos_ratio:
                 if self.logger: self.logger.log(f"{arch_tag} [reject] skipping LABEL_THRESHOLD={thresh:.1f}: pos_pred_ratio={pos_pred_ratio:.2%} outside [{min_pos_ratio:.0%}, {max_pos_ratio:.0%}]", 'info')

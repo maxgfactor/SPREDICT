@@ -35,6 +35,11 @@ CONFIG = {
     'PREDICTION_THRESHOLD_MIN': 0.1,  # Start of prediction threshold search
     'PREDICTION_THRESHOLD_MAX': 0.5,  # End of prediction threshold search
     'PREDICTION_THRESHOLD_STEP': 0.05,  # Step size for prediction threshold search
+    # XGBoost precision targeting (independent flag — does not activate PREDICTION_THRESHOLD_SEARCH)
+    'PREDICTION_XGBOOST_PRECISION_TARGETING': True,
+    'PREDICTION_COVERAGE_RATES': [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50],
+    'PREDICTION_TARGET_PRECISION': 0.97,
+    'PREDICTION_MAX_COVERAGE': 0.50,
     
     # ============================================================================
     # FEATURE ENGINEERING CONFIGURATION - Step 4
@@ -97,7 +102,7 @@ CONFIG = {
     'dropout': 0.1,
     
     # Architecture subset — empty list = run all architectures
-    'ACTIVE_ARCHITECTURES': [],
+    'ACTIVE_ARCHITECTURES': ['XGBoost'],
     # Architecture classification groups (used for scaler/safeguard gating)
     'NEURAL_ARCHITECTURES': ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer'],
     'TREE_ARCHITECTURES': ['CatBoost', 'LightGBM', 'XGBoost'],
@@ -107,6 +112,23 @@ CONFIG = {
     'HPO_RETRAIN_EPOCHS': {'Dense': 15, 'VAE': 15, 'CNN': 15},
     'FINAL_TRAIN_EPOCHS': {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20},
     'MIN_ENSEMBLE_SIZE': 5,
+    # XGBoost Freeze (GIS §10) — skip HPO, use iter10 winning params directly
+    'XGBOOST_FROZEN_PARAMS': {
+        'skip_hpo': True,
+        'feature_kept_indices': None,
+        'hyperparams': {
+            'n_estimators': 100,
+            'max_depth': 5,
+            'learning_rate': 0.05,
+            'min_child_weight': 200,
+            'reg_alpha': 0.0,
+            'reg_lambda': 1.0,
+            'subsample': 0.6,
+            'colsample_bytree': 0.7,
+            'gamma': 0.5,
+            'scale_pos_weight': 50,
+        },
+    },
     'INPUT_DIM': 37,
     
     # Hyperparameter Optimization Configuration
@@ -138,6 +160,7 @@ CONFIG = {
         'MIN_PRECISION_OVER_BASELINE': 0.01,  # 1% (relaxed for sklearn)
         'MIN_POSITIVE_PERCENTAGE': 0.001,  # 0.1% (relaxed for sklearn)
         'MIN_POSITIVE_ABSOLUTE': 10,  # 10 (relaxed for sklearn)
+        'MAX_POS_PRED_RATIO': 1.0,  # Disable pos_pred_ratio cap for sklearn (allows L_THRESHOLD=0.0)
     },
     
     # Neural architecture-specific safeguard overrides (May 6, 2026)
@@ -340,6 +363,8 @@ REQUIRED_CONFIG_KEYS = [
     # Imbalance handling (Step 3)
     'DYNAMIC_CLASS_WEIGHTS', 'PREDICTION_THRESHOLD_SEARCH',
     'PREDICTION_THRESHOLD_MIN', 'PREDICTION_THRESHOLD_MAX', 'PREDICTION_THRESHOLD_STEP',
+    'PREDICTION_XGBOOST_PRECISION_TARGETING',
+    'PREDICTION_COVERAGE_RATES', 'PREDICTION_TARGET_PRECISION', 'PREDICTION_MAX_COVERAGE',
     # Feature engineering (Step 4)
     'WINSORIZE_FEATURES', 'WINSORIZE_PERCENTILE_LOW', 'WINSORIZE_PERCENTILE_HIGH',
     'PER_ARCH_WINSORIZE',
@@ -359,7 +384,7 @@ REQUIRED_CONFIG_KEYS = [
     'PERMUTATION_REPEATS', 'SHAP_SAMPLE_SIZE',
     # Additional global configs (defensive registration)
     'FORCE_SAMPLING', 'LOG_VERBOSITY',
-    'ACTIVE_ARCHITECTURES', 'NEURAL_ARCHITECTURES', 'TREE_ARCHITECTURES', 'MAXPRED_OBJECTIVE_ARCHS', 'ARCH_CSV_ORDER', 'HPO_RETRAIN_EPOCHS', 'FINAL_TRAIN_EPOCHS',
+    'ACTIVE_ARCHITECTURES', 'NEURAL_ARCHITECTURES', 'TREE_ARCHITECTURES', 'MAXPRED_OBJECTIVE_ARCHS', 'ARCH_CSV_ORDER', 'HPO_RETRAIN_EPOCHS', 'FINAL_TRAIN_EPOCHS', 'XGBOOST_FROZEN_PARAMS',
     'layers', 'heads', 'dim', 'kernel_size', 'filters', 'lstm_units',
     'MIN_ENSEMBLE_SIZE',
     'USE_FOCAL_LOSS', 'FOCAL_LOSS_ALPHA', 'FOCAL_LOSS_GAMMA',
@@ -390,6 +415,10 @@ CONFIG_TYPES = {
     'PREDICTION_THRESHOLD_MIN': (int, float),
     'PREDICTION_THRESHOLD_MAX': (int, float),
     'PREDICTION_THRESHOLD_STEP': (int, float),
+    'PREDICTION_XGBOOST_PRECISION_TARGETING': bool,
+    'PREDICTION_COVERAGE_RATES': list,
+    'PREDICTION_TARGET_PRECISION': (int, float),
+    'PREDICTION_MAX_COVERAGE': (int, float),
     # Feature engineering (Step 4)
     'WINSORIZE_FEATURES': bool,
     'WINSORIZE_PERCENTILE_LOW': (int, float),
@@ -414,6 +443,7 @@ CONFIG_TYPES = {
     'filters': int,
     'lstm_units': int,
     'ACTIVE_ARCHITECTURES': list,
+    'XGBOOST_FROZEN_PARAMS': dict,
     'NEURAL_ARCHITECTURES': list,
     'TREE_ARCHITECTURES': list,
     'MAXPRED_OBJECTIVE_ARCHS': list,

@@ -275,6 +275,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         arch_kept_indices = []  # Track kept feature indices per architecture (for Phase 5)
         arch_scalers = {}  # Track StandardScaler per NN architecture (for Phase 5 inference)
         final_thresholds = []  # Track final (post-HPO) threshold per architecture
+        final_pred_thresholds = []  # Track prediction threshold per architecture
         
         # Track timing and metrics for summary
         arch_training_times = []  # Time per architecture
@@ -430,6 +431,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 opt_thr_key = round(float(optimal_threshold), 1)
                 opt_kept = threshold_kept_indices.get(opt_thr_key, list(range(X_train.shape[1])))
                 opt_kept = list(opt_kept)
+                
                 X_train_opt = X_train[:, opt_kept]
                 X_val_opt = X_val[:, opt_kept]
                 arch_kept_indices.append(opt_kept)
@@ -1052,47 +1054,74 @@ class Phase4_NeuralEnsemble(BasePhase):
                     self.logger.log(f"[section 5] {arch_tag} [final] [diagnostic] Train " + format_diagnostic_string(train_pred, ""), 'info')
                     self.logger.log(f"[section 5] {arch_tag} [final] [diagnostic] validation   " + format_diagnostic_string(val_pred, ""), 'info')
                 
-                # Search for best prediction threshold if enabled
-                if self.config['PREDICTION_THRESHOLD_SEARCH']:
-                    y_train_binary = (y_train_continuous >= optimal_threshold).astype(int)
+                # XGBoost-specific: coverage-rate sweep for precision targeting
+                if self.config.get('PREDICTION_XGBOOST_PRECISION_TARGETING', False) and arch_name == 'XGBoost':
                     y_val_binary_search = (y_val_continuous >= optimal_threshold).astype(int)
-                    
-                    best_pred_threshold = 0.5
+
+                    coverage_rates = self.config.get('PREDICTION_COVERAGE_RATES',
+                        [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50])
+                    target_precision = self.config.get('PREDICTION_TARGET_PRECISION', 0.97)
+                    max_coverage = self.config.get('PREDICTION_MAX_COVERAGE', 0.50)
+
+                    sorted_preds = np.sort(val_pred.flatten())
+                    n_val = len(sorted_preds)
+
+                    best_pred_threshold = self.config['PREDICTION_THRESHOLD']
                     best_f1 = 0.0
                     search_results = []
-                    
-                    for pred_thresh in np.arange(
-                        self.config['PREDICTION_THRESHOLD_MIN'],
-                        self.config['PREDICTION_THRESHOLD_MAX'] + 0.001,
-                        self.config['PREDICTION_THRESHOLD_STEP']
-                    ):
+                    chosen_rate = None
+
+                    for rate in sorted(coverage_rates):
+                        if rate > max_coverage:
+                            break
+                        k = max(1, int(n_val * (1.0 - rate)))
+                        pred_thresh = sorted_preds[min(k, n_val - 1)]
+
                         val_binary_test = (val_pred >= pred_thresh).astype(int)
+
                         if arch_name in self.config['TREE_ARCHITECTURES']:
                             _sg = self.config['SKLEARN_SAFEGUARDS']
                         elif arch_name in self.config['NEURAL_ARCHITECTURES']:
                             _sg = self.config['NEURAL_SAFEGUARDS']
                         else:
                             _sg = {'MIN_POSITIVE_ABSOLUTE': 100, 'MIN_POSITIVE_PERCENTAGE': 0.01}
-                        _min_pos = max(_sg['MIN_POSITIVE_ABSOLUTE'], int(len(val_pred) * _sg['MIN_POSITIVE_PERCENTAGE']))
+                        _min_pos = max(_sg['MIN_POSITIVE_ABSOLUTE'], int(n_val * _sg['MIN_POSITIVE_PERCENTAGE']))
+
                         if val_binary_test.sum() >= _min_pos:
-                            f1 = self.evaluator.calculate_f1(y_val_binary_search, val_binary_test)
                             precision = self.evaluator.calculate_precision(y_val_binary_search, val_binary_test)
                             recall = self.evaluator.calculate_recall(y_val_binary_search, val_binary_test)
-                            search_results.append((pred_thresh, precision, recall, f1))
+                            f1 = self.evaluator.calculate_f1(y_val_binary_search, val_binary_test)
+                            search_results.append((rate, pred_thresh, precision, recall, f1))
+
                             if f1 > best_f1:
                                 best_f1 = f1
+
+                            if precision >= target_precision and chosen_rate is None:
+                                chosen_rate = rate
                                 best_pred_threshold = pred_thresh
-                    
+
                     if search_results:
-                        self.logger.log(f"   [diagnostic] prediction_threshold_search: tested {len(search_results)} thresholds", 'info')
-                        top_results = sorted(search_results, key=lambda x: x[3], reverse=True)[:3]
-                        for r in top_results:
-                            self.logger.log(f"   [diag]   thresh={r[0]:.2f}: VALIDATION_PRECISION={r[1]:.4f} validation_recall={r[2]:.4f} validation_f1={r[3]:.4f}", 'info')
-                        self.logger.log(f"   [diagnostic] best_prediction_threshold: {best_pred_threshold:.2f} (validation_f1={best_f1:.4f})", 'info')
-                    
+                        self.logger.log(f"   [diagnostic] xgboost_coverage_sweep: tested {len(search_results)} coverage rates", 'info')
+                        for r in search_results[-5:]:
+                            self.logger.log(
+                                f"   [diag]   coverage={r[0]:.4f} thresh={r[1]:.4f}: "
+                                f"precision={r[2]:.4f} recall={r[3]:.4f} f1={r[4]:.4f}", 'info')
+                        if chosen_rate is None:
+                            best_result = max(search_results, key=lambda x: x[4])
+                            best_pred_threshold = best_result[1]
+                            self.logger.log(
+                                f"   [diagnostic] precision_target={target_precision:.2f} not met — "
+                                f"falling back to F1-optimal threshold: {best_pred_threshold:.4f} "
+                                f"(coverage={best_result[0]:.4f}, f1={best_result[4]:.4f})", 'info')
+                        else:
+                            self.logger.log(
+                                f"   [diagnostic] precision_target={target_precision:.2f} met at "
+                                f"coverage={chosen_rate:.4f}, threshold={best_pred_threshold:.4f}", 'info')
+
                     pred_threshold = best_pred_threshold
                 else:
                     pred_threshold = self.config['PREDICTION_THRESHOLD']
+                final_pred_thresholds.append(float(pred_threshold))
                 
                 train_binary = (train_pred >= pred_threshold).astype(int)
                 val_binary = (val_pred >= pred_threshold).astype(int)
@@ -1973,6 +2002,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                     if i < len(optimal_thresholds) and i < len(best_hyperparams_list) and i < len(final_thresholds):
                         metadata = {
                             'optimal_threshold': float(final_thresholds[i]),
+                            'prediction_threshold': float(final_pred_thresholds[i]) if i < len(final_pred_thresholds) else 0.5,
                             'best_hyperparams': best_hyperparams_list[i] if best_hyperparams_list[i] else {},
                             'best_val_precision': float(best_val_precision_list[i]) if i < len(best_val_precision_list) else 0.0,
                             'kept_feature_indices': list(arch_kept_indices[i]) if i < len(arch_kept_indices) else [],

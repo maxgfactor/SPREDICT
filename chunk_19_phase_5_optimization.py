@@ -193,7 +193,7 @@ class Phase5_PredictionOptimization(BasePhase):
             opt_threshold = arch_metadata.get('optimal_threshold', 20.0)
             best_hyperparams = arch_metadata.get('best_hyperparams', {})
             best_val_prec = arch_metadata.get('best_val_precision', 0.0)
-            pred_threshold = self.config['PREDICTION_THRESHOLD']
+            pred_threshold = arch_metadata.get('prediction_threshold', self.config['PREDICTION_THRESHOLD'])
             kept_idx = arch_metadata.get('kept_feature_indices')
             
             # Select features for this architecture's optimal threshold

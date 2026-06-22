@@ -66,6 +66,19 @@ class HyperparameterOptimizer:
         arch_tag = f"[{arch_name.upper()}]"
         if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] Running Bayesian optimization ({self.n_trials} trials)...", 'info')
         
+        # XGBoost freeze gate (GIS §10) — skip HPO, use iter10 winning params
+        frozen_params = self.config.get('XGBOOST_FROZEN_PARAMS', {})
+        if frozen_params.get('skip_hpo', False) and arch_name == 'XGBoost':
+            hyperparams = frozen_params.get('hyperparams', {}) or {}
+            if hyperparams:
+                self.logger.log(f"[section 2] {arch_tag} [frozen] Using iter10 winning hyperparams (skip_hpo=True)", 'info')
+                model = model_builder(hyperparams)
+                trained, _ = train_func(model, X_train, y_train, validation_data=(X_val, y_val))
+                preds = trained.predict(X_val, verbose=0).flatten()
+                binary = (preds >= pred_threshold).astype(int)
+                precision = precision_score(y_val, binary, zero_division=1.0)
+                return hyperparams, trained, precision
+        
         best_model = None
         best_precision = 0.0
         

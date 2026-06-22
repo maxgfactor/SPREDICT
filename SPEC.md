@@ -29,7 +29,7 @@ SPEC.md is a living document for the Dataset Classification Ensemble Pipeline. I
 5. **UPDATE**: If code changed, update Sections 2-3
 6. **RECORD FAILURES**: If strategy failed, add to Section 4 with .log evidence
 
-> **IMPORTANT — Mission Re-orientation**: XGBoost iter10 achieved val P 0.9767 (126 TP, 3 FP — see [`pipeline_cpu_iter10.log:LN900`](./pipeline_cpu_iter10.log)), proving the 0.55 ceiling was a threshold artifact. The target is now per-architecture calibrated precision ≥ 0.60. XGBoost is frozen as the reference. See [GIS.md §1](./GIS.md#1-overview) and [§10](./GIS.md#10-xgboost-freeze-register).
+> **Mission Target**: Each architecture targets per-architecture calibrated precision ≥ 0.60 at maximal recall. See [GIS.md §1](./GIS.md#1-overview).
 
 ## Quick Lookups
 
@@ -1061,7 +1061,7 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.18–3.19 | 2026-06-03–04 | Cross-phase model propagation fix (3 code bugs), consensus voting fix (Bug I/J), min_votes 6→5 | Model carry-forward correctness |
 | 3.20–3.27 | 2026-06-08–09 | Metric log standardization (31 lines), 2 functional error fixes, log cosmetics, config consolidation (Steps 1–2, 89 keys), best-model fallback edge case | Format consistency, config single-source-of-truth |
 | 3.28–3.31 | 2026-06-09–10 | GIS tier docs restructured, config alignment, auto-apply removal, log format standardization, dataset preview, feature stability/diagnostic overhaul, timing bug fix, config dead-key removal (4 keys) | Spec-code sync, cleanup |
-| 3.52 | 2026-06-20 | Re-oriented mission: per-architecture calibrated threshold (XGBoost val P 0.9767 proof). XGBoost frozen. Snapshot created. CNN degeneracy investigation queued. | XGBoost proof changes mission scope |
+| 3.52 | 2026-06-20 | Mission re-oriented: per-architecture calibrated threshold targeting P ≥ 0.60 at max recall. XGBoost freeze deprecated. CNN degeneracy investigation queued. | Mission scope updated |
 | 3.32 | 2026-06-12 | SPEC restructured: stale run results archived to shortmemory, version history consolidated (40→12 entries), HPO search-space evolution comments removed, cross-phase hygiene patterns summarized (details archived), PROJECT_LEXICON G2–G10 moved to shortmemory, empty template tables deleted | SPEC document focus — remove stale/dynamic/duplicative content |
 | 3.33 | 2026-06-12 | GIS info extracted to standalone GIS.md (428 lines). SPEC retains only GIS overview (§2.9) and cross-references. Inline GIS tier evolution notes stripped from config descriptions. §4.7 hyperparameter reconfiguration detail moved to GIS.md §6. | GIS strategy documentation — standalone reference, cleaner SPEC |
 | 3.34 | 2026-06-12 | §2.8 stale alpha/loss_function values synced across all 9 search spaces, runtime tags added to all params, footnotes added (FOCAL_LOSS_CONFIG override, XGBoost scale_pos_weight removal) | Spec-code alignment after GIS extraction |
