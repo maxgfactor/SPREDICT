@@ -192,6 +192,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     
     # Use focal loss if configured for this architecture (per-arch config)
     arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('VAE', {})
+    default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('VAE', 0.0005)
     if arch_config.get('enabled', False):
         try:
             from chunk_11_models_sklearn import FocalLoss
@@ -199,7 +200,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
             gamma = arch_config.get('gamma', 1.0)
             clf_loss = FocalLoss(alpha=alpha, gamma=gamma)
             optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config.get('learning_rate', 0.0001)
+                learning_rate=config.get('learning_rate', default_lr)
             )
             model.compile(
                 optimizer=optimizer,
@@ -208,7 +209,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
             )
         except Exception as e:
             optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config.get('learning_rate', 0.0005)
+                learning_rate=config.get('learning_rate', default_lr)
             )
             model.compile(
                 optimizer=optimizer,
@@ -217,7 +218,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
             )
     else:
         optimizer = tf.keras.optimizers.Adam(
-            learning_rate=config.get('learning_rate', 0.0005)
+            learning_rate=config.get('learning_rate', default_lr)
         )
         model.compile(
             optimizer=optimizer,
@@ -275,6 +276,7 @@ def build_cnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     
     # Use focal loss if configured for this architecture (per-arch config)
     arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('CNN', {})
+    default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('CNN', 0.001)
     if arch_config.get('enabled', False):
         try:
             from chunk_11_models_sklearn import FocalLoss
@@ -282,18 +284,18 @@ def build_cnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
             gamma = arch_config.get('gamma', 1.0)
             clf_loss = FocalLoss(alpha=alpha, gamma=gamma)
             optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config.get('learning_rate', 0.0001)
+                learning_rate=config.get('learning_rate', default_lr)
             )
             model.compile(optimizer=optimizer, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
         except Exception as e:
             # Fallback to standard loss if focal loss fails
             optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config.get('learning_rate', 0.0001)
+                learning_rate=config.get('learning_rate', default_lr)
             )
             model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
     else:
         optimizer = tf.keras.optimizers.Adam(
-            learning_rate=config.get('learning_rate', 0.0001)
+            learning_rate=config.get('learning_rate', default_lr)
         )
         model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
     
@@ -360,6 +362,7 @@ def build_cnn_feature_extractor(config: Dict, input_dim: int, loss: str = 'binar
         
         # Use focal loss if configured for this architecture (per-arch config)
         arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('CNN', {})
+        default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('CNN', 0.001)
         if arch_config.get('enabled', False):
             try:
                 from chunk_11_models_sklearn import FocalLoss
@@ -367,18 +370,18 @@ def build_cnn_feature_extractor(config: Dict, input_dim: int, loss: str = 'binar
                 gamma = arch_config.get('gamma', 1.0)
                 clf_loss = FocalLoss(alpha=alpha, gamma=gamma)
                 optimizer = tf.keras.optimizers.Adam(
-                    learning_rate=config.get('learning_rate', 0.0001)
+                    learning_rate=config.get('learning_rate', default_lr)
                 )
                 model.compile(optimizer=optimizer, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
             except Exception as e:
                 # Fallback to standard loss if focal loss fails
                 optimizer = tf.keras.optimizers.Adam(
-                    learning_rate=config.get('learning_rate', 0.0001)
+                    learning_rate=config.get('learning_rate', default_lr)
                 )
                 model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
         else:
             optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config.get('learning_rate', 0.0001)
+                learning_rate=config.get('learning_rate', default_lr)
             )
             model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
         
@@ -402,10 +405,11 @@ def build_rnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     Returns:
         Compiled RNN model
     """
+    default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('RNN', 0.001)
     units = config.get('units', 64)
     num_layers = config.get('layers', 2)
     dropout = config.get('dropout', 0.1)
-    learning_rate = config.get('learning_rate', 0.001)
+    learning_rate = config.get('learning_rate', default_lr)
     
     inputs = tf.keras.Input(shape=(input_dim, 1))
     
@@ -452,11 +456,12 @@ def build_lstm_model(config: Dict, input_dim: int, loss: str = 'binary_crossentr
     Returns:
         Compiled LSTM model
     """
+    default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('LSTM', 0.001)
     lstm_units = config.get('lstm_units', 64)
     num_layers = config.get('layers', 2)
     bidirectional = config.get('bidirectional', False)
     dropout = config.get('dropout', 0.1)
-    learning_rate = config.get('learning_rate', 0.0001)
+    learning_rate = config.get('learning_rate', default_lr)
     
     inputs = tf.keras.Input(shape=(input_dim, 1))
     
@@ -520,7 +525,8 @@ def build_dense_model(config: Dict, input_dim: int, loss: str = 'binary_crossent
     outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 
     model = tf.keras.Model(inputs, outputs)
-    opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', 0.001))
+    default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('Dense', 0.001)
+    opt = tf.keras.optimizers.Adam(learning_rate=config.get('learning_rate', default_lr))
 
     arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('Dense', {})
     if arch_config.get('enabled', False):

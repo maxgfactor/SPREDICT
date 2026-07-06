@@ -38,6 +38,19 @@ from chunk_14_models_trainer import ModelTrainer
 from chunk_13_state_manager import StateManager
 from chunk_10_models_ensemble import create_precision_ensemble, validate_ensemble_output
 from chunk_21_hyperparam_optimizer import HyperparameterOptimizer
+from chunk_XX_phase_backward_elimination import resolve_feature_indices as _resolve_be_indices
+
+
+def _get_arch_feature_dict(threshold_kept_indices, arch_name):
+    if not threshold_kept_indices:
+        return {}
+    first_val = list(threshold_kept_indices.values())[0]
+    if isinstance(first_val, dict):
+        return threshold_kept_indices.get(arch_name, {})
+    return threshold_kept_indices
+
+
+
 from chunk_04_utils_metrics import (
     inverse_log_transform,
     get_prediction_percentiles,
@@ -233,9 +246,8 @@ class Phase4_NeuralEnsemble(BasePhase):
                 status = "[ok]" if train_pos > 0 and val_pos > 0 else "[warning]"
                 self.logger.log(f"   LABEL_THRESHOLD={label_threshold:>5.1f}: train_positives={train_pos:,} ({train_pct:>5.2f}%) | validation_positives={val_pos:,} ({val_pct:>5.2f}%) {status}", 'info')
         
-        # Define architectures to train (Discovery sequence - May 11, 2026)
-        # Gradient Boosting first (CatBoost→LightGBM→XGBoost) for feature insights
-        # Then Neural Networks (Dense→CNN→RNN→LSTM→VAE→Transformer) per discovery sequence
+        # Define architectures to train — NNs first (CNN→RNN→LSTM→Dense→VAE→Transformer),
+        # then trees (CatBoost→LightGBM→XGBoost) per NEURAL_ARCHITECTURES + TREE_ARCHITECTURES
         # ACTIVE_ARCHITECTURES: empty list = run all; set subset (e.g. ['Dense','CNN']) for fast validation
         architectures = self.config.get('ACTIVE_ARCHITECTURES', []) or (
             self.config.get('NEURAL_ARCHITECTURES', []) + self.config.get('TREE_ARCHITECTURES', [])
@@ -247,12 +259,9 @@ class Phase4_NeuralEnsemble(BasePhase):
         thresholds = np.arange(first_threshold, last_threshold + threshold_step, threshold_step)
         self.logger.log(f"[section 1] [baseline] Testing {len(thresholds)} thresholds per architecture ({first_threshold} to {last_threshold}, step {threshold_step})", 'info')
         
-        # Get first threshold's kept features for baseline diagnostic
+        # Get first threshold's kept features for baseline diagnostic (flat lookup, before per-arch loop)
         first_thr_key = round(float(thresholds[0]), 1)
-        first_kept = threshold_kept_indices.get(first_thr_key)
-        if first_kept is None:
-            first_kept = list(range(X.shape[1]))
-        first_kept = list(first_kept)
+        first_kept = threshold_kept_indices.get(first_thr_key, range(X.shape[1]))
         
         # ============================================================================
         # SECTION 2: Threshold Optimization Loop
@@ -323,11 +332,13 @@ class Phase4_NeuralEnsemble(BasePhase):
                     arch_winsor_bounds.append({'low': np.array([]), 'high': np.array([])})
                 
                 # === BASELINE DIAGNOSTICS: Get prediction stats before any threshold optimization ===
+                # Resolve BE indices now that arch_name is in scope
+                first_kept = list(_resolve_be_indices(threshold_kept_indices, arch_name, first_thr_key, range(X.shape[1])))
                 baseline_y_train = (y_train_continuous >= thresholds[0]).astype(int)  # Use first threshold
                 X_train_bl = X_train[:, first_kept]
                 X_val_bl = X_val[:, first_kept]
                 baseline_model = self.model_trainer.build_architecture(arch_name, X_train_bl.shape[1], y_train_continuous)
-                baseline_model, _ = self.model_trainer.train_model(baseline_model, X_train_bl, baseline_y_train, epochs=1, verbose=0)
+                baseline_model, _ = self.model_trainer.train_model(baseline_model, X_train_bl, baseline_y_train, epochs=self.config['BASELINE_EPOCHS'], verbose=0)
                 if baseline_model is None:
                     raise ValueError(f"[fatal] {arch_name} baseline_model is None after training")
                 baseline_pred = baseline_model.predict(X_val_bl, verbose=0).flatten()
@@ -411,11 +422,12 @@ class Phase4_NeuralEnsemble(BasePhase):
                 self.logger.log(f"[section 1] {arch_tag} [baseline] prediction_binary_split={pred_threshold:.2f} {hpo_str}", 'info')
                 
                 # Run threshold optimization
+                arch_feature_dict = _get_arch_feature_dict(threshold_kept_indices, arch_name)
                 optimal_threshold, best_prec, all_results, threshold_opt_model = self.evaluator.find_optimal_threshold(
                     X_train, y_train_continuous, X_val, y_val_continuous,
                     None, self.model_trainer, arch_name,
                     thresholds, patience=5,
-                    threshold_feature_indices=threshold_kept_indices
+                    threshold_feature_indices=arch_feature_dict
                 )
                 if threshold_opt_model is None:
                     self.logger.log(f"[warning] {arch_name}: threshold_opt_model is None after find_optimal_threshold — falling back to last-trained model", 'warning')
@@ -429,7 +441,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                 
                 # Slice X to optimal threshold's feature set for remaining sections (HPO, POST-HPO, Final)
                 opt_thr_key = round(float(optimal_threshold), 1)
-                opt_kept = threshold_kept_indices.get(opt_thr_key, list(range(X_train.shape[1])))
+                opt_kept = _resolve_be_indices(threshold_kept_indices, arch_name, opt_thr_key, range(X_train.shape[1]))
                 opt_kept = list(opt_kept)
                 
                 X_train_opt = X_train[:, opt_kept]
@@ -617,6 +629,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                         if self.config['LOG_VERBOSITY'] >= 2:
                             self.logger.log(f"   [diagnostic-hyperparameter_optimization] " + format_diagnostic_string(hpo_val_pred, ""), 'info')
                         
+                        # Save config threshold before F1 search (for fair HPO comparison below)
+                        eval_pred_threshold = self.config['PREDICTION_THRESHOLD']
+                        
                         # Search for best prediction threshold if enabled
                         if self.config['PREDICTION_THRESHOLD_SEARCH']:
                             best_pred_threshold = 0.5
@@ -644,9 +659,9 @@ class Phase4_NeuralEnsemble(BasePhase):
                         else:
                             pred_threshold = self.config['PREDICTION_THRESHOLD']
                         
-                        # Use prediction threshold 0.5 for fair comparison with Section 2
-                        # (Section 2 uses 0.5, so using searched threshold would be unfair)
-                        hpo_val_binary = (hpo_val_pred >= pred_threshold).astype(int)
+                        # Use config prediction threshold for fair comparison with Section 2
+                        # (Section 2 uses config threshold, so using F1-searched threshold would be unfair)
+                        hpo_val_binary = (hpo_val_pred >= eval_pred_threshold).astype(int)
                         hpo_val_precision = self.evaluator.calculate_precision(y_val_binarized, hpo_val_binary)
                         hpo_cm = self.evaluator.calculate_confusion_matrix(y_val_binarized, hpo_val_binary)
                         hpo_TP = hpo_cm['TP']
@@ -805,12 +820,15 @@ class Phase4_NeuralEnsemble(BasePhase):
                     
                     # Use the trained model (either HPO-improved or pre-HPO)
                     # POST-hpo: use original HPO model WITHOUT retraining for each threshold
+                    # Use training threshold's fixed feature subset for ALL post-HPO tests
+                    # (model weights are tied to opt_kept — cannot change features per threshold)
+                    post_hpo_feature_map = {round(float(t), 1): opt_kept for t in thresholds}
                     post_hpo_thresh, post_hpo_prec, post_hpo_results, _ = \
                         self.evaluator.find_optimal_threshold(
                             X_train, y_train_continuous, X_val, y_val_continuous,
                             model_for_post_hpo, self.model_trainer, arch_name,
-                            thresholds, patience=999, retrain_model=False,
-                            threshold_feature_indices=threshold_kept_indices
+                            thresholds, patience=self.config['POST_HPO_THRESHOLD_PATIENCE'], retrain_model=False,
+                            threshold_feature_indices=post_hpo_feature_map
                         )
                     
                     # Compare HPO model threshold vs post-HPO threshold precision
@@ -825,7 +843,7 @@ class Phase4_NeuralEnsemble(BasePhase):
                         # with threshold_feature_indices[post_hpo_thresh], so
                         # Section 5 must use the same feature set
                         new_thr_key = round(float(final_threshold), 1)
-                        new_kept = threshold_kept_indices.get(new_thr_key, list(range(X_train.shape[1])))
+                        new_kept = _resolve_be_indices(threshold_kept_indices, arch_name, new_thr_key, range(X_train.shape[1]))
                         new_kept = list(new_kept)
                         if new_kept != opt_kept:
                             X_train_opt = X_train[:, new_kept]
@@ -1466,7 +1484,7 @@ class Phase4_NeuralEnsemble(BasePhase):
         
         # Kept features for first trained model (diagnostics use unpruned X otherwise)
         first_opt_key = round(float(optimal_thresholds[0]), 1) if optimal_thresholds else None
-        first_kept_for_diag = list(threshold_kept_indices.get(first_opt_key, range(X.shape[1]))) if first_opt_key is not None else list(range(X.shape[1]))
+        first_kept_for_diag = list(_resolve_be_indices(threshold_kept_indices, arch_names[0], first_opt_key, range(X.shape[1]))) if (first_opt_key is not None and arch_names) else list(range(X.shape[1]))
         
         # Item 1: Feature Stability Analysis
         if self.config['FEATURE_STABILITY_ANALYSIS']:

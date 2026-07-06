@@ -617,7 +617,7 @@ See [README.md §System Context](./README.md#system-context) for system context 
 | **Date Format** | YYYYMMDD (integer or string) |
 | **Target Column** | Binary strength signal indicator (0/1) or continuous change value |
 | **Dataset Size** | Approximately 6.7 million records |
-| **Features** | 16-21 features (after pruning) |
+| **Features** | 34 (pre-elimination, all features kept) |
 | **Date Range** | 2022-03-01 to 2025-10-23 |
 | **Class Imbalance** | 259:1 ratio (0.4% signal) |
 
@@ -630,10 +630,11 @@ See [README.md §System Context](./README.md#system-context) for system context 
 | **Duplicate Handling** | Remove duplicate records |
 | **Date Validation** | Reject invalid date formats |
 
-### Pruned Features
+### Feature Pruning
 
-The following features were removed during preprocessing:
-- `Market_Cap`, `Perf_Month`, `ATR`, `Perf_Week`, `Rel_Volume`
+Static percentile pruning is disabled (`FEATURE_PRUNE_PERCENTILE: 0` — all 34 features kept). Per-architecture backward elimination (Phase BE, see §2.4) is the active feature selection mechanism.
+
+Features historically pruned under Phase Xa (pre-iter21): `Market_Cap`, `Perf_Month`, `ATR`, `Perf_Week`, `Rel_Volume` — now retained for architecture-specific selection.
 
 ### Observed Data Characteristics
 
@@ -651,7 +652,8 @@ The following features were removed during preprocessing:
 | Phase 1 | Data loading, preprocessing, split (train/val/inference) | X_train, X_val, X_inference in context | → See Section 1.1 |
 | Phase 2 | Threshold optimization | ❌ Removed - merged into Phase 4 | N/A |
 | Phase 3 | Temporal weighting generation | temporal_weights in context | → See Section 1.1 |
-| Phase Xa | Feature importance (3 thresholds, per-threshold pruning) | threshold_kept_indices dict, all 24 features kept in context['X'] | → Feature analysis |
+| Phase Xa | Feature importance (3 thresholds, per-threshold pruning) | threshold_kept_indices dict, all 34 features kept in context['X'] | → Feature analysis |
+| Phase BE | Backward elimination (per-architecture proxy-based feature ranking + iterative pruning) | per-arch `{arch: {threshold: kept_indices}}` dict | → §8i |
 | Phase 4a | Threshold optimization | optimal_threshold per architecture | → See Section 1.1.2, Section 1.3 |
 | Phase 4b | Hyperparameter optimization (Optuna) | best_hyperparams per architecture | → See Section 1.1.3, Section 1.3 |
 | Phase 4c | Ensemble creation | Combined predictions | → See Section 1.1.4, Section 1.3 |
@@ -739,10 +741,10 @@ Each architecture uses a different objective function during Bayesian optimizati
 |--------------|-------------------|-----------|
 | CatBoost, LightGBM, XGBoost | precision | Standard — well-calibrated trees |
 | VAE | precision | Standard — falls through to else branch |
-| Dense | precision * log(TP + 1) | Balances precision and TP count |
-| Archs in `MAXPRED_OBJECTIVE_ARCHS` | precision * MaxPred | Push predictions toward 0.5 threshold |
+| Dense, CNN, RNN, LSTM, Transformer | precision * log(TP + 1) | Balances precision and TP count |
+| CatBoost, LightGBM, XGBoost, VAE | precision | Standard — well-calibrated or falls through |
 
-Implementation details: Dense uses `balanced_score = precision * np.log(tp + 1 + 1e-6)`; archs in `MAXPRED_OBJECTIVE_ARCHS` use `balanced_score = precision * max_pred` (RNN additionally rejects trials with TP < 100); tree archs and VAE use `balanced_score = precision`.
+Implementation details: All 5 NNs (Dense, CNN, RNN, LSTM, Transformer) use `balanced_score = precision * np.log(tp + 1 + 1e-6)` (RNN additionally rejects trials with TP < 100); tree archs and VAE use `balanced_score = precision`. `MAXPRED_OBJECTIVE_ARCHS` config key removed in iter29 — objective now unified.
 
 ### Architecture Classification Groups
 
@@ -752,12 +754,11 @@ All architecture grouping is centralized in `chunk_01_config.py` as CONFIG keys:
 |-----|-------|---------|
 | `NEURAL_ARCHITECTURES` | `['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']` | StandardScaler gating, neural safeguard lookup |
 | `TREE_ARCHITECTURES` | `['CatBoost', 'LightGBM', 'XGBoost']` | Sklearn safeguard lookup |
-| `MAXPRED_OBJECTIVE_ARCHS` | `['CNN', 'RNN', 'LSTM', 'Transformer']` | HPO objective: precision * MaxPred |
 | `ARCH_CSV_ORDER` | All 9 archs in display order | metrics_summary.csv row ordering |
 | `HPO_RETRAIN_EPOCHS` | `{'Dense':15, 'VAE':15, 'CNN':15}` | Fast HPO threshold retrain epochs (fallback=3) |
 | `FINAL_TRAIN_EPOCHS` | `{'Dense':15, 'VAE':30, 'CNN':20, 'LSTM':20, 'Transformer':20}` | Final training epochs (fallback=3) |
 
-Adding a new architecture to a group = 1 config change, not N scattered list updates. All 6 keys registered in `CONFIG_KEYS` and `CONFIG_TYPES`.
+Adding a new architecture to a group = 1 config change, not N scattered list updates. All 5 keys registered in `CONFIG_KEYS` and `CONFIG_TYPES`.
 
 ### Cross-Phase Variable Hygiene
 
@@ -988,6 +989,18 @@ The tables below document which HPO parameters have the strongest effect on each
 | VAL_SPLIT_PERCENTAGE | 0.30 | 30% validation split |
 | TOP_DATES_HELD_OUT | 2 | Newest dates to hold out |
 
+### Backward Elimination Configuration (Phase BE)
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| BACKWARD_ELIMINATION_ENABLED | False | Master toggle — opt-in during rollout; False passes through flat threshold_kept_indices |
+| BE_PROXY_TRAIN_EPOCHS | 10 | Training epochs for proxy models (quick, relative ranking only) |
+| BE_PROXY_ENSEMBLE_SIZE | 1 | Number of proxy models per architecture (1 = single model, >1 = ensemble vote) |
+| BE_STRATIFY_SPLIT_RATIO | 0.20 | Validation fraction for elimination loop (stratified by binary label) |
+| BE_ELIMINATION_STEPS | 0.50 | Fraction of bottom features to drop each iteration (0.50 = halve each step) |
+| BE_MIN_FEATURES | 10 | Safety floor — never prune below this many features |
+| BE_TOLERANCE | 0.01 | Maximum fractional val precision drop allowed per elimination step |
+
 ### Temporal Precision Gap Analysis (Phase Xb)
 
 | Parameter | Value | Description |
@@ -1082,6 +1095,7 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.49 | 2026-06-17 | **Section 4 LIVING RECORD refresh**: Replaced pre-GIS failure records (§4.5-4.7, May 2026) with 18 GIS-era entries across §4.1 Preprocessing (6), §4.2 Model Training (6), §4.3 Strategic Approaches (3), §4.4 False Signals (3). Old records archived to shortmemory.txt under `SPEC.md SECTION 4 ARCHIVE`. Header updated: "STATIC - NEVER CHANGES" → "LIVING RECORD — ARCHIVE TRACEABLE". Subtitle updated to domain-agnostic: "Dataset Classification Ensemble". | Focus Section 4 on GIS-era findings; archive historical records with traceability |
 | 3.50 | 2026-06-18 | **GIS Iter 8 (All 5 fixes) + Fix 4 repair + Fix 5 completion**: Total 18,071s. VAE 0.5409 best val P (reclaims #1). 3/9 pass 0.53 filter (VAE, Dense, CNN). CNN 0.6818 best inf P (new record). Ensemble P 0.6898 / R 0.2917. Fix 3 (CNN focal_loss) **validated** — all 6 NNs selected focal_loss in HPO, no collapse. Fix 4 (XGBoost early stopping) **BROKEN** — early_stopping_rounds passed to .fit() crashes all XGBoost/LightGBM HPO trials. Fix 5 completed — last 2 hardcoded arch lists replaced. Fix 4 repair applied: early_stopping_rounds moved to tree constructors (chunk_11), removed from fit_kwargs (chunk_14), injected into HPO trial params (chunk_21). GIS.md up-revved to v1.7 with §8g Phase C lever catalog. | Fix 3 fully validated; Fix 4 repaired; iter9 pending |
 | 3.51 | 2026-06-18 | **Comprehensive lever audit trail**: Added ~30 per-cycle log lines across 8 files (chunk_05, chunk_12, chunk_14, chunk_18, chunk_19, chunk_20, chunk_XX_feature_analysis_a). Every config lever is now directly verifiable from the .log at the pipeline stage where it takes effect. Startup config dump logs all lever values. Per-arch safeguard summary (1×/arch), early_stopping_rounds + scale_pos_weight source per tree training, class_weight skip reason per NN training, ensemble weighting scheme, winsor bounds at inference with percentiles + clip range, FI method active count. GIS.md §8h catalogs 7 previously undocumented levers (L1–L7). All 10 blind spots closed; .log is now the single source of truth for lever state. | All levers traceable in .log; no new logic or data paths |
+| 3.52 | 2026-07-06 | **Iter28 run + MAXPRED_OBJECTIVE_ARCHS removed**: iter28 validated F3 epoch fixes — 7 PASS / 2 FAIL, LSTM/Transformer collapse root cause found (Transformer single-token no-op, HPO objective `return precision` for 4/5 NNs, post-HPO retraining skipped). `MAXPRED_OBJECTIVE_ARCHS` config key deleted — HPO objective unified to `return balanced_score` for all archs. See GIS.md §5/§8i. | Dead code cleanup; objective unified; iter29 pending |
 
 ## 3.2 Cross-Reference Guide
 
@@ -1284,8 +1298,8 @@ This section records failed approaches discovered during GIS iterations. Entries
 The original §4.5 (NN Prediction Range Failures), §4.6 (XGBoost Train-Val Gap), §4.7 (Phase 5 Crash), and GIS Hyperparameter Reconfiguration (May 2026) have been archived to `shortmemory.txt` under `SPEC.md SECTION 4 ARCHIVE` to keep this section focused on findings from the GIS iteration era (iter1–7 onward).
 
 *Document generated: 2026-04-15*  
-*Last updated: 2026-06-17*  
-*Version: 3.51*
+*Last updated: 2026-07-06*  
+*Version: 3.52*
 
 
 ## PROJECT_LEXICON

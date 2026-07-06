@@ -181,9 +181,9 @@ class DataManager:
                 print(f"   [feature] Log-transformed {transformed_count} skewed features: columns {skewed_indices}")
         
         # Step 4b: Add ratio features (must be after winsorization and log-transform)
+        new_features = []
+        added_names = []
         if self.config['ADD_RATIO_FEATURES'] and self._feature_columns:
-            new_features = []
-            added_names = []
             feature_names = self._feature_columns
             
             try:
@@ -208,12 +208,64 @@ class DataManager:
                     new_features.append(ratio_3)
                     added_names.append('Price_to_52W_Low')
                 
+                if 'Price' in feature_names and 'Prev_Close' in feature_names:
+                    price_idx = feature_names.index('Price')
+                    prev_close_idx = feature_names.index('Prev_Close')
+                    ratio_4 = X[:, price_idx] / (X[:, prev_close_idx] + 1e-8)
+                    new_features.append(ratio_4)
+                    added_names.append('Price_to_Prev_Close')
+                
+                if 'SMA50' in feature_names and 'SMA200' in feature_names:
+                    sma50_idx = feature_names.index('SMA50')
+                    sma200_idx = feature_names.index('SMA200')
+                    ratio_5 = X[:, sma50_idx] / (X[:, sma200_idx] + 1e-8)
+                    new_features.append(ratio_5)
+                    added_names.append('SMA50_to_SMA200')
+                
                 if new_features:
                     X = np.column_stack([X] + new_features)
                     self._feature_columns.extend(added_names)
                     print(f"   [feature] Added {len(new_features)} ratio features")
             except Exception as e:
                 print(f"   [feature] Warning: Could not add ratio features: {e}")
+        
+        # Step 4d: Log-transform ratio features in X (extreme skew 200+ tamed)
+        if self.config.get('LOG_TRANSFORM_RATIO_FEATURES', False) and new_features:
+            n_ratios = len(new_features)
+            for i in range(n_ratios):
+                X[:, -(n_ratios - i)] = np.sign(X[:, -(n_ratios - i)]) * np.log1p(np.abs(X[:, -(n_ratios - i)]))
+            print(f"   [feature] Log-transformed {n_ratios} ratio features")
+        
+        # Step 4e: Polynomial interaction features
+        interactions = self.config.get('POLY_INTERACTIONS', [])
+        if interactions:
+            raw_names = self._feature_columns
+            inter_features = []
+            inter_names = []
+            for (name_i, name_j) in interactions:
+                if name_i in raw_names and name_j in raw_names:
+                    idx_i = raw_names.index(name_i)
+                    idx_j = raw_names.index(name_j)
+                    inter_features.append(X[:, idx_i] * X[:, idx_j])
+                    inter_names.append(f'{name_i}_x_{name_j}')
+            if inter_features:
+                X = np.column_stack([X] + inter_features)
+                self._feature_columns.extend(inter_names)
+                print(f"   [feature] Added {len(inter_features)} polynomial interaction features")
+        
+        # Step 4f: Binned RSI zones (oversold/neutral/overbought)
+        if self.config.get('BIN_RSI', False) and 'RSI_14' in self._feature_columns:
+            rsi_idx = self._feature_columns.index('RSI_14')
+            rsi = X[:, rsi_idx]
+            bin_features = []
+            bin_names = []
+            for lo, hi, label in [(0, 30, 'oversold'), (30, 50, 'neutral_low'), (50, 70, 'neutral_high'), (70, 101, 'overbought')]:
+                bin_features.append(((rsi >= lo) & (rsi < hi)).astype(float))
+                bin_names.append(f'RSI_{label}')
+            if bin_features:
+                X = np.column_stack([X] + bin_features)
+                self._feature_columns.extend(bin_names)
+                print("   [feature] Added 4 binned RSI zone features")
         
         if X.shape[1] > original_features:
             print(f"   [feature] Total features: {original_features} -> {X.shape[1]}")

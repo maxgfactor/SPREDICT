@@ -101,6 +101,7 @@ class HyperparameterOptimizer:
                 self.trial_count = 0
                 self.best_trial_model = None
                 self.best_trial_precision = 0.0
+                self.best_trial_balanced_score = 0.0
                 self.best_trial_recall = 0.0
                 self.best_trial_auc = 0.0
                 self.best_trial_f1 = 0.0
@@ -172,15 +173,10 @@ class HyperparameterOptimizer:
                         if self.logger: self.logger.log(f"   TRIAL {trial_number}/{self.total_trials}: REJECTED - true_positives={tp} < 100 (min true_positives threshold)", 'warning')
                         return 0.0
                     
-                    # TP-balanced objective for Dense: maximize precision * log(TP + 1)
-                    # This balances high precision with reasonable TP counts (Apr 4, 2026)
-                    if self.arch_name == 'Dense':
-                        # Use log-scaled TP to prevent precision from dominating
+                    # TP-balanced objective for all NNs: maximize precision * log(TP + 1)
+                    # This balances high precision with reasonable TP counts
+                    if self.arch_name in ['Dense', 'CNN', 'RNN', 'LSTM', 'Transformer']:
                         balanced_score = precision * np.log(tp + 1 + 1e-6)
-                    elif self.arch_name in self.config['MAXPRED_OBJECTIVE_ARCHS']:
-                        # MaxPred-prioritized objective for CNN/RNN/LSTM/Transformer: maximize precision * MaxPred
-                        # All have 100% TP=0 or collapse risk, so we optimize for pushing predictions toward threshold (Apr 4, 2026)
-                        balanced_score = precision * max_pred
                     else:
                         balanced_score = precision
                     
@@ -218,102 +214,36 @@ class HyperparameterOptimizer:
                         if self.logger: self.logger.log(f"[section 2] {arch_tag} [hyperparameter_optimization search] TRIAL {trial_number}/{self.total_trials}: {params_str}", 'info')
                     
                     # Track best model - use architecture-specific balanced score (Apr 4, 2026)
-                    if self.arch_name == 'Dense':
-                        if balanced_score > getattr(self, 'best_trial_balanced_score', 0):
-                            self.best_trial_balanced_score = balanced_score
-                            self.best_trial_precision = precision
-                            self.best_trial_recall = recall
-                            self.best_trial_auc = auc
-                            self.best_trial_f1 = f1
-                            self.best_trial_tp = tp
-                            self.best_trial_fp = fp
-                            self.best_trial_tn = tn
-                            self.best_trial_fn = fn
-                            self.best_trial_max_pred = max_pred
-                            self.best_trial_mean_pred = mean_pred
-                            self.best_trial_std_pred = std_pred
-                            self.best_trial_pct_above = pct_above
-                            self.best_trial_spec = trial_spec
-                            self.best_trial_fpr = trial_fpr
-                            self.best_trial_f2 = trial_f2
-                            self.best_trial_mcc = trial_mcc
-                            self.best_trial_prauc = trial_prauc
-                            self.best_trial_balacc = trial_balacc
-                            self.best_trial_brier = trial_brier
-                            self.best_trial_kappa = trial_kappa
-                            self.best_trial_informedness = trial_informedness
-                            self.best_trial_markedness = trial_markedness
-                            self.best_trial_gini = trial_gini
-                            self.best_trial_opt_thresh = trial_opt_thresh
-                            self.best_trial_params = hyperparams
-                            self.best_trial_model = trained
-                    elif self.arch_name in self.config['MAXPRED_OBJECTIVE_ARCHS']:
-                        # For CNN/RNN/LSTM/Transformer: track by precision * MaxPred
-                        if balanced_score > getattr(self, 'best_trial_balanced_score', 0):
-                            self.best_trial_balanced_score = balanced_score
-                            self.best_trial_precision = precision
-                            self.best_trial_recall = recall
-                            self.best_trial_auc = auc
-                            self.best_trial_f1 = f1
-                            self.best_trial_tp = tp
-                            self.best_trial_fp = fp
-                            self.best_trial_tn = tn
-                            self.best_trial_fn = fn
-                            self.best_trial_max_pred = max_pred
-                            self.best_trial_mean_pred = mean_pred
-                            self.best_trial_std_pred = std_pred
-                            self.best_trial_pct_above = pct_above
-                            self.best_trial_spec = trial_spec
-                            self.best_trial_fpr = trial_fpr
-                            self.best_trial_f2 = trial_f2
-                            self.best_trial_mcc = trial_mcc
-                            self.best_trial_prauc = trial_prauc
-                            self.best_trial_balacc = trial_balacc
-                            self.best_trial_brier = trial_brier
-                            self.best_trial_kappa = trial_kappa
-                            self.best_trial_informedness = trial_informedness
-                            self.best_trial_markedness = trial_markedness
-                            self.best_trial_gini = trial_gini
-                            self.best_trial_opt_thresh = trial_opt_thresh
-                            self.best_trial_params = hyperparams
-                            self.best_trial_model = trained
-                    else:
-                        if precision > self.best_trial_precision:
-                            self.best_trial_precision = precision
-                            self.best_trial_recall = recall
-                            self.best_trial_auc = auc
-                            self.best_trial_f1 = f1
-                            self.best_trial_tp = tp
-                            self.best_trial_fp = fp
-                            self.best_trial_tn = tn
-                            self.best_trial_fn = fn
-                            self.best_trial_max_pred = max_pred
-                            self.best_trial_mean_pred = mean_pred
-                            self.best_trial_std_pred = std_pred
-                            self.best_trial_pct_above = pct_above
-                            self.best_trial_spec = trial_spec
-                            self.best_trial_fpr = trial_fpr
-                            self.best_trial_f2 = trial_f2
-                            self.best_trial_mcc = trial_mcc
-                            self.best_trial_prauc = trial_prauc
-                            self.best_trial_balacc = trial_balacc
-                            self.best_trial_brier = trial_brier
-                            self.best_trial_kappa = trial_kappa
-                            self.best_trial_informedness = trial_informedness
-                            self.best_trial_markedness = trial_markedness
-                            self.best_trial_gini = trial_gini
-                            self.best_trial_opt_thresh = trial_opt_thresh
-                            self.best_trial_params = hyperparams
-                            self.best_trial_model = trained
+                    if balanced_score > getattr(self, 'best_trial_balanced_score', 0):
+                        self.best_trial_balanced_score = balanced_score
+                        self.best_trial_precision = precision
+                        self.best_trial_recall = recall
+                        self.best_trial_auc = auc
+                        self.best_trial_f1 = f1
+                        self.best_trial_tp = tp
+                        self.best_trial_fp = fp
+                        self.best_trial_tn = tn
+                        self.best_trial_fn = fn
+                        self.best_trial_max_pred = max_pred
+                        self.best_trial_mean_pred = mean_pred
+                        self.best_trial_std_pred = std_pred
+                        self.best_trial_pct_above = pct_above
+                        self.best_trial_spec = trial_spec
+                        self.best_trial_fpr = trial_fpr
+                        self.best_trial_f2 = trial_f2
+                        self.best_trial_mcc = trial_mcc
+                        self.best_trial_prauc = trial_prauc
+                        self.best_trial_balacc = trial_balacc
+                        self.best_trial_brier = trial_brier
+                        self.best_trial_kappa = trial_kappa
+                        self.best_trial_informedness = trial_informedness
+                        self.best_trial_markedness = trial_markedness
+                        self.best_trial_gini = trial_gini
+                        self.best_trial_opt_thresh = trial_opt_thresh
+                        self.best_trial_params = hyperparams
+                        self.best_trial_model = trained
                     
-                    # Return architecture-specific score (Apr 4, 2026)
-                    # Dense: precision * log(TP+1), CNN/RNN/LSTM/Transformer: precision * MaxPred, others: precision
-                    if self.arch_name == 'Dense':
-                        return balanced_score
-                    elif self.arch_name in self.config['MAXPRED_OBJECTIVE_ARCHS']:
-                        return balanced_score
-                    else:
-                        return precision
+                    return balanced_score
                 except Exception as e:
                     if self.logger: self.logger.log(f"      TRIAL {trial_number} failed: {e}", 'warning')
                     return 0.0

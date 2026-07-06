@@ -40,7 +40,7 @@ class Evaluator:
             Precision score (0.0 if fails)
         """
         try:
-            return precision_score(y_true, y_pred, average='binary', zero_division=1.0)
+            return precision_score(y_true, y_pred, average='binary', zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"precision_score failed: {e}", 'warning')
             # Fallback to manual calculation
@@ -64,7 +64,7 @@ class Evaluator:
             Recall score (0.0 if fails)
         """
         try:
-            return recall_score(y_true, y_pred, average='binary', zero_division=1.0)
+            return recall_score(y_true, y_pred, average='binary', zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"recall_score failed: {e}", 'warning')
             return 0.0
@@ -81,7 +81,7 @@ class Evaluator:
             F1 score (0.0 if fails)
         """
         try:
-            return f1_score(y_true, y_pred, average='binary', zero_division=1.0)
+            return f1_score(y_true, y_pred, average='binary', zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"f1_score failed: {e}", 'warning')
             return 0.0
@@ -108,7 +108,7 @@ class Evaluator:
         """Calculate F2 score (beta=2)"""
         try:
             from sklearn.metrics import fbeta_score
-            return fbeta_score(y_true, y_pred, beta=2.0, zero_division=1.0)
+            return fbeta_score(y_true, y_pred, beta=2.0, zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"f2_score calculation failed: {e}", 'warning')
             return 0.0
@@ -590,19 +590,19 @@ class Evaluator:
             metrics['accuracy'] = 0.0
         
         try:
-            metrics['precision'] = precision_score(y_true, y_pred, zero_division=1.0)
+            metrics['precision'] = precision_score(y_true, y_pred, zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"precision_score failed: {e}", 'warning')
             metrics['precision'] = 0.0
         
         try:
-            metrics['recall'] = recall_score(y_true, y_pred, zero_division=1.0)
+            metrics['recall'] = recall_score(y_true, y_pred, zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"recall_score failed: {e}", 'warning')
             metrics['recall'] = 0.0
         
         try:
-            metrics['f1'] = f1_score(y_true, y_pred, zero_division=1.0)
+            metrics['f1'] = f1_score(y_true, y_pred, zero_division=self.config['ZERO_DIVISION_MODE'])
         except Exception as e:
             if self.logger: self.logger.log(f"f1_score failed: {e}", 'warning')
             metrics['f1'] = 0.0

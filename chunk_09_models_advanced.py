@@ -111,6 +111,7 @@ def build_transformer_model(config: Dict, input_dim: int, loss: str = 'binary_cr
         
         # Use focal loss if configured for this architecture (per-arch config)
         arch_config = config.get('FOCAL_LOSS_CONFIG', {}).get('Transformer', {})
+        default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('Transformer', 0.0001)
         if arch_config.get('enabled', False):
             try:
                 from chunk_11_models_sklearn import FocalLoss
@@ -118,18 +119,18 @@ def build_transformer_model(config: Dict, input_dim: int, loss: str = 'binary_cr
                 gamma = arch_config.get('gamma', 1.0)
                 clf_loss = FocalLoss(alpha=alpha, gamma=gamma)
                 optimizer = tf.keras.optimizers.Adam(
-                    learning_rate=config.get('learning_rate', 0.0001)
+                    learning_rate=config.get('learning_rate', default_lr)
                 )
                 model.compile(optimizer=optimizer, loss=clf_loss, metrics=['accuracy', tf.keras.metrics.Precision()])
             except Exception as e:
                 # Fallback to standard loss if focal loss fails
                 optimizer = tf.keras.optimizers.Adam(
-                    learning_rate=config.get('learning_rate', 0.0001)
+                    learning_rate=config.get('learning_rate', default_lr)
                 )
                 model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
         else:
             optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config.get('learning_rate', 0.0001)
+                learning_rate=config.get('learning_rate', default_lr)
             )
             model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy', tf.keras.metrics.Precision()])
         

@@ -287,7 +287,7 @@ def build_xgboost_model(config: Dict, input_dim: int, y_train: np.ndarray = None
     Args:
         config: Configuration dictionary
         input_dim: Input dimension (unused but kept for API consistency)
-        y_train: Training labels for dynamic class weight calculation (optional)
+        y_train: Kept for API compatibility (scale_pos_weight set dynamically in trainer per threshold)
         
     Returns:
         SklearnModelWrapper wrapping XGBClassifier
@@ -297,21 +297,12 @@ def build_xgboost_model(config: Dict, input_dim: int, y_train: np.ndarray = None
     except ImportError:
         raise ImportError("XGBoost not installed. Install with: pip install xgboost")
     
-    # HPO-provided scale_pos_weight takes priority over dynamic calculation
-    hpo_spw = config.get('scale_pos_weight')
-    if hpo_spw is not None:
-        scale_pos_weight = hpo_spw
-    elif y_train is not None and config.get('DYNAMIC_CLASS_WEIGHTS', False):
-        scale_pos_weight = calculate_dynamic_class_weight(y_train, config)
-    else:
-        scale_pos_weight = config.get('scale_pos_weight', 259)
-    
     model = xgb.XGBClassifier(
         objective='binary:logistic',
         n_estimators=config.get('n_estimators', 1000),  # Increased from 500
         max_depth=config.get('max_depth', 8),  # Increased from 5
         learning_rate=config.get('learning_rate', 0.03),  # Decreased from 0.05
-        scale_pos_weight=scale_pos_weight,
+        scale_pos_weight=1,  # Overridden per training call in _train_sklearn_model
         min_child_weight=config.get('min_child_weight', 1),
         subsample=config.get('subsample', 0.8),
         colsample_bytree=config.get('colsample_bytree', 0.8),

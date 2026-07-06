@@ -2,7 +2,7 @@
 
 **Python 3.12** · **TensorFlow 2.18.1** · **MIT License**  
 
-**Last updated**: 2026-06-20  
+**Last updated**: 2026-06-22  
 **References**: [SPEC.md](SPEC.md) (technical specification) · [GIS.md](GIS.md) (iteration strategy & results)
 
 ## Table of Contents
@@ -49,7 +49,7 @@ Each architecture reveals different dataset characteristics:
 |-----------|-------|
 | Dataset size | ~6.7 million records |
 | Class imbalance | 259:1 ratio (0.4% signal) |
-| Features | 16–21 after pruning |
+| Features | 34 (pre-elimination, all features kept) |
 | Date range | 2022-03-01 to 2025-10-23 |
 | Input format | CSV with headers, date format YYYYMMDD |
 
@@ -87,24 +87,24 @@ pip install -r requirements.txt
 ## Pipeline Architecture
 
 ```
-          Phase 1  -->  Phase 3  -->  Phase 4  -->  Phase 5
-          Setup         Temporal       Training/    Inference &
-                        Segmentation     Validation  Evaluation
-                        & Weighting
-                                       |
-                                       +-- 4a. Threshold Search
-                                       +-- 4b. HyperParameter Optimization (HPO)
-                                       +-- 4c. Post-HPO Threshold Search/Re-Evaluation
-                                       +-- 4d. Ensemble Assembly
-                                       +-- 4e. Model Persistence
-                                                       |
-                                                       +-- Load saved models
-                                                       +-- Run inference on newest date
-                                                       +-- Per-arch metrics
-                                                       +-- Best architecture selection
+           Phase 1  -->  Phase 3  -->  Phase Xa -->  Phase BE  -->  Phase 4  -->  Phase 5
+           Setup         Temporal       Feature       Backward       Training/    Inference &
+                         Segmentation   Importance    Elimination    Validation    Evaluation
+                         & Weighting    & Pruning     (per-arch)     & Ensemble
+                                        |
+                                        +-- 4a. Threshold Search
+                                        +-- 4b. HyperParameter Optimization (HPO)
+                                        +-- 4c. Post-HPO Threshold Search/Re-Evaluation
+                                        +-- 4d. Ensemble Assembly
+                                        +-- 4e. Model Persistence
+                                                        |
+                                                        +-- Load saved models
+                                                        +-- Run inference on newest date
+                                                        +-- Per-arch metrics
+                                                        +-- Best architecture selection
 
-          Input: CSV  -->  Output: X, y, dates
-                             Output: Predictions, metrics, saved models
+           Input: CSV  -->  Output: X, y, dates
+                              Output: Predictions, metrics, saved models
 ```
 
 **Architecture groups**: Gradient boosting models (CatBoost, LightGBM, XGBoost) handle imbalance natively and produce well-calibrated probabilities. Neural networks (CNN, RNN, LSTM, Dense, VAE, Transformer) use focal loss and require feature normalization.
@@ -115,6 +115,8 @@ pip install -r requirements.txt
 |-------|-------------|-------------|-------------|
 | Phase 1 | Data loading, preprocessing | X, y (continuous), dates | chunk_16_phase_1_setup.py |
 | Phase 3 | Temporal segmentation + weighting | temporal_weights, date segments | chunk_17_phase_3_temporal.py |
+| Phase Xa | Feature importance + pruning | threshold_kept_indices, all 34 kept | chunk_XX_phase_feature_analysis_a.py |
+| Phase BE | Per-architecture backward elimination | `{arch: {threshold: kept_indices}}` | chunk_XX_phase_backward_elimination.py |
 | Phase 4a | Threshold Search | optimal_threshold per architecture | chunk_18_phase_4_ensemble.py |
 | Phase 4b | HyperParameter Optimization | best_hyperparams per architecture | chunk_21_hyperparam_optimizer.py |
 | Phase 4c | Post-HPO Threshold Search/Re-Evaluation | Refined threshold per architecture | chunk_18_phase_4_ensemble.py |
@@ -163,6 +165,7 @@ cicd/
 ├── chunk_22_model_loader.py            # Model loading for predictions
 ├── chunk_XX_feature_importance.py      # 6-method feature importance engine
 ├── chunk_XX_phase_feature_analysis_a.py # Phase Xa: Raw feature analysis (prunes raw features only; temporal features not model inputs)
+├── chunk_XX_phase_backward_elimination.py # Phase BE: Per-arch feature elimination
 ├── chunk_XX_phase_feature_analysis_b.py # Phase Xb: Temporal precision gap
 ├── archived_models/                    # Frozen model snapshots (see GIS.md §10)
 └── requirements.txt                    # Python dependencies

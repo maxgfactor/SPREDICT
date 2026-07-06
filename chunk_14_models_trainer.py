@@ -350,6 +350,15 @@ class ModelTrainer:
             fit_kwargs['verbose'] = False
             if hasattr(model_wrapper, 'sklearn_model') and hasattr(model_wrapper.sklearn_model, 'set_params'):
                 model_wrapper.sklearn_model.set_params(early_stopping_rounds=esr)
+        # Dynamic scale_pos_weight for XGBoost (threshold-dependent — recalculated per training call)
+        if hasattr(model_wrapper, 'sklearn_model') and 'XGB' in type(model_wrapper.sklearn_model).__name__:
+            pos = np.sum(y == 1)
+            neg = np.sum(y == 0)
+            if pos > 0:
+                spw = neg / pos
+            else:
+                spw = 1.0
+            model_wrapper.sklearn_model.set_params(scale_pos_weight=spw)
         model_wrapper.fit(X, y, **fit_kwargs)
         
         # Log tree model params for lever audit

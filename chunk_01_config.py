@@ -23,7 +23,7 @@ CONFIG = {
     'TARGET_TYPE': 'continuous',  # Continuous targets (price changes) for stock analysis
     'LOG_TRANSFORM_TARGET': False,  # Disabled (May 5, 2026) - use raw ChangeY values, restore April 8 behavior
     'TARGET_COLUMN_INDEX': -1,  # Auto-detect target column
-    'TEMPORAL_MULTIPLIER': 9.0,
+    'TEMPORAL_MULTIPLIER': 3.0,
     'LOG_VERBOSITY': 2,
     'AUGMENTATION_MAX_SAMPLES': 50000,
     
@@ -38,7 +38,7 @@ CONFIG = {
     # XGBoost precision targeting (independent flag — does not activate PREDICTION_THRESHOLD_SEARCH)
     'PREDICTION_XGBOOST_PRECISION_TARGETING': True,
     'PREDICTION_COVERAGE_RATES': [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50],
-    'PREDICTION_TARGET_PRECISION': 0.97,
+    'PREDICTION_TARGET_PRECISION': 0.60,
     'PREDICTION_MAX_COVERAGE': 0.50,
     
     # ============================================================================
@@ -56,11 +56,19 @@ CONFIG = {
         'Transformer':  {'low': 3, 'high': 95},
         'CatBoost':  {'low': 1, 'high': 99},
         'LightGBM':  {'low': 1, 'high': 99},
-        'XGBoost':  {'low': 1, 'high': 99},
+        'XGBoost':  {'low': 3, 'high': 97},
     },
     'ADD_RATIO_FEATURES': True,  # Create ratio features
     'LOG_TRANSFORM_FEATURES': True,  # Apply log1p to skewed features
-    'HIGHLY_SKEWED_FEATURES': [0, 1, 4, 5],  # A3 reverted — log1p transforms re-enabled
+    'HIGHLY_SKEWED_FEATURES': [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20],  # Log1p all skewed features (excludes Ticker_id=6, RSI_14=17)
+    'LOG_TRANSFORM_RATIO_FEATURES': True,  # Log1p ratio features after computation (extreme skew 200+)
+    'POLY_INTERACTIONS': [
+        ('52W_Low', 'SMA20'),              # rank#1 × rank#6
+        ('Change', 'Volume'),               # rank#3 × rank#8
+        ('Price_to_52W_High', 'Perf_Week'), # rank#1 × rank#5
+        ('52W_Low', 'Price_to_Prev_Close'), # rank#2 × rank#7
+    ],
+    'BIN_RSI': True,  # Discretize RSI_14 into 4 zones (oversold/neutral/overbought)
     
     # ============================================================================
     # DIAGNOSTICS AND VALIDATION - New Features (Items 1, 2, 4)
@@ -82,13 +90,15 @@ CONFIG = {
     # LABEL thresholds for binarizing y (NOT prediction thresholds). y_binary = (y >= thresh).
     'FIRST_THRESHOLD': 20.0,
     'LAST_THRESHOLD': 0.0,
-    'THRESHOLD_STEP': -10.0,  # 3 thresholds: 20, 10, 0
+    'THRESHOLD_STEP': -5.0,  # 5 thresholds: 20, 15, 10, 5, 0
     
     # PREDICTION THRESHOLD (used to convert model outputs to binary):
     # - Model outputs probabilities (0-1) from model.predict()
     # - Binary predictions: (predictions >= 0.5).astype(int)
     # - This is the STANDARD threshold for probability outputs
     'PREDICTION_THRESHOLD': 0.5,  # Threshold for converting predictions to binary
+    'ZERO_DIVISION_MODE': 0,  # sklearn zero_division: 0=honest (TP=0→0.0), 1=hide (TP=0→1.0)
+    'BASELINE_EPOCHS': 3,  # Epochs for section 1 baseline (was 1 — ensures meaningful predictions at high label thresholds)
     
     # Model Architecture
     'latent_dim': 32,
@@ -101,20 +111,30 @@ CONFIG = {
     'lstm_units': 32,
     'dropout': 0.1,
     
+    # Per-architecture default learning rates (used for baseline, threshold search, and fallback):
+    # These should align with the FLOOR of each architecture's HPO search space.
+    'DEFAULT_LEARNING_RATES': {
+        'VAE': 0.0005,
+        'CNN': 0.001,       # was 0.0001 — matches HPO floor
+        'RNN': 0.001,
+        'LSTM': 0.001,      # was 0.0001 — matches HPO floor and RNN
+        'Dense': 0.001,
+        'Transformer': 0.0001,  # Transformer HPO range is [0.00005, 0.0002]
+    },
+    
     # Architecture subset — empty list = run all architectures
-    'ACTIVE_ARCHITECTURES': ['XGBoost'],
+    'ACTIVE_ARCHITECTURES': [],
     # Architecture classification groups (used for scaler/safeguard gating)
     'NEURAL_ARCHITECTURES': ['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer'],
     'TREE_ARCHITECTURES': ['CatBoost', 'LightGBM', 'XGBoost'],
-    'MAXPRED_OBJECTIVE_ARCHS': ['CNN', 'RNN', 'LSTM', 'Transformer'],
     'ARCH_CSV_ORDER': ['CatBoost', 'LightGBM', 'XGBoost', 'VAE', 'Dense', 'CNN', 'RNN', 'LSTM', 'Transformer'],
     # Per-architecture epoch overrides (two contexts: fast HPO retrain vs final training)
-    'HPO_RETRAIN_EPOCHS': {'Dense': 15, 'VAE': 15, 'CNN': 15},
-    'FINAL_TRAIN_EPOCHS': {'Dense': 15, 'VAE': 30, 'CNN': 20, 'LSTM': 20, 'Transformer': 20},
+    'HPO_RETRAIN_EPOCHS': {'Dense': 15, 'VAE': 15, 'CNN': 15, 'RNN': 15, 'LSTM': 15, 'Transformer': 15},
+    'FINAL_TRAIN_EPOCHS': {'Dense': 15, 'VAE': 30, 'CNN': 20, 'RNN': 20, 'LSTM': 20, 'Transformer': 20},
     'MIN_ENSEMBLE_SIZE': 5,
     # XGBoost Freeze (GIS §10) — skip HPO, use iter10 winning params directly
     'XGBOOST_FROZEN_PARAMS': {
-        'skip_hpo': True,
+        'skip_hpo': False,
         'feature_kept_indices': None,
         'hyperparams': {
             'n_estimators': 100,
@@ -126,7 +146,6 @@ CONFIG = {
             'subsample': 0.6,
             'colsample_bytree': 0.7,
             'gamma': 0.5,
-            'scale_pos_weight': 50,
         },
     },
     'INPUT_DIM': 37,
@@ -176,6 +195,7 @@ CONFIG = {
     # Post-HPO Threshold Search (Apr 5, 2026)
     # Run a second threshold search AFTER HPO to find optimal threshold for HPO model
     'ENABLE_POST_HPO_THRESHOLD_SEARCH': True,
+    'POST_HPO_THRESHOLD_PATIENCE': 999,  # No early stopping during post-HPO threshold sweep (999 ≈ unlimited)
     
     # Focal Loss Configuration (for precision-focused training)
     'USE_FOCAL_LOSS': False,  # Global default (disabled for safety - use per-arch config below)
@@ -216,7 +236,7 @@ CONFIG = {
         'ablation': True,
     },
     'FEATURE_ANALYSIS_SAMPLE_SIZE': 100000,  # Subsample for faster analysis
-    'FEATURE_PRUNE_PERCENTILE': 20,  # Drop bottom N% features by importance
+    'FEATURE_PRUNE_PERCENTILE': 0,  # Keep all features — let XGBoost split-select
     'FEATURE_ANALYSIS_REPORT_PATH': './feature_importance_report.txt',  # Output path
     
     # Feature importance analysis internals (moved from CONFIG_FEATURE_ANALYSIS)
@@ -260,7 +280,6 @@ CONFIG = {
             'subsample': [0.6, 0.7, 0.8],       # keep
             'colsample_bytree': [0.5, 0.7, 1.0],  # NEW — feature subsampling
             'gamma': [0, 0.1, 0.5],             # NEW — min split loss reduction
-            'scale_pos_weight': [1, 10, 50, 100, 259],  # Restored — HPO now controls this (2a fix)
         },
         # Iteration 2: Dense (MaxPred max 1.0 but all thresholds rejected)
         'Dense': {
@@ -339,13 +358,22 @@ CONFIG = {
     },
 
     # Ensemble Configuration (REVISED - March 2026)
-    'ENSEMBLE_MIN_PRECISION': 0.53,  # Architecture must have val_precision > 0.53 (GIS Tier 3 — tighter ensemble filter)
+    'ENSEMBLE_MIN_PRECISION': 0.50,  # Architecture must have val_precision > 0.50 (was 0.53 — relaxed to include RNN 0.5290, LightGBM 0.5246)
     'ENSEMBLE_WEIGHTING': 'uniform',  # Uniform averaging (GIS Tier 1 — prevents CatBoost dominance)
     'FALLBACK_ARCHITECTURE': 'VAE',  # Highest val precision (P=0.5416, GIS Tier 1)
     # Temporal Precision Gap Analysis (Phase Xb)
     'TEMPORAL_GAP_N_DAYS': 3,        # Number of unique dates in each tail (overrides FRACTION if > 0)
     'TEMPORAL_GAP_TAIL_FRACTION': 0.33,  # Fraction fallback if N_DAYS <= 0
     'TREE_EARLY_STOPPING_ROUNDS': 10,  # Early stopping patience for XGBoost/LightGBM/CatBoost
+
+    # Backward Elimination Configuration (Phase BE)
+    'BACKWARD_ELIMINATION_ENABLED': True,  # Master toggle — enabled for iter23
+    'BE_PROXY_TRAIN_EPOCHS': 10,            # Training epochs for proxy models
+    'BE_PROXY_ENSEMBLE_SIZE': 1,            # Proxy ensemble size (1=single, >1=ensemble vote)
+    'BE_STRATIFY_SPLIT_RATIO': 0.20,        # Validation fraction for elimination loop
+    'BE_ELIMINATION_STEPS': 0.50,           # Fraction of bottom features to drop each iteration
+    'BE_MIN_FEATURES': 10,                  # Safety floor — never prune below N features
+    'BE_TOLERANCE': 0.01,                   # Max fractional val precision drop per step
 }
 
 # Required configuration keys for validation
@@ -354,7 +382,7 @@ REQUIRED_CONFIG_KEYS = [
     'TARGET_TYPE', 'LOG_TRANSFORM_TARGET',
     'TARGET_COLUMN_INDEX', 'INPUT_DIM', 'AUGMENTATION_MAX_SAMPLES',
     'latent_dim', 'units', 'dropout',
-    'FIRST_THRESHOLD', 'LAST_THRESHOLD', 'THRESHOLD_STEP', 'PREDICTION_THRESHOLD',
+    'FIRST_THRESHOLD', 'LAST_THRESHOLD', 'THRESHOLD_STEP', 'PREDICTION_THRESHOLD', 'ZERO_DIVISION_MODE', 'BASELINE_EPOCHS',
     'ENABLE_HYPERPARAM_OPTIMIZATION', 'HYPERPARAM_OPTIMIZATION_EPOCHS', 'HYPERPARAM_OPTIMIZATION_TRIALS',
     'HPO_TARGET_PRECISION', 'HPO_CONTINUE_UNTIL_TARGET', 'HPO_STAGNATION_THRESHOLD',
     # Ensemble configuration
@@ -369,6 +397,7 @@ REQUIRED_CONFIG_KEYS = [
     'WINSORIZE_FEATURES', 'WINSORIZE_PERCENTILE_LOW', 'WINSORIZE_PERCENTILE_HIGH',
     'PER_ARCH_WINSORIZE',
     'ADD_RATIO_FEATURES', 'LOG_TRANSFORM_FEATURES', 'HIGHLY_SKEWED_FEATURES',
+    'LOG_TRANSFORM_RATIO_FEATURES', 'POLY_INTERACTIONS', 'BIN_RSI',
     # Model, path, temporal, split keys (defensive coverage)
     'MODELS_PATH', 'SAVE_TRAINED_MODELS', 'TEMPORAL_MULTIPLIER',
     'VAL_SPLIT_PERCENTAGE',
@@ -384,16 +413,24 @@ REQUIRED_CONFIG_KEYS = [
     'PERMUTATION_REPEATS', 'SHAP_SAMPLE_SIZE',
     # Additional global configs (defensive registration)
     'FORCE_SAMPLING', 'LOG_VERBOSITY',
-    'ACTIVE_ARCHITECTURES', 'NEURAL_ARCHITECTURES', 'TREE_ARCHITECTURES', 'MAXPRED_OBJECTIVE_ARCHS', 'ARCH_CSV_ORDER', 'HPO_RETRAIN_EPOCHS', 'FINAL_TRAIN_EPOCHS', 'XGBOOST_FROZEN_PARAMS',
+    'ACTIVE_ARCHITECTURES', 'NEURAL_ARCHITECTURES', 'TREE_ARCHITECTURES', 'ARCH_CSV_ORDER', 'HPO_RETRAIN_EPOCHS', 'FINAL_TRAIN_EPOCHS', 'XGBOOST_FROZEN_PARAMS',
     'layers', 'heads', 'dim', 'kernel_size', 'filters', 'lstm_units',
     'MIN_ENSEMBLE_SIZE',
     'USE_FOCAL_LOSS', 'FOCAL_LOSS_ALPHA', 'FOCAL_LOSS_GAMMA',
     'MIN_PRECISION_OVER_BASELINE', 'MIN_POS_PRED_RATIO', 'MAX_POS_PRED_RATIO',
     'SKLEARN_SAFEGUARDS', 'NEURAL_SAFEGUARDS',
-    'ENABLE_POST_HPO_THRESHOLD_SEARCH', 'TOP_DATES_HELD_OUT',
+    'ENABLE_POST_HPO_THRESHOLD_SEARCH', 'POST_HPO_THRESHOLD_PATIENCE', 'TOP_DATES_HELD_OUT',
     'HYPERPARAM_SEARCH_SPACE',
     'TEMPORAL_GAP_N_DAYS', 'TEMPORAL_GAP_TAIL_FRACTION',
     'TREE_EARLY_STOPPING_ROUNDS',
+    # Backward Elimination (Phase BE)
+    'BACKWARD_ELIMINATION_ENABLED',
+    'BE_PROXY_TRAIN_EPOCHS',
+    'BE_PROXY_ENSEMBLE_SIZE',
+    'BE_STRATIFY_SPLIT_RATIO',
+    'BE_ELIMINATION_STEPS',
+    'BE_MIN_FEATURES',
+    'BE_TOLERANCE',
 ]
 
 # Configuration key types for validation
@@ -427,6 +464,9 @@ CONFIG_TYPES = {
     'ADD_RATIO_FEATURES': bool,
     'LOG_TRANSFORM_FEATURES': bool,
     'HIGHLY_SKEWED_FEATURES': list,
+    'LOG_TRANSFORM_RATIO_FEATURES': bool,
+    'POLY_INTERACTIONS': list,
+    'BIN_RSI': bool,
     # Diagnostics and validation (Items 1, 2, 4)
     'FEATURE_STABILITY_ANALYSIS': bool,
     'TRACK_INFERENCE_LATENCY': bool,
@@ -446,7 +486,6 @@ CONFIG_TYPES = {
     'XGBOOST_FROZEN_PARAMS': dict,
     'NEURAL_ARCHITECTURES': list,
     'TREE_ARCHITECTURES': list,
-    'MAXPRED_OBJECTIVE_ARCHS': list,
     'ARCH_CSV_ORDER': list,
     'HPO_RETRAIN_EPOCHS': dict,
     'FINAL_TRAIN_EPOCHS': dict,
@@ -457,6 +496,8 @@ CONFIG_TYPES = {
     'LAST_THRESHOLD': (int, float),
     'THRESHOLD_STEP': (int, float),
     'PREDICTION_THRESHOLD': (int, float),
+    'ZERO_DIVISION_MODE': int,
+    'BASELINE_EPOCHS': int,
     'ENABLE_HYPERPARAM_OPTIMIZATION': bool,
     'HYPERPARAM_OPTIMIZATION_EPOCHS': int,
     'HYPERPARAM_OPTIMIZATION_TRIALS': int,
@@ -494,11 +535,20 @@ CONFIG_TYPES = {
     'SKLEARN_SAFEGUARDS': dict,
     'NEURAL_SAFEGUARDS': dict,
     'ENABLE_POST_HPO_THRESHOLD_SEARCH': bool,
+    'POST_HPO_THRESHOLD_PATIENCE': int,
     'TOP_DATES_HELD_OUT': int,
     'HYPERPARAM_SEARCH_SPACE': dict,
     'TEMPORAL_GAP_N_DAYS': int,
     'TEMPORAL_GAP_TAIL_FRACTION': float,
     'TREE_EARLY_STOPPING_ROUNDS': int,
+    # Backward Elimination (Phase BE)
+    'BACKWARD_ELIMINATION_ENABLED': bool,
+    'BE_PROXY_TRAIN_EPOCHS': int,
+    'BE_PROXY_ENSEMBLE_SIZE': int,
+    'BE_STRATIFY_SPLIT_RATIO': (int, float),
+    'BE_ELIMINATION_STEPS': (int, float),
+    'BE_MIN_FEATURES': int,
+    'BE_TOLERANCE': (int, float),
 }
 
 

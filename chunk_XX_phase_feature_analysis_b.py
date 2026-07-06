@@ -50,7 +50,8 @@ class PhaseXb_TemporalCorrelation(phase_base.BasePhase):
             context['phaseXb_complete'] = True
             return context
         
-        label_threshold = self.config['FIRST_THRESHOLD']
+        opt_thresholds = context.get('optimal_thresholds', [self.config['FIRST_THRESHOLD']])
+        label_threshold = float(opt_thresholds[0]) if opt_thresholds else self.config['FIRST_THRESHOLD']
         pred_threshold = self.config['PREDICTION_THRESHOLD']
         
         # PRIORITY 1 FIX: Validate and Re-derive Dimensions (May 7, 2026)

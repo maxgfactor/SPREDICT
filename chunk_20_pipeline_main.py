@@ -30,6 +30,7 @@ from chunk_18_phase_4_ensemble import Phase4_NeuralEnsemble, validate_phase4_out
 from chunk_19_phase_5_optimization import Phase5_PredictionOptimization, validate_phase5_output
 from chunk_XX_phase_feature_analysis_a import PhaseXa_FeatureAnalysis
 from chunk_XX_phase_feature_analysis_b import PhaseXb_TemporalCorrelation
+from chunk_XX_phase_backward_elimination import PhaseBE_BackwardElimination
 
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
@@ -165,6 +166,7 @@ class PipelineOrchestrator:
             ('Pipeline Setup', Phase1_PipelineSetup, validate_phase1_output),
             ('Temporal Weighting', Phase3_TemporalWeighting, validate_phase3_output),
             ('Phase Xa: Raw Feature Importance', PhaseXa_FeatureAnalysis, None),
+            ('Phase BE: Backward Elimination', PhaseBE_BackwardElimination, None),
             ('Neural Ensemble', Phase4_NeuralEnsemble, validate_phase4_output),
             ('Phase Xb: Temporal Precision Gap', PhaseXb_TemporalCorrelation, None),
             ('Prediction Optimization', Phase5_PredictionOptimization, validate_phase5_output),
