@@ -78,8 +78,8 @@ def build_transformer_model(config: Dict, input_dim: int, loss: str = 'binary_cr
         
         inputs = tf.keras.Input(shape=(input_dim,))
         
-        embeddings = tf.keras.layers.Dense(dim)(inputs)
-        x = tf.keras.layers.Reshape((1, dim))(embeddings)
+        x = tf.keras.layers.Reshape((input_dim, 1))(inputs)
+        x = tf.keras.layers.Dense(dim)(x)
         
         for _ in range(num_layers):
             attn_output = tf.keras.layers.MultiHeadAttention(

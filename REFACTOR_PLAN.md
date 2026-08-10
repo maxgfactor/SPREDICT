@@ -1,8 +1,22 @@
 # Pipeline Refactoring Plan
 
-**Goal**: Reverse-engineer the existing 24-file / ~12,000-line stock prediction pipeline into 9 focused files (~5,800 lines) that produce **identical** log output, preserve every feature toggle, and make the architecture immediately readable.
+**Goal**: Reverse-engineer the existing 24-file / ~12,000-line stock prediction pipeline into 9 focused files (~5,600 lines) that produce **identical** log output, preserve every feature toggle, and make the architecture immediately readable.
 
 **Method**: Every log line in `pipeline_cpu_iter38.log` maps to specific code. Each new file is designed so that a developer reading the log output can find the exact code that produced it.
+
+---
+
+## Execution Decisions (2026-08-07)
+
+Locked decisions governing this refactor run:
+
+- **Parity reference**: `pipeline_cpu_iter38.log` (2,491 lines). All log-parity checks target this log.
+- **Git / branching (§10)**: Skipped for this run. The pipeline is refactored into new files on the current tree; the branch fan-out strategy is deferred.
+- **Testing**: The user performs end-to-end testing and the log-parity diff. The refactorer runs only static checks (import, syntax, line count, structural asserts).
+- **Original chunk files**: Untouched. The refactor only creates 9 new files alongside; deletion/retirement of chunk files is the user's responsibility.
+- **`BasePhase.validate_context()`**: Implemented (see §3.7 Section 1).
+- **`INPUT_DIM` / `BE_PROXY_ENSEMBLE_SIZE`**: Retained but inert — never read, kept to match the iter38 config dict.
+- **Source-verified reconciliation (2026-08-07)**: §3.4/§3.5/§3.6/§3.8/§3.9 and §5 were corrected against actual source inspection. Key fixes: metric functions live in chunk_12's Evaluator (not chunk_04); `search_coverage_thresholds` / `safe_divide` / `load_saved_models` are NEW (not present in source); `calculate_metrics` and `calculate_dynamic_class_weight` and `resolve_feature_indices` are LIVE and must be kept; `analyze_loss_distribution` is DEAD; HPO `optimize()` returns a 6-tuple (not Dict); three HPO config keys are inert; `SklearnModelWrapper` canonical source is chunk_11 (chunk_10 copy dropped); builder signatures are per-family, not uniform.
 
 ---
 
@@ -12,7 +26,7 @@
 2. [Target File Structure](#2-target-file-structure)
 3. [File-by-File Content Specification](#3-file-by-file-content-specification)
    - [config.py](#31-configpy)
-   - [logging.py](#32-loggingpy)
+   - [pipeline_logging.py](#32-pipeline_loggingpy)
    - [data_loader.py](#33-data_loaderpy)
    - [models.py](#34-modelspy)
    - [training.py](#35-trainingpy)
@@ -53,7 +67,7 @@
 | 17 | `chunk_19_phase_5_optimization.py` | 586 | Phase 5 | Model loading, inference, consensus voting, final metrics |
 | 18 | `chunk_20_pipeline_main.py` | 553 | Orchestrator | PipelineOrchestrator run(), metrics_summary.csv, main() |
 | 19 | `chunk_21_hyperparam_optimizer.py` | 401 | Optuna HPO | HyperparameterOptimizer: per-architecture search spaces |
-| 20 | `chunk_22_model_loader.py` | 239 | Model loading | load_saved_models, load_model_metadata |
+| 20 | `chunk_22_model_loader.py` | 239 | Model loading | load_models_with_metadata, load_model_metadata, load_scaler (no `load_saved_models` in source — that name is a refactor NEW wrapper) |
 | 21 | `chunk_XX_feature_importance.py` | 654 | Feature importance analysis | FeatureImportanceAnalyzer: 6 methods, auto-pruning |
 | 22 | `chunk_XX_phase_backward_elimination.py` | 281 | Backward elimination | PhaseBE: per-architecture proxy model feature ranking |
 | 23 | `chunk_XX_phase_feature_analysis_a.py` | 139 | Phase Xa orchestrator | Subsampling, 6-method importance, per-threshold pruning |
@@ -75,16 +89,16 @@
 
 ## 2. Target File Structure
 
-### 9 Files, ~5,800 Lines
+### 9 Files, ~5,600 Lines
 
 ```
 cicd/
 ├── config.py        #  200 lines — CONFIG dict + type schema + validation
-├── logging.py       #  200 lines — Logger with source-file tagging
+├── pipeline_logging.py  #  200 lines — Logger with source-file tagging
 ├── data_loader.py   #  500 lines — CSV loading, preprocessing, feature engineering, temporal weighting
 ├── models.py        #  900 lines — All 9 architecture builders + FocalLoss + SklearnModelWrapper + ensemble
 ├── training.py      #  450 lines — ModelTrainer + KLAnnealing + HyperparameterOptimizer (Optuna)
-├── evaluate.py      #  800 lines — All metric functions + Evaluator class + threshold search + diagnostics
+├── evaluate.py      #  700 lines — All metric functions + Evaluator class + threshold search + diagnostics
 ├── phases.py        #  700 lines — BasePhase + DataSetup + TemporalWeighting + FeatureImportance + FeaturePruning + TemporalPrecisionGap
 ├── phase_4.py       # 1400 lines — Phase 4: parameterized 5-section evaluation + ensemble + model saving
 └── pipeline.py      #  550 lines — PipelineOrchestrator + Inference + model_loader + main()
@@ -95,15 +109,15 @@ cicd/
 | Refactored File | Source Files | Source Lines | Target Lines | Saved |
 |---|---|---|---|---|
 | `config.py` | `chunk_01_config.py` | 665 | 200 | 465 |
-| `logging.py` | `chunk_02_utils_logging.py` | 370 | 200 | 170 |
+| `pipeline_logging.py` | `chunk_02_utils_logging.py` | 370 | 200 | 170 |
 | `data_loader.py` | `chunk_05_data_manager.py`, `chunk_07_data_temporal.py` | 774 | 500 | 274 |
 | `models.py` | `chunk_08` + `chunk_09` + `chunk_10` + `chunk_11` | 1929 | 900 | 1029 |
 | `training.py` | `chunk_14_models_trainer.py`, `chunk_21_hyperparam_optimizer.py` | 935 | 450 | 485 |
-| `evaluate.py` | `chunk_04_utils_metrics.py`, `chunk_12_evaluation_evaluator.py` | 1574 | 800 | 774 |
+| `evaluate.py` | `chunk_04_utils_metrics.py`, `chunk_12_evaluation_evaluator.py` | 1574 | 700 | 874 |
 | `phases.py` | `chunk_15` + `chunk_16` + `chunk_17` + `chunk_XX_xa` + `chunk_XX_fi` + `chunk_XX_be` + `chunk_XX_xb` | 1932 | 700 | 1232 |
 | `phase_4.py` | `chunk_18_phase_4_ensemble.py` | 2218 | 1400 | 818 |
 | `pipeline.py` | `chunk_20` + `chunk_22` + `chunk_19` + `chunk_13` | 1591 | 550 | 1041 |
-| **TOTAL** | **24 files** | **11,988** | **~5,900** | **~6,088 (51%)** |
+| **TOTAL** | **24 files** | **11,988** | **~5,600** | **~6,388 (53%)** |
 
 ### What Goes Where (cross-reference)
 
@@ -112,7 +126,7 @@ Current `chunk_N` → New file mapping:
 | Current File | New File(s) | What |
 |---|---|---|
 | `chunk_01_config.py` | `config.py` | CONFIG + validation |
-| `chunk_02_utils_logging.py` | `logging.py` | Logger class |
+| `chunk_02_utils_logging.py` | `pipeline_logging.py` | Logger class |
 | `chunk_04_utils_metrics.py` | `evaluate.py` | Stateless metric functions (Section 1) |
 | `chunk_05_data_manager.py` | `data_loader.py` | DataManager class |
 | `chunk_07_data_temporal.py` | `data_loader.py` | Temporal feature functions → DataManager methods |
@@ -165,9 +179,6 @@ Current `chunk_N` → New file mapping:
 # config.py — Master Configuration
 
 import os
-import random
-import numpy as np
-import tensorflow as tf
 from typing import Dict, Any
 
 PREDICTION_THRESHOLD_DEFAULT = 0.5
@@ -181,12 +192,45 @@ CONFIG = {
     'SAMPLE_SIZE': 184408,
     'USE_TEMPORAL_WEIGHTING': True,   # ADDED — gates TemporalWeighting + Inference temporal recomputation
     'RANDOM_SEED': 42,                # ADDED — anchors all RNG for reproducibility
-    # ... all 80+ config keys ...
+    'HPO_DEGENERACY_STD_THRESHOLD': 0.005,       # ADDED — degeneracy gate for HPO trial rejection
+    'HPO_RECALL_GATE_MARGIN': 0.01,              # ADDED — recall-based rejection margin in HPO
+    'HPO_RNN_TP_FLOOR': 100,                     # ADDED — RNN-specific TP floor in HPO
+    'HPO_LOSS_REDUCTION_THRESHOLD': 0.05,        # ADDED — min loss reduction to qualify HPO improvement
+    'HPO_PRECISION_IMPROVEMENT_MIN_SHORT': 0.001,# ADDED — min precision improvement (<50 trials)
+    'HPO_PRECISION_IMPROVEMENT_MIN_LONG': 0.005, # ADDED — min precision improvement (>=50 trials)
+    'AUGMENTATION_MIN_SIGNAL_RATE': 0.001,       # ADDED — minimum signal rate for augmentation
+    'AUGMENTATION_TARGET_SIGNAL_RATE': 0.005,    # ADDED — target signal rate for augmentation
+    'AUGMENTATION_NOISE_STD': 0.01,              # ADDED — noise std for augmentation
+    'KL_WARMUP_EPOCHS': 10,                      # ADDED — KL annealing warmup epochs
+    'KL_MAX_WEIGHT': 1.0,                        # ADDED — max KL weight for annealing
+    'KL_SAMPLING_MAX_WEIGHT': 0.1,               # ADDED — KL max weight override for sampling layer
+    'TEMPORAL_GAP_SIGNIFICANCE': 0.05,           # ADDED — temporal precision gap significance threshold
+    'STABILITY_RF_ESTIMATORS': 10,               # ADDED — random forest estimators for stability analysis
+    'FI_TRAIN_EPOCHS': 10,                       # ADDED — feature importance training epochs
+    'FI_BATCH_SIZE': 256,                        # ADDED — feature importance training batch size
+    'METRIC_PCT_THRESHOLDS': [0.01, 0.02, 0.05, 0.10, 0.20, 0.50],  # ADDED — metric percentage thresholds
+    'NN_LOG_TP_ARCHS': ['Dense', 'CNN', 'RNN', 'LSTM', 'Transformer'],  # ADDED — archs using log(TP) in HPO scoring
+    # INPUT_DIM and BE_PROXY_ENSEMBLE_SIZE retained but inert — never read, kept to match iter38 config
+    # ... all 129 config keys ...
 }
 
-REQUIRED_CONFIG_KEYS = ['DATA_PATH', 'USE_SAMPLING', 'SAMPLE_SIZE', 'USE_TEMPORAL_WEIGHTING', 'RANDOM_SEED', ...]
+REQUIRED_CONFIG_KEYS = ['DATA_PATH', 'USE_SAMPLING', 'SAMPLE_SIZE', 'USE_TEMPORAL_WEIGHTING', 'RANDOM_SEED',
+    'HPO_DEGENERACY_STD_THRESHOLD', 'HPO_RECALL_GATE_MARGIN', 'HPO_RNN_TP_FLOOR',
+    'HPO_LOSS_REDUCTION_THRESHOLD', 'HPO_PRECISION_IMPROVEMENT_MIN_SHORT',
+    'HPO_PRECISION_IMPROVEMENT_MIN_LONG', 'AUGMENTATION_MIN_SIGNAL_RATE',
+    'AUGMENTATION_TARGET_SIGNAL_RATE', 'AUGMENTATION_NOISE_STD',
+    'KL_WARMUP_EPOCHS', 'KL_MAX_WEIGHT', 'KL_SAMPLING_MAX_WEIGHT',
+    'TEMPORAL_GAP_SIGNIFICANCE', 'STABILITY_RF_ESTIMATORS',
+    'FI_TRAIN_EPOCHS', 'FI_BATCH_SIZE', 'METRIC_PCT_THRESHOLDS', 'NN_LOG_TP_ARCHS', ...]
 
-CONFIG_TYPES = {'DATA_PATH': str, 'USE_SAMPLING': bool, 'SAMPLE_SIZE': int, 'USE_TEMPORAL_WEIGHTING': bool, 'RANDOM_SEED': int, ...}
+CONFIG_TYPES = {'DATA_PATH': str, 'USE_SAMPLING': bool, 'SAMPLE_SIZE': int, 'USE_TEMPORAL_WEIGHTING': bool, 'RANDOM_SEED': int,
+    'HPO_DEGENERACY_STD_THRESHOLD': float, 'HPO_RECALL_GATE_MARGIN': float, 'HPO_RNN_TP_FLOOR': int,
+    'HPO_LOSS_REDUCTION_THRESHOLD': float, 'HPO_PRECISION_IMPROVEMENT_MIN_SHORT': float,
+    'HPO_PRECISION_IMPROVEMENT_MIN_LONG': float, 'AUGMENTATION_MIN_SIGNAL_RATE': float,
+    'AUGMENTATION_TARGET_SIGNAL_RATE': float, 'AUGMENTATION_NOISE_STD': float,
+    'KL_WARMUP_EPOCHS': int, 'KL_MAX_WEIGHT': float, 'KL_SAMPLING_MAX_WEIGHT': float,
+    'TEMPORAL_GAP_SIGNIFICANCE': float, 'STABILITY_RF_ESTIMATORS': int,
+    'FI_TRAIN_EPOCHS': int, 'FI_BATCH_SIZE': int, 'METRIC_PCT_THRESHOLDS': list, 'NN_LOG_TP_ARCHS': list, ...}
 
 def validate_config_structure(config: Dict) -> bool:
     """Validate config has all required keys and correct types."""
@@ -194,24 +238,24 @@ def validate_config_structure(config: Dict) -> bool:
 
 ---
 
-### 3.2 `logging.py` (200 lines)
+### 3.2 `pipeline_logging.py` (200 lines)
 
 **Source**: `chunk_02_utils_logging.py` (370 lines)
 
 **Keep (200 lines)**:
-- `Logger` class with 9 public methods (7 active, 2 dead code preserved for spec compliance)
+- `Logger` class with 9 public methods (4 active, 5 dead code preserved for spec compliance)
 
 | Method | Purpose | Used By | Log Example |
-|---|---|---|---|---|
+|---|---|---|---|
 | `__init__(config)` | Initialize with verbosity level | Every phase | — |
 | `log(msg, level)` | Format and print tagged log line | Everything | `[chunk_16_phase_1_setup.py] [info] Data loaded: 184408 samples, 34 features` |
-| `format_metric(value)` | Format metric with sign/trend | Phase 4 sections | `VALIDATION_PRECISION=0.5039` |
-| `get_trend_indicator(v1, v2)` | ↑/↓/→ comparison | HPO stagnation check | `↑ (0.0015 improvement)` |
 | `log_feature_quality_metrics(X)` | Per-feature stats | Phase 1 | per-feature mean, std, skew, kurtosis |
-| `log_class_distribution(y, dates, thresholds)` | Signal rate per threshold | Phase 1 | `Signal cases: 94,965 (51.5%)` |
 | `log_temporal_coverage(dates)` | Date range summary | Phase 1 | `Temporal coverage: 32 dates, 20250910 to 20251023` |
 
 **Also kept (dead code, compiled but never called in pipeline — preserved for spec compliance)**:
+| `format_metric(value)` | Format metric with sign/trend | Never called in pipeline | — |
+| `get_trend_indicator(v1, v2)` | ↑/↓/→ comparison | Never called in pipeline | — |
+| `log_class_distribution(y, dates, thresholds)` | Signal rate per threshold | Never called in pipeline (Phase 1 logs inline) | — |
 | `format_phase_1_5_standardized(...)` | Phase 1.5 report formatter | Never called in pipeline | — |
 | `format_standard_metric_report(...)` | Standardized metric report | Never called in pipeline | — |
 
@@ -310,9 +354,9 @@ def build_lightgbm_model(config, input_dim, y) -> SklearnModelWrapper:
     """Was build_lightgbm_model in chunk_11."""
 def build_catboost_model(config, input_dim, y) -> SklearnModelWrapper:
     """Was build_catboost_model in chunk_11.
-    IMPORTANT: Must set verbose=0, logging_level='Silent' to prevent
-    CatBoostParamException during HPO (chunk_21 generated 'verbose_eval'
-    parameter crashes CatBoost; fix via verbose=0 in constructor).
+    IMPORTANT: Must set verbose=False to prevent CatBoostParamException
+    during HPO (chunk_21 generated 'verbose_eval' parameter crashes
+    CatBoost; fix via verbose=False in constructor — chunk_11:356).
     """
 
 # ============================================================================
@@ -327,13 +371,18 @@ def build_stacking_meta_model(config, input_dim) -> object:
 # Section 5: SklearnModelWrapper (~100 lines)
 # ============================================================================
 class SklearnModelWrapper:
-    """Universal sklearn wrapper with fit/predict/save/load. From chunk_10+chunk_11."""
-    def fit(self, X, y, **kwargs): ...
-    def predict(self, X): ...
-    def predict_proba(self, X): ...
-    def save(self, path): ...      # .joblib serialization
-    def load(self, path): ...
-    def decision_function(self, X): ...
+    """Universal sklearn wrapper with fit/predict/save/load. From chunk_11.
+    NOTE: SklearnModelWrapper is defined TWICE in the current code (chunk_10:138
+    and chunk_11:37) with DIFFERENT predict() semantics:
+      - chunk_10: predict() returns raw class labels (used only by RF/ET builders)
+      - chunk_11: predict() returns proba[:, 1:2] (shape (n,1)), has save/load/
+        decision_function, and is the class that chunk_22 uses to LOAD models.
+    The refactored models.py uses the chunk_11 version as canonical. The chunk_10
+    copy is dropped; its two consumers (build_bagging_random_forest_model,
+    build_extra_trees_ensemble_model) are dormant stubs, so no behavior is lost.
+    Methods (chunk_11): fit(X,y=None,**kwargs), predict(X)->proba[:,1:2],
+    predict_proba(X), __call__(X)->proba[:,1], save(filepath) joblib,
+    load(filepath) static, decision_function(X)."""
 
 # ============================================================================
 # Section 6: Dormant Builders (~50 lines — stubs with NotImplementedError)
@@ -359,12 +408,25 @@ class SklearnModelWrapper:
 #     )
 ```
 
-**Key unification — consistent builder interface**:
+**Key unification — consistent builder dispatch**:
 ```python
-def build_<arch>(config: Dict, input_dim: int, y: Optional[np.ndarray] = None,
-                 loss_fn: Optional[str] = None) -> Union[tf.keras.Model, SklearnModelWrapper]:
+# NOT a single uniform signature — builders have per-family signatures that
+# must be preserved exactly (dispatch in training.py relies on them):
+#   NN builders (chunk_08/09):   build_<arch>(config, input_dim, loss='binary_crossentropy')
+#   Tree builders (chunk_11):    build_<arch>(config, input_dim, y_train=None)
+#   Unsupervised (chunk_11):     build_<arch>(config)      # NO input_dim/loss/y
+#       (isolation_forest, oneclass_svm, svm)
+# Dispatch (from chunk_14:124-133): 'Isolation_Forest','OneClass_SVM','SVM',
+# 'Bagging_RandomForest','ExtraTrees_Ensemble','LightGBM','XGBoost','CatBoost'
+# → builder(self.config, input_dim, y_train); all others → builder(self.config,
+# input_dim, loss_fn) where loss_fn = get_loss_function().
+# build_architecture_with_params has a REDUCED map (10 archs: Dense/VAE/CNN/RNN/
+# LSTM/Transformer/Boosting_Adaptive/LightGBM/XGBoost/CatBoost), unknown arch
+# falls back to build_dense_model (chunk_14:161-181).
 ```
-All builders accept `config` (for hyperparams), `input_dim` (feature count), and return either a Keras model or SklearnModelWrapper. This lets `training.py` dispatch by architecture name without a 12-branch if/elif.
+
+**Additional live symbol (must be in models.py)**:
+- `calculate_dynamic_class_weight(y, config)` — chunk_11:13, called by `build_xgboost_model` (chunk_11:342), imported by training.py dispatch (chunk_14:87). Returns `scale_pos_weight` float.
 
 **Remove (1029 lines)**:
 - `validate_model_output()` — dead code
@@ -388,7 +450,9 @@ All builders accept `config` (for hyperparams), `input_dim` (feature count), and
 # Section 1: Callbacks (~50 lines)
 # ============================================================================
 class KLAnnealingCallback(tf.keras.callbacks.Callback):
-    """VAE KL divergence annealing. warmup=10, max_kl=0.1. From chunk_14."""
+    """VAE KL divergence annealing. warmup=10, max_kl=0.1. From chunk_14.
+    Reads KL_SAMPLING_MAX_WEIGHT (0.1) for the sampling layer override;
+    KL_MAX_WEIGHT (1.0) is the general default from chunk_14:14."""
 
 # ============================================================================
 # Section 2: ModelTrainer (~250 lines)
@@ -431,8 +495,9 @@ class HyperparameterOptimizer:
     def __init__(self, config: Dict, arch_name: str, logger: Logger):
         ...
 
-    def optimize(self, X_train, y_train, X_val, y_val,
-                 input_dim, model_trainer) -> Dict:
+    def optimize(self, arch_name, X_train, y_train, X_val, y_val,
+                 model_builder, train_func, pred_threshold=PREDICTION_THRESHOLD_DEFAULT,
+                 label_threshold=20.0) -> Tuple:
         """
         1. Study = optuna.create_study(direction='maximize')
         2. HYPERPARAM_SEARCH_SPACE[arch_name] defines params
@@ -442,8 +507,9 @@ class HyperparameterOptimizer:
            - On success: log trial metrics, update best
            - On exception: log "TRIAL N failed: {error}", continue to next trial
            - On degenerate predictions (std_pred < 0.005): log "REJECTED — degenerate", continue
-           - On near-constant positive predictions (recall≈1.0, precision≈base_rate):
-             log "REJECTED - near-constant positive predictions", continue
+           - On near-constant positive predictions (label_threshold<5, recall>0.95,
+             precision - base_rate < 0.01): log "REJECTED - near-constant positive
+             predictions", continue
            - On insufficient true_positives (RNN only, TP<100):
              log "REJECTED - true_positives=N < 100", continue
          5. Log baseline before HPO: "[section 2] [{ARCH}] [hyperparameter_optimization search
@@ -452,10 +518,15 @@ class HyperparameterOptimizer:
          6. Log each trial: "TRIAL N/N: {params}" + val metrics (each on own line)
          7. After completion: "[section 2] [{ARCH}] [best trial] LABEL_THRESHOLD=X,
             VALIDATION_PRECISION=X..." + best hyperparams
-         8. Objective = precision (trees, VAE) or precision*log(TP+1) (NNs)
+         8. Objective = precision (trees, VAE) or precision*log(TP+1) (NNs, chunk_21:197-200)
          9. HPO_TARGET_PRECISION=0.60 early stop
         10. HPO_STAGNATION_THRESHOLD=50 stop
-        11. Returns best_hyperparams dict
+        11. RETURN VALUE: a 6-tuple (chunk_21:357):
+            (best_params, best_model, best_precision, raw_best_model,
+             raw_best_precision, raw_best_params). The frozen-XGBoost early-return
+            path (chunk_21:80) returns a 3-tuple (best_params, best_model,
+            best_precision). Caller phase_4.py must branch on len() == 6 vs 3
+            (chunk_18:615-618). NOT a bare Dict.
         """
 
     def get_search_space_summary(self) -> str:
@@ -480,7 +551,11 @@ class HyperparameterOptimizer:
 ```python
 # ============================================================================
 # Section 1: Stateless Metric Functions (~200 lines)
-# All from chunk_04_utils_metrics.py.
+# SOURCE CORRECTION: these 16 metric functions are NOT in chunk_04 — they are
+# methods of the Evaluator class in chunk_12 (lines 31-198). The refactor
+# extracts them to top-level functions here. chunk_04's actual standalone
+# functions are a DIFFERENT set (see Section 4). safe_divide() is NEW (plan
+# helper — does not exist in source); implement as inline guard in each metric.
 # Each function: (y_true, y_pred/y_proba) → float
 # No class wrappers — direct function calls.
 # ============================================================================
@@ -517,7 +592,7 @@ def calculate_balanced_accuracy(y_true, y_pred):
     return (calculate_recall(y_true, y_pred) + calculate_specificity(y_true, y_pred)) / 2
 def calculate_optimal_threshold(y_true, y_proba):
     """Youden's J: max(TPR - FPR). Returns threshold value."""
-def safe_divide(numerator, denominator):
+def safe_divide(numerator, denominator):   # NEW helper — not in current source
     return numerator / denominator if denominator > 0 else 0.0
 
 # ============================================================================
@@ -556,9 +631,18 @@ class Evaluator:
         6. Return threshold with highest valid val precision
         """
 
+    def calculate_metrics(self, y_true, y_pred, y_proba) -> Dict:
+        """Full metric dict (chunk_12:572). LIVE — called by Phase 4 Section 5
+        (chunk_18:1282-1283 train_metrics/val_metrics). MUST be kept."""
+
 # ============================================================================
 # Section 3: XGBoost Coverage Sweep (~100 lines)
 # ============================================================================
+# NEW function — does NOT exist in current source. The coverage sweep is inline
+# in chunk_18_phase_4_ensemble.py:1132-1194 (gated by PREDICTION_XGBOOST_
+# PRECISION_TARGETING for arch XGBoost). The refactor EXTRACTS this inline block
+# into a named function; behavior must match chunk_18:1132-1194 exactly
+# (search_results, chosen_rate, F1-optimal fallback at lines 1188-1190).
 def search_coverage_thresholds(y_true, y_proba, coverage_rates,
                                target_precision, max_coverage):
     """
@@ -583,6 +667,13 @@ def get_prediction_percentiles(predictions: np.ndarray) -> Dict[str, float]:
     """Compute percentiles (p1, p5, p25, p50, p75, p95, p99) of predictions.
     Internal helper for format_diagnostic_string()."""
 
+# NOTE: get_round_threshold_density (chunk_04:97) MUST also be kept — it is the
+# internal helper called by format_diagnostic_string (chunk_04:129). The other
+# chunk_04 standalone functions (calculate_snr, calculate_psi, get_prediction_
+# histogram, calibrate_predictions, apply_temperature_scaling,
+# calculate_precision_at_threshold, safe_average_precision_score) are DEAD in
+# production (zero call sites outside __main__) and are not preserved.
+
 def format_diagnostic_string(predictions, prefix="") -> str:
     """Format prediction distribution for diagnostic logging. Called 6+ times in Phase 4.
     Uses get_prediction_percentiles() and get_round_threshold_density() internally."""
@@ -598,22 +689,24 @@ def calculate_logit_compression(predictions) -> float:
     """Measure of prediction concentration."""
 def calculate_mutual_information(predictions, y_true, threshold) -> float:
     """MI between predictions and labels."""
-def analyze_loss_distribution(loss_history: List[float]) -> Dict[str, float]:
-    """Analyze loss convergence: final_loss, convergence_rate, plateau_detected, trend.
-    Called in Phase 4 diagnostics section. (Was chunk_04:136)"""
 def calculate_ks_test(positive_preds, negative_preds) -> Dict:
     """Kolmogorov-Smirnov test: max separation between class predictions."""
 def calculate_bhattacharyya_distance(positive_preds, negative_preds) -> float:
     """Bhattacharyya distance between class prediction distributions."""
 
-**Key change**: Eliminates the layering where `chunk_12` wraps every `chunk_04` function. Now there is ONE call chain: `evaluate_at_threshold()` directly calls `calculate_precision()` etc. — no intermediate wrapper.
+# NOTE on analyze_loss_distribution: DEAD — imported by chunk_18:59 but ZERO
+# call sites anywhere in production code. Not preserved (remove with the dead
+# wrappers). (Was listed here previously; correction per source verification.)
+
+**Key change**: The 16 core metric functions (calculate_precision … calculate_optimal_threshold) currently exist only as methods of `Evaluator` in chunk_12. The refactor extracts them to module-level stateless functions so `evaluate_at_threshold()` calls them directly — no `self.`-based method indirection. (The old plan text claimed they came from chunk_04 as standalone functions; that was wrong — chunk_04's standalone functions are a different, mostly-analysis set, see Section 4.)
 
 **Remove (874 lines)**:
 - All standalone wrapper functions from chunk_04 that duplicate Evaluator methods (e.g., `safe_average_precision_score()` — directly use `average_precision_score` with try/except)
 - `assess_model_learning()`, `assess_learning()` — dead code (only in `__main__` tests)
 - `format_metric_value()` from chunk_04 — removed as duplicate. Logger.format_metric() in
-  logging.py has an identical implementation. All callers use the Logger version.
+  pipeline_logging.py has an identical implementation. All callers use the Logger version.
 - `cross_validate()` from chunk_12 — not used in pipeline (was a utility)
+- `analyze_loss_distribution()` (chunk_04:136) — DEAD: imported by chunk_18:59 but zero call sites
 - `validate_evaluator_instance()` — dead code
 - `validate_evaluator_output()` — dead code
 - Both test `__main__` blocks (~80 lines)
@@ -648,6 +741,20 @@ class BasePhase(ABC):
     def execute(self, context: Dict) -> Dict:
         """Execute phase logic. Returns updated context."""
         pass
+
+    def validate_context(self, context: Dict) -> None:
+        """
+        Verify CONTEXT_CONSUMED keys exist before execute() and
+        CONTEXT_PRODUCED keys were written after execute().
+        Called by PipelineOrchestrator after each phase (replaces the
+        standalone validate_phaseN_input/output() functions).
+        """
+        for key in self.CONTEXT_CONSUMED:
+            assert key in context, (
+                f"[{self.__class__.__name__}] missing consumed context key: {key}")
+        for key in self.CONTEXT_PRODUCED:
+            assert key in context, (
+                f"[{self.__class__.__name__}] missing produced context key: {key}")
 
     # DESIGN CHANGE (new): Class-level documentation of phase contracts.
     # Not present in current code. Provides self-documenting data flow.
@@ -1100,6 +1207,14 @@ class ModelTraining(BasePhase):
 - Test `__main__` block (~80 lines)
 - Duplicated logging format strings (centralized in `_log_section_metrics()`)
 
+**External dependency (MUST be preserved)**:
+- `resolve_feature_indices` (from `chunk_XX_phase_backward_elimination.py:102`) is
+  imported as `_resolve_be_indices` (chunk_18:41) and CALLED 4× at chunk_18:336,
+  444, 879, 1544 (threshold→feature-index resolution for per-arch pruning).
+  In the refactor, this function lives in `phases.py` (Section 5 FeaturePruning);
+  `phase_4.py` must import it from `phases`. This adds a **phase_4 → phases**
+  dependency edge (see §5 dependency graph).
+
 ---
 
 ### 3.9 `pipeline.py` (550 lines)
@@ -1114,7 +1229,7 @@ import pandas as pd
 import tensorflow as tf
 from typing import Dict, List, Any, Optional, Tuple
 from config import CONFIG, validate_config_structure
-from logging import Logger
+from pipeline_logging import Logger
 from data_loader import DataManager
 from models import (build_dense_model, build_vae_model, build_cnn_model, ...)
 from training import ModelTrainer, HyperparameterOptimizer
@@ -1205,12 +1320,15 @@ class Inference(BasePhase):
 # ============================================================================
 def load_saved_models(models_path: str, config: Dict) -> Dict[str, Any]:
     """
-    Unified model loader. Replaces 3 separate calls from chunk_22:
-    load_models_with_metadata() + load_scaler().
+    Unified model loader. NEW wrapper — the current source has NO function by
+    this name. chunk_22's actual loader is `load_models_with_metadata`
+    (chunk_22:112, called by chunk_19:90); the wrapper wraps
+    load_models_with_metadata() + load_scaler() under one name.
 
     NOTE: temporal_weights.json and feature_names.json are NOT loaded here.
     Phase 5 receives these from pipeline context (set by Phase 1/3/4), not from disk.
-    The load_preprocessing_params() function from chunk_22 is dead — never called in production.
+    The load_preprocessing_params() function from chunk_22 is dead — imported by
+    chunk_19:84 but never called.
 
     Returns {arch_name: {'model': <keras.Model|SklearnModelWrapper>,
                          'scaler': <StandardScaler|None>,
@@ -1318,6 +1436,12 @@ class StateManager:
     pipeline (confirmed by grep across all 24 chunk files). The simplified
     class preserves the constructor pattern while removing 100+ lines of
     dead code, including validate_state_manager().
+
+    NOTE on method names: the source chunk_13 methods are set_context_value/
+    get_context_value/clear_context/update_feedback_loop/store_results etc.
+    The simplified API here (set/get/update/keys) is a NEW surface — safe only
+    because no production code calls any StateManager method (verified: only
+    __main__ self-tests at chunk_13:178-211 call them).
     """
     def __init__(self):
         self.context = {}
@@ -1382,10 +1506,10 @@ Every log line in `pipeline_cpu_iter38.log` maps to its refactored source:
 | 28 | 4 RSI zones added | `data_loader.py` | `DataManager._apply_feature_engineering` |
 | 29 | 21 → 34 features | `data_loader.py` | `DataManager._apply_feature_engineering` |
 | 31 | Global winsor skipped | `phases.py` | `DataSetup.execute` |
-| 32 | Temporal coverage | `logging.py` | `Logger.log_temporal_coverage` |
+| 32 | Temporal coverage | `pipeline_logging.py` | `Logger.log_temporal_coverage` |
 | 33-35 | Target distribution | `phases.py` | `DataSetup.execute` |
 | 38-85 | Class dist. at 5 thresholds | `phases.py` | `DataSetup.execute` |
-| 87-121 | Feature quality metrics | `logging.py` | `Logger.log_feature_quality_metrics` |
+| 87-121 | Feature quality metrics | `pipeline_logging.py` | `Logger.log_feature_quality_metrics` |
 | 125 | 34 feature names | `phases.py` | `DataSetup.execute` |
 | 127-130 | Train/val/inf split sizes | `phases.py` | `DataSetup.execute` |
 | 131 | Phase 3 temporal weights | `phases.py` | `TemporalWeighting.execute` |
@@ -1412,60 +1536,68 @@ Every log line in `pipeline_cpu_iter38.log` maps to its refactored source:
 ## 5. Dependency Graph
 
 ```
-                 ┌────────────┐
-                 │  config    │  (no external deps — pure dict + stdlib)
-                 └─────┬──────┘
+                 ┌──────────────┐
+                 │   config     │  (no external deps — pure dict + stdlib)
+                 └─────┬────────┘
                        │
-                 ┌─────▼──────┐
-                 │  logging   │  (depends: config for LOG_VERBOSITY)
-                 └─────┬──────┘
+                 ┌─────▼──────────┐
+                 │ pipeline_logging │  (depends: config for LOG_VERBOSITY)
+                 └─────┬──────────┘
                        │
-         ┌─────────────┼──────────────────┐
-         │             │                   │
-  ┌──────▼─────┐  ┌───▼────┐   ┌─────────▼─────────┐
-  │data_loader │  │ models │   │     evaluate       │
-  │(config,    │  │(config,│   │ (config, logging)  │
-  │ logging)   │  │logging)│   └─────────┬──────────┘
-  └──────┬─────┘  └───┬────┘             │
-         │             │                  │
-         └─────────────┼──────────────────┘
-                       │
-                 ┌─────▼──────┐
-                 │  training  │
-                 │ (config,   │
-                 │  logging,  │
-                 │  models,   │
-                 │  evaluate) │
-                 └─────┬──────┘
-                       │
-           ┌───────────┼────────────┐
-           │                        │
-    ┌──────▼─────┐         ┌───────▼────────┐
-    │   phases   │         │    phase_4      │
-    │ (config,   │         │ (config, logging,│
-    │  logging,  │         │  data_loader,    │
-    │  data_loader,│        │  models,         │
-    │  evaluate, │         │  evaluate,       │
-    │  training) │         │  training)       │
-    └──────┬─────┘         └───────┬──────────┘
-           │                       │
-           └───────────┬───────────┘
-                       │
-                 ┌─────▼──────┐
-                 │  pipeline  │
-                 │ (all above)│
-                 └────────────┘
+          ┌────────────┼──────────────────┐
+          │            │                   │
+   ┌──────▼─────┐  ┌───▼────┐   ┌─────────▼─────────┐
+   │data_loader │  │ models │   │     evaluate       │
+   │(config,    │  │(config,│   │ (config,           │
+   │ pipeline_  │  │pipeline│   │  pipeline_logging) │
+   │ logging)   │  │_logging│   └─────────┬──────────┘
+   └──────┬─────┘  └───┬────┘             │
+          │             │                  │
+          └─────────────┼──────────────────┘
+                        │
+                  ┌─────▼──────┐
+                  │  training  │
+                  │ (config,   │
+                  │  pipeline_ │
+                  │  logging,  │
+                  │  models,   │
+                  │  evaluate) │
+                  └─────┬──────┘
+                        │
+            ┌───────────┼────────────┐
+            │                        │
+     ┌──────▼─────┐         ┌───────▼────────┐
+     │   phases   │         │    phase_4      │
+     │ (config,   │         │ (config,        │
+     │  pipeline_ │         │  pipeline_      │
+     │  logging,  │         │  logging,       │
+      │  data_loader,│        │  data_loader,   │
+      │  evaluate, │         │  models,         │
+      │  training) │         │  evaluate,       │
+      └──────┬─────┘         │  training,       │
+             │  ┌────────────│  phases)         │
+             │  │            └───────┬──────────┘
+            │   │                    │
+            │   └── phase_4 imports resolve_feature_indices from phases ──┘
+            │                       │
+            └───────────┬───────────┘
+                        │
+                  ┌─────▼──────┐
+                  │  pipeline  │
+                  │ (all above)│
+                  └────────────┘
 ```
 
-**No circular dependencies.** Each file depends only on files listed above it.
+**No circular dependencies.** Each file depends only on files listed above it. Note the **phase_4 → phases** edge (added for `resolve_feature_indices`, see §3.8): phase_4 imports the helper from phases, and phases does NOT import phase_4 — still acyclic.
 
 **Import chain**:
 ```
 pipeline.py → phases.py → training.py → models.py
-                   → phase_4.py → training.py → models.py
+                   → phase_4.py → phases.py (resolve_feature_indices)
+                                 → training.py → models.py
                    → data_loader.py
                    → evaluate.py
-                   → logging.py → config.py
+                   → pipeline_logging.py → config.py
 ```
 
 ---
@@ -1515,13 +1647,15 @@ Every feature toggle from the current pipeline remains intact:
 
 ### Verification Protocol
 
+> **Scope note (2026-08-07)**: The refactorer runs only the **static** checks (1) syntax/import and (2) line count, plus per-file structural asserts. The end-to-end pipeline run and the log-parity `diff` (step 3 below) are **executed by the user**.
+
 After each file is created:
 
 ```bash
 # 1. Syntax check
-python -c "import config; import logging; import data_loader; import models; import training; import evaluate; import phases; import phase_4; import pipeline"
+python -c "import config; import pipeline_logging; import data_loader; import models; import training; import evaluate; import phases; import phase_4; import pipeline"
 # 2. Line count check
-wc -l config.py logging.py data_loader.py models.py training.py evaluate.py phases.py phase_4.py pipeline.py
+wc -l config.py pipeline_logging.py data_loader.py models.py training.py evaluate.py phases.py phase_4.py pipeline.py
 # 3. Log parity (requires test data)
 #    Source filenames in [tags] change after 24→9 rename (e.g.
 #    chunk_18_phase_4_ensemble.py → phase_4.py), so strip LN count
@@ -1542,42 +1676,42 @@ Each step builds on the previous. Steps can be verified independently.
 | Step | New File | Source Lines | Target Lines | Key Structural Change | Dependencies |
 |---|---|---|---|---|---|
 | 1 | `config.py` | 665 | 200 | Remove test code, unused functions | None |
-| 2 | `logging.py` | 370 | 200 | Remove unused validators | config |
-| 3 | `data_loader.py` | 584+190 | 500 | Merge 2 files, unify interface | config, logging |
-| 4 | `models.py` | 619+484+318+508 | 900 | Merge 4 files, unify builder signatures | config, logging |
-| 5 | `training.py` | 534+401 | 450 | Merge trainer + HPO, namedtuple return | config, logging, models, evaluate |
-| 6 | `evaluate.py` | 757+817 | 700 | Merge metrics + evaluator, eliminate layering | config, logging |
-| 7 | `phases.py` | 72+335+182+139+654+281+269 | 700 | Consolidate 7 phases, inline feature importance | config, logging, data_loader, evaluate, training |
-| 8 | `phase_4.py` | 2218 | 1400 | Parameterize 5 eval sections | config, logging, data_loader, models, evaluate, training |
+| 2 | `pipeline_logging.py` | 370 | 200 | Remove unused validators | config |
+| 3 | `data_loader.py` | 584+190 | 500 | Merge 2 files, unify interface | config, pipeline_logging |
+| 4 | `models.py` | 619+484+318+508 | 900 | Merge 4 files, unify builder signatures | config, pipeline_logging |
+| 5 | `training.py` | 534+401 | 450 | Merge trainer + HPO, namedtuple return | config, pipeline_logging, models, evaluate |
+| 6 | `evaluate.py` | 757+817 | 700 | Merge metrics + evaluator, eliminate layering | config, pipeline_logging |
+| 7 | `phases.py` | 72+335+182+139+654+281+269 | 700 | Consolidate 7 phases, inline feature importance | config, pipeline_logging, data_loader, evaluate, training |
+| 8 | `phase_4.py` | 2218 | 1400 | Parameterize 5 eval sections | config, pipeline_logging, data_loader, models, evaluate, training |
 | 9 | `pipeline.py` | 553+239+586+213 | 550 | Orchestrator + Inference + model_loader | All above |
 
-**After all 9 steps**: Delete the 24 chunk files (keeping `iter10_reference_snapshot/` as historical reference).
+**After all 9 steps**: The 24 chunk files are left **untouched** — the refactor only creates 9 new files alongside. Deletion/retirement of the chunk files is the user's responsibility (decided 2026-08-07). `iter10_reference_snapshot/` remains as historical reference.
 
 ---
 
 ## 9. Structural Summary
 
-### 9 Files, ~5,900 Lines (from 24 files, 11,988 — 51% reduction)
+### 9 Files, ~5,600 Lines (from 24 files, 11,988 — 53% reduction)
 
 | File | Target | Source Files | Source Lines | Saved |
 |---|---|---|---|---|
 | `config.py` | 200 | `chunk_01_config.py` | 665 | 465 |
-| `logging.py` | 200 | `chunk_02_utils_logging.py` | 370 | 170 |
+| `pipeline_logging.py` | 200 | `chunk_02_utils_logging.py` | 370 | 170 |
 | `data_loader.py` | 500 | `chunk_05` + `chunk_07` | 774 | 274 |
 | `models.py` | 900 | `chunk_08` + `chunk_09` + `chunk_10` + `chunk_11` | 1,929 | 1,029 |
 | `training.py` | 450 | `chunk_14` + `chunk_21` | 935 | 485 |
-| `evaluate.py` | 800 | `chunk_04` + `chunk_12` | 1,574 | 774 |
+| `evaluate.py` | 700 | `chunk_04` + `chunk_12` | 1,574 | 874 |
 | `phases.py` | 700 | 7 chunk files | 1,932 | 1,232 |
 | `phase_4.py` | 1,400 | `chunk_18_phase_4_ensemble.py` | 2,218 | 818 |
 | `pipeline.py` | 550 | `chunk_20` + `chunk_22` + `chunk_19` + `chunk_13` | 1,591 | 1,041 |
-| **Total** | **~5,900** | **24 files** | **11,988** | **~6,088** |
+| **Total** | **~5,600** | **24 files** | **11,988** | **~6,388** |
 
 ### Classes (14 total)
 
 | File | Class | Role |
 |---|---|---|
-| `logging.py` | `Logger` | 12-method tagged logger |
-| `config.py` | — | Stores `ARCH_CSV_ORDER` (CSV row order), all 19 toggles, 30+ config keys |
+| `pipeline_logging.py` | `Logger` | 9-method tagged logger |
+| `config.py` | — | Stores `ARCH_CSV_ORDER` (CSV row order), all 19 toggles, ~129 config keys |
 | `models.py` | `FocalLoss` | Alpha/gamma focal loss Keras layer |
 | `models.py` | `SklearnModelWrapper` | Universal sklearn fit/predict/save/load wrapper |
 | `training.py` | `KLAnnealingCallback` | VAE KL annealing (warmup=10, max_kl=0.1) |
@@ -1602,16 +1736,39 @@ Each step builds on the previous. Steps can be verified independently.
 | `config.py` | `validate_config_structure()` |
 | `data_loader.py` | `extract_temporal_features()`, `apply_temporal_weighting_strategy()`, `validate_temporal_features()` |
 | `models.py` | 11 active builders (`build_vae_model`, `build_dense_model`, etc.) + 14 dormant stubs (`build_tabnet_model`, etc.) |
-| `evaluate.py` | 18 stateless metric fns + `safe_divide` + `search_coverage_thresholds` + `get_prediction_percentiles` + `format_diagnostic_string` + `inverse_log_transform` + `calculate_temporal_drift` + `calculate_permutation_importance` + `calculate_prediction_entropy` + `calculate_logit_compression` + `calculate_mutual_information` + `analyze_loss_distribution` + `calculate_ks_test` + `calculate_bhattacharyya_distance` |
+| `evaluate.py` | 16 stateless metric fns (from chunk_12 Evaluator methods) + `safe_divide` (NEW) + `search_coverage_thresholds` (NEW) + `get_prediction_percentiles` + `format_diagnostic_string` + `get_round_threshold_density` (kept helper) + `inverse_log_transform` + `calculate_temporal_drift` + `calculate_permutation_importance` + `calculate_prediction_entropy` + `calculate_logit_compression` + `calculate_mutual_information` + `calculate_ks_test` + `calculate_bhattacharyya_distance` |
 | `pipeline.py` | `load_saved_models()` + `load_model_metadata()` + `load_scaler()` + `main()` |
 
-### Config Keys (~80+)
+### Config Keys (~129)
 
-All 80+ existing keys preserved. **2 additions:**
+All existing keys preserved. `INPUT_DIM` and `BE_PROXY_ENSEMBLE_SIZE` are **retained but inert** (never read — kept to match the iter38 config dict):
+- `INPUT_DIM` — inferred from data shape at runtime; key kept for config fidelity
+- `BE_PROXY_ENSEMBLE_SIZE` — BE code uses a hardcoded value; key kept for config fidelity
+
+**20 additions** (18 new behavioral constants + 2 new config keys):
+
 | Key | Default | Purpose |
 |---|---|---|
 | `RANDOM_SEED` | `42` | Reproducibility seed for all RNG |
 | `USE_TEMPORAL_WEIGHTING` | `True` | Gate TemporalWeighting + Inference temporal recomputation |
+| `HPO_DEGENERACY_STD_THRESHOLD` | `0.005` | StdPred below this = degenerate HPO trial |
+| `HPO_RECALL_GATE_MARGIN` | `0.01` | Precision minus base rate below this = degenerate HPO trial |
+| `HPO_RNN_TP_FLOOR` | `100` | RNN HPO trial rejected if TP < this |
+| `HPO_LOSS_REDUCTION_THRESHOLD` | `0.05` | INERT — literal lives only in dead `assess_learning`/`assess_model_learning` (chunk_12:684, chunk_04:553); not read by chunk_21. Kept for config fidelity. |
+| `HPO_PRECISION_IMPROVEMENT_MIN_SHORT` | `0.001` | INERT — literal lives only in dead `assess_learning`/`assess_model_learning` (chunk_12:690, chunk_04:559); not read by chunk_21. Kept for config fidelity. |
+| `HPO_PRECISION_IMPROVEMENT_MIN_LONG` | `0.005` | INERT — same dead-code source as above. Kept for config fidelity. |
+| `AUGMENTATION_MIN_SIGNAL_RATE` | `0.001` | Min signal rate to trigger augmentation |
+| `AUGMENTATION_TARGET_SIGNAL_RATE` | `0.005` | Target signal rate for augmentation |
+| `AUGMENTATION_NOISE_STD` | `0.01` | Noise std for augmentation |
+| `KL_WARMUP_EPOCHS` | `10` | KL annealing warmup epochs |
+| `KL_MAX_WEIGHT` | `1.0` | Max KL weight for annealing |
+| `KL_SAMPLING_MAX_WEIGHT` | `0.1` | KL weight override for sampling layer |
+| `TEMPORAL_GAP_SIGNIFICANCE` | `0.05` | Temporal precision gap significance threshold |
+| `STABILITY_RF_ESTIMATORS` | `10` | RF estimators for feature stability analysis |
+| `FI_TRAIN_EPOCHS` | `10` | Feature importance training epochs |
+| `FI_BATCH_SIZE` | `256` | Feature importance training batch size |
+| `METRIC_PCT_THRESHOLDS` | `[0.01, 0.02, 0.05, 0.10, 0.20, 0.50]` | Thresholds for pct-above metric |
+| `NN_LOG_TP_ARCHS` | `['Dense','CNN','RNN','LSTM','Transformer']` | Archs using log(TP) in HPO scoring |
 
 ### Feature Toggles (19 total)
 
@@ -1622,7 +1779,7 @@ All 80+ existing keys preserved. **2 additions:**
 | 3 | `BACKWARD_ELIMINATION_ENABLED` | `False` | `phases.py:FeaturePruning` | Skip feature pruning |
 | 4 | `USE_TEMPORAL_WEIGHTING` | `True` | `phases.py:TemporalWeighting` + `pipeline.py:Inference` | Skip temporal weighting + skip inference temporal recomputation |
 | 5 | `ENABLE_HYPERPARAM_OPTIMIZATION` | `False` | `phase_4.py:ModelTraining` | Skip HPO section |
-| 6 | `ENABLE_POST_HPO_THRESHOLD_SEARCH` | `True` | `phase_4.py:ModelTraining` | Skip Section 4 (default True to match IT39 — Section 4 always runs but always rejects; toggle kept for future ability to skip) |
+| 6 | `ENABLE_POST_HPO_THRESHOLD_SEARCH` | `True` | `phase_4.py:ModelTraining` | Skip Section 4 (default True to match iter38 — Section 4 always runs but always rejects; toggle kept for future ability to skip) |
 | 7 | `SAVE_TRAINED_MODELS` | `True` | `phase_4.py:ModelTraining` | No files written to disk |
 | 8 | `LOG_TRANSFORM_TARGET` | `False` | `data_loader.py` | Target used raw (no log1p) |
 | 9 | `LOG_TRANSFORM_FEATURES` | `False` | `data_loader.py` | Features used raw (no log1p) |
@@ -1649,7 +1806,7 @@ All 80+ existing keys preserved. **2 additions:**
 |---|---|---|---|
 | Inference disk dependency | Medium | `SAVE_TRAINED_MODELS=True` required for inference. `ModelTraining` does not pass model objects via context. `Inference` gracefully no-ops if disk is empty. | Documented design constraint. If in-memory fallback is needed later, add `trained_models` to `ModelTraining` CONTEXT_PRODUCED. |
 | Inference temporal weight sources | Low | (1) context `temporal_weights` (dead — never consumed), (2) `load_saved_models` return (removed — no longer returned), (3) STEP 5 recomputation (active — self-contained) | Cleaned up: sources 1 and 2 are removed. Only STEP 5 recomputation remains. See `USE_TEMPORAL_WEIGHTING` toggle. |
-| No `validate_context()` in BasePhase despite being listed as planned | Low | Plan mentions `BasePhase.validate_context` (line 637, line 1389) but BasePhase stub (line 611-642) does not define it. | Add `validate_context()` method to BasePhase that verifies CONTEXT_CONSUMED keys exist and CONTEXT_PRODUCED keys were written. |
+| ~~No `validate_context()` in BasePhase despite being listed as planned~~ | ~~Low~~ | ~~Plan mentioned `BasePhase.validate_context` but the stub did not define it.~~ | **RESOLVED (2026-08-07)**: `validate_context()` implemented in `BasePhase` — verifies CONTEXT_CONSUMED keys exist and CONTEXT_PRODUCED keys were written. |
 | `phase_4.py` at 1,400 lines — largest file, complex 5-section logic | Medium | 1,400 lines is 5x recommended max. Section parameterization reduces duplication but file is dense. | Future work: split into `phase_4_core.py` (execute + _run_hpo) and `phase_4_sections.py` (_run_evaluation_section helpers). |
 | `load_saved_models()` type annotation | Low | Plan had `Dict[str, Dict]` but return contains mixed types (Dict, ndarray, List, str). | Fixed: now `Dict[str, Any]` and removed dead return keys `temporal_weights`, `feature_names`, `split_date`. |
 | `TemporalPrecisionGap` lists `temporal_weights` in CONTEXT_CONSUMED but never uses it | Low | `chunk_XX_feature_analysis_b:29` — dead variable. The analysis is date-based only. | Remove `temporal_weights` from `TemporalPrecisionGap` CONTEXT_CONSUMED. |
@@ -1658,12 +1815,113 @@ All 80+ existing keys preserved. **2 additions:**
 
 ---
 
+## 10. Git Branching Strategy
+
+> **STATUS: DEFERRED (2026-08-07).** The branch fan-out strategy is out of scope for the current refactor run. The pipeline is refactored into new files on the current tree; branching is handled later, if at all.
+
+### Branch Structure
+
+```
+main
+├── feature/temporal-weighting
+├── feature/feature-importance
+├── feature/backward-elimination
+├── feature/hpo
+├── feature/post-hpo-threshold
+├── feature/xgboost-coverage-sweep
+├── feature/diagnostics        # all 4 diagnostic features
+├── feature/focal-loss
+├── feature/per-arch-winsorize
+└── feature/log-transform
+```
+
+### `main` — Minimal Pipeline
+
+All optional features **OFF**. Config defaults are the OFF state:
+
+| Config | main value | Effect |
+|--------|-----------|--------|
+| `USE_TEMPORAL_WEIGHTING` | `False` | Phase 3 stub, Inference skips temporal recomputation |
+| `FEATURE_ANALYSIS_ENABLED` | `False` | Phase Xa stub |
+| `BACKWARD_ELIMINATION_ENABLED` | `False` | Phase BE stub |
+| `ENABLE_HYPERPARAM_OPTIMIZATION` | `False` | Phase 4 Section 2 skipped |
+| `ENABLE_POST_HPO_THRESHOLD_SEARCH` | `False` | Phase 4 Section 4 skipped |
+| All diagnostics | `False` | Each gate in Phase 4 Section 3 |
+| `PREDICTION_XGBOOST_PRECISION_TARGETING` | `False` | Standard F1-optimal threshold |
+| `USE_FOCAL_LOSS` | `False` | BCE |
+| `LOG_TRANSFORM_TARGET` / `LOG_TRANSFORM_FEATURES` | `False` | Raw values |
+| `PER_ARCH_WINSORIZE` | `{}` | No per-arch winsorization |
+
+`main` produces: **load CSV → 9-arch training (Section 1 baseline) → Section 5 retrain → ensemble → inference → all logging**.
+
+The 19 behavioral constants (HPO thresholds, augmentation rates, KL params) are not toggles — they have sensible defaults in `main` and are never changed by feature branches.
+
+### Feature Branches — One Toggle Per Branch
+
+Each branch flips **exactly one toggle** in `config.py` and fills in the corresponding implementation:
+
+| Branch | Config change | Files affected | Lines added |
+|--------|--------------|----------------|-------------|
+| `feature/temporal-weighting` | `USE_TEMPORAL_WEIGHTING: True` | `config.py` + `phases.py` | ~180 |
+| `feature/feature-importance` | `FEATURE_ANALYSIS_ENABLED: True` | `config.py` + `phases.py` | ~200 |
+| `feature/backward-elimination` | `BACKWARD_ELIMINATION_ENABLED: True` | `config.py` + `phases.py` | ~280 |
+| `feature/hpo` | `ENABLE_HYPERPARAM_OPTIMIZATION: True` | `config.py` + `training.py` + `phase_4.py` | ~150 |
+| `feature/post-hpo-threshold` | `ENABLE_POST_HPO_THRESHOLD_SEARCH: True` | `config.py` + `phase_4.py` + `evaluate.py` | ~50 |
+| `feature/xgboost-coverage` | `PREDICTION_XGBOOST_PRECISION_TARGETING: True` | `config.py` + `evaluate.py` | ~80 |
+| `feature/diagnostics` | 4 diagnostic toggles → True | `config.py` + `phase_4.py` | ~100 |
+| `feature/focal-loss` | `USE_FOCAL_LOSS: True` | `config.py` + `models.py` + `training.py` | ~30 |
+| `feature/per-arch-winsorize` | `PER_ARCH_WINSORIZE: {...}` | `config.py` + `phase_4.py` | ~40 |
+| `feature/log-transform` | `LOG_TRANSFORM_TARGET / LOG_TRANSFORM_FEATURES: True` | `config.py` + `data_loader.py` | ~30 |
+
+### Merge Safety
+
+| Conflict type | Likelihood | Reason |
+|---------------|-----------|--------|
+| `config.py` toggle value | None — each branch changes a different key on its own line | `git merge` handles adjacent key changes cleanly |
+| `phases.py` class body | Very low — each phase is its own class; branches modify different classes | No overlapping `def` lines |
+| `phase_4.py` sections | Very low — Sections 2/3/4 are sequential blocks with no shared variables | Dependencies are via `context` dict only |
+| `evaluate.py` / `training.py` | Very low — feature branches add new functions without modifying existing ones | Pure additions, no deletions |
+
+### Integration Order
+
+Recommended merge order for `main ← feature/*`:
+
+```
+ 1. feature/log-transform          # data_loader — no dependencies
+ 2. feature/per-arch-winsorize     # phase_4 — no dependencies
+ 3. feature/focal-loss             # models + training — no dependencies
+ 4. feature/temporal-weighting     # phases — standalone phase
+ 5. feature/feature-importance     # phases — standalone phase
+ 6. feature/backward-elimination   # phases — standalone phase
+ 7. feature/diagnostics            # phase_4 Section 3 — reads phase output
+ 8. feature/hpo                    # phase_4 Section 2 + training — reads Section 1 output
+ 9. feature/post-hpo-threshold     # phase_4 Section 4 — reads HPO output
+10. feature/xgboost-coverage       # evaluate Section 3 — Section 5 detail
+```
+
+Steps 1-4 are fully independent (no merge conflicts between any pair).
+Steps 5-6 depend only on step 4's context keys (no file conflicts).
+Steps 7-10 depend only on prior sections in `phase_4.py` (no file conflicts because each section is a separate code block).
+
+### CI Validation Per Branch
+
+```bash
+python pipeline.py > current_output.log
+diff <(grep -E '\[section [1-5]\]|\[stat\]|\[pass\]|ensemble' reference/iter38.log) \
+     <(grep -E '\[section [1-5]\]|\[stat\]|\[pass\]|ensemble' current_output.log)
+```
+
+`main` validates against the subset of iter38 log patterns that fire with all features OFF.
+Each feature branch validates against the full iter38 log.
+
+---
+
 ## Appendix: Current vs. Target Side-by-Side
 
 | Dimension | Current | Target |
 |---|---|---|
 | Files | 24 | 9 |
-| Lines | 11,988 | ~5,800 |
+| Lines | 11,988 | ~5,600 |
 | `__main__` test blocks | 24 | 1 (in pipeline.py) |
 | Phase validation functions | 14 (2 per phase) | 1 (BasePhase.validate_context) |
 | Metric function duplication | 2 layers (standalone + wrapper) | 1 layer (direct calls) |

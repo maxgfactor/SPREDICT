@@ -486,6 +486,8 @@ class Evaluator:
                 sklearn_safeguards = self.config['SKLEARN_SAFEGUARDS']
                 min_pos_ratio = sklearn_safeguards.get('MIN_POS_PRED_RATIO', self.config['MIN_POS_PRED_RATIO'])
                 max_pos_ratio = sklearn_safeguards.get('MAX_POS_PRED_RATIO', self.config['MAX_POS_PRED_RATIO'])
+                if arch_name == 'XGBoost':
+                    max_pos_ratio = 0.48
             elif arch_name in self.config['NEURAL_ARCHITECTURES']:
                 neural_safeguards = self.config.get('NEURAL_SAFEGUARDS', {})
                 min_pos_ratio = neural_safeguards.get('MIN_POS_PRED_RATIO', self.config['MIN_POS_PRED_RATIO'])

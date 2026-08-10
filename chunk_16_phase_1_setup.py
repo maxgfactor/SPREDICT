@@ -53,10 +53,8 @@ class Phase1_PipelineSetup(BasePhase):
             self.logger.log(f"Unexpected data loading error: {e}", 'error')
             raise RuntimeError("Data loading failed") from e
         
-        # sanity check: Sample size validation
-        expected_samples = self.config['SAMPLE_SIZE']
-        if expected_samples > 0 and len(X) != expected_samples:
-            self.logger.log(f"sanity check: sample_size={expected_samples}, got {len(X)} samples", 'warning')
+        # log: Sample size (SAMPLE_SIZE is an upper bound, actual count may be lower)
+        self.logger.log(f"data count: {len(X)} samples (max configured: {self.config['SAMPLE_SIZE']})", 'info')
         
         # sanity check: Target value distribution (for continuous targets)
         if self.config['TARGET_TYPE'] == 'continuous':

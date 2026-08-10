@@ -1,7 +1,7 @@
 # Software Specification Requirements (SSR) — Dataset Classification Ensemble
 
-**Version**: 3.51  
-**Date**: 2026-06-17  
+**Version**: 3.59  
+**Date**: 2026-07-14  
 **Status**: Living Document - Update After Each Run  
 
 ---
@@ -693,7 +693,7 @@ Section 5 FINAL (uses Section 4's elected model+threshold)
 - **Output**: `optimal_threshold` (label threshold with best val precision), `threshold_opt_model` (model trained at that threshold), all per-threshold metrics stored in `all_results`
 
 #### Section 2 — Hyperparameter Optimization (HPO)
-- Run Optuna Bayesian optimization (5–30 trials) using the `optimal_threshold` from Section 1 with the same 0.5 prediction binary split
+- Run Optuna Bayesian optimization (3 trials per arch, configurable via `HYPERPARAM_OPTIMIZATION_TRIALS`) using the `optimal_threshold` from Section 1 with the same 0.5 prediction binary split
 - **Output**: `hpo_best_model` + `hpo_val_precision` + `best_hyperparams`
 - HPO trials that fail MaxPred, TP, or minimum validation precision gates are rejected silently; the surviving best trial is the "HPO best"
 
@@ -755,8 +755,8 @@ All architecture grouping is centralized in `chunk_01_config.py` as CONFIG keys:
 | `NEURAL_ARCHITECTURES` | `['CNN', 'RNN', 'LSTM', 'Dense', 'VAE', 'Transformer']` | StandardScaler gating, neural safeguard lookup |
 | `TREE_ARCHITECTURES` | `['CatBoost', 'LightGBM', 'XGBoost']` | Sklearn safeguard lookup |
 | `ARCH_CSV_ORDER` | All 9 archs in display order | metrics_summary.csv row ordering |
-| `HPO_RETRAIN_EPOCHS` | `{'Dense':15, 'VAE':15, 'CNN':15}` | Fast HPO threshold retrain epochs (fallback=3) |
-| `FINAL_TRAIN_EPOCHS` | `{'Dense':15, 'VAE':30, 'CNN':20, 'LSTM':20, 'Transformer':20}` | Final training epochs (fallback=3) |
+| `HPO_RETRAIN_EPOCHS` | `{'Dense':15, 'VAE':20, 'CNN':15, 'RNN':15, 'LSTM':15, 'Transformer':15}` | Fast HPO threshold retrain epochs (VAE restored to 20 Jul 12, 2026; fallback=3) |
+| `FINAL_TRAIN_EPOCHS` | `{'Dense':15, 'VAE':30, 'CNN':15, 'RNN':15, 'LSTM':15, 'Transformer':15}` | Final training epochs — VAE restored to 30 for KL annealing (Jul 12, 2026); others capped at 15 |
 
 Adding a new architecture to a group = 1 config change, not N scattered list updates. All 5 keys registered in `CONFIG_KEYS` and `CONFIG_TYPES`.
 
@@ -786,7 +786,7 @@ Ten bug patterns were identified and fixed during development (Patterns 1–10, 
 | FR-04 | Apply temporal weighting based on date | Required | chunk_07_data_temporal.py | → See Section 1.1.1 |
 | FR-05 | Train multiple architectures: LightGBM, XGBoost, CatBoost, VAE, Dense, CNN, RNN, LSTM, Transformer | Required | chunk_08-11_models_*.py, chunk_18_phase_4_ensemble.py | → See Section 1.1.5 |
 | FR-06 | Perform threshold optimization (3 thresholds: 20.0, 10.0, 0.0) | Required | chunk_12_evaluation_evaluator.py | → See Section 1.1.2, Section 1.3 |
-| FR-07 | Perform hyperparameter optimization (20 Optuna trials) | Required | chunk_21_hyperparam_optimizer.py | → See Section 1.1.3, Section 1.3 |
+| FR-07 | Perform hyperparameter optimization (3–5 Optuna trials) | Required | chunk_21_hyperparam_optimizer.py | → See Section 1.1.3, Section 1.3 |
 | FR-08 | Create precision-weighted ensemble | Required | chunk_10_models_ensemble.py | → See Section 1.1.4, Section 1.3 |
 | FR-09 | Save trained models to `./saved_models/` | Required | chunk_18_phase_4_ensemble.py | → See Section 1.2 |
 | FR-10 | Generate predictions on new data | Required | legacy files/predict.py, chunk_22_model_loader.py | → See Section 1.1.5, Section 1.3 |
@@ -844,7 +844,7 @@ The tables below document which HPO parameters have the strongest effect on each
 
 | Category | Parameter | Config Key | Range | Impact |
 |----------|-----------|------------|-------|--------|
-| Architecture | Latent Dim | latent_dim | [32, 64, 128, 256] | HIGH |
+| Architecture | Latent Dim | latent_dim | [32, 64] | HIGH |
 | | Dropout | dropout | [0.0, 0.02, 0.05, 0.1] | HIGH |
 | | Encoder Layers | encoder_layers | [1, 2, 3] | MEDIUM |
 | | Decoder Layers | decoder_layers | [1, 2, 3] | MEDIUM |
@@ -967,8 +967,11 @@ The tables below document which HPO parameters have the strongest effect on each
 |-----------|-------|-------------|
 | ENABLE_HYPERPARAM_OPTIMIZATION | True | Enable HPO |
 | HYPERPARAM_OPTIMIZATION_EPOCHS | 5 | Epochs per HPO trial |
-| HPO_TRIALS | 20 | Number of Optuna trials |
-| ENABLE_POST_HPO_THRESHOLD_SEARCH | True | Run threshold search after HPO |
+| HPO_TRIALS | 3 | Number of Optuna trials (reduced from 20, Jul 11, 2026) |
+| ENABLE_POST_HPO_THRESHOLD_SEARCH | False | Run threshold search after HPO (disabled — saves ~15-20% runtime) |
+| TRACK_INFERENCE_LATENCY | False | Track prediction time per sample (disabled — diagnostic) |
+| SLIDING_WINDOW_VALIDATION | False | Sliding window temporal validation (disabled — diagnostic) |
+| PERMUTATION_IMPORTANCE | False | Run permutation importance on all models (disabled — diagnostic; saves ~10-15% runtime) |
 
 ### Safe Guard Configuration
 
@@ -1096,6 +1099,9 @@ See [README.md §Prerequisites](./README.md#prerequisites) for system constraint
 | 3.50 | 2026-06-18 | **GIS Iter 8 (All 5 fixes) + Fix 4 repair + Fix 5 completion**: Total 18,071s. VAE 0.5409 best val P (reclaims #1). 3/9 pass 0.53 filter (VAE, Dense, CNN). CNN 0.6818 best inf P (new record). Ensemble P 0.6898 / R 0.2917. Fix 3 (CNN focal_loss) **validated** — all 6 NNs selected focal_loss in HPO, no collapse. Fix 4 (XGBoost early stopping) **BROKEN** — early_stopping_rounds passed to .fit() crashes all XGBoost/LightGBM HPO trials. Fix 5 completed — last 2 hardcoded arch lists replaced. Fix 4 repair applied: early_stopping_rounds moved to tree constructors (chunk_11), removed from fit_kwargs (chunk_14), injected into HPO trial params (chunk_21). GIS.md up-revved to v1.7 with §8g Phase C lever catalog. | Fix 3 fully validated; Fix 4 repaired; iter9 pending |
 | 3.51 | 2026-06-18 | **Comprehensive lever audit trail**: Added ~30 per-cycle log lines across 8 files (chunk_05, chunk_12, chunk_14, chunk_18, chunk_19, chunk_20, chunk_XX_feature_analysis_a). Every config lever is now directly verifiable from the .log at the pipeline stage where it takes effect. Startup config dump logs all lever values. Per-arch safeguard summary (1×/arch), early_stopping_rounds + scale_pos_weight source per tree training, class_weight skip reason per NN training, ensemble weighting scheme, winsor bounds at inference with percentiles + clip range, FI method active count. GIS.md §8h catalogs 7 previously undocumented levers (L1–L7). All 10 blind spots closed; .log is now the single source of truth for lever state. | All levers traceable in .log; no new logic or data paths |
 | 3.52 | 2026-07-06 | **Iter28 run + MAXPRED_OBJECTIVE_ARCHS removed**: iter28 validated F3 epoch fixes — 7 PASS / 2 FAIL, LSTM/Transformer collapse root cause found (Transformer single-token no-op, HPO objective `return precision` for 4/5 NNs, post-HPO retraining skipped). `MAXPRED_OBJECTIVE_ARCHS` config key deleted — HPO objective unified to `return balanced_score` for all archs. See GIS.md §5/§8i. | Dead code cleanup; objective unified; iter29 pending |
+| 3.53 | 2026-07-06 | **iter29 all 4 fixes applied**: Fix 4 (dead code + objective) applied pre-run. Fix 3 (post-HPO retraining) — both HPO model paths now retrain with `FINAL_TRAIN_EPOCHS` at `chunk_18:984-1001`. Fix 1 (Transformer architecture) — `Reshape((1,dim))` → `Reshape((input_dim,1))` + `Dense(dim)` at `chunk_09:81-82`, creating 34 per-feature tokens. Fix 2 automatic via Fix 4. Pipeline ready for iter29 run. | All 4 iter29 fixes applied; run pending |
+| 3.54 | 2026-07-11 | **iter31-33 fixes + runtime optimization**: Fix 1 — class_weight merged into sample_weight (Dense regression, chunk_14). Fix 2 — XGBOOST_SAFEGUARDS config dict removed → inline eval override with `max_pos_ratio=0.48` (chunk_12, chunk_18). Fix 3/4 — HPO degeneracy rejection (`std_pred < 0.005`) expanded from trees to ALL architectures (chunk_21). VAE latent_dim capped at 64 to prevent latent collapse (chunk_01). Runtime knobs tuned: `HYPERPARAM_OPTIMIZATION_TRIALS: 5→3`, `FINAL_TRAIN_EPOCHS` all neural 15 (was 20-30), `ENABLE_POST_HPO_THRESHOLD_SEARCH: False`, diagnostics disabled (permutation, SHAP, sliding window, latency). iter32: 9/9 archs PASS. iter33: runtime optimized run pending. | Degeneracy fixes; runtime optimization; HPO safeguard expansion |
+| 3.55 | 2026-07-12 | **iter34 fixes (5 changes)**: Fix 1 — HPO_Trials CSV parameterized (`chunk_18:1431`, hardcoded 20→config value). Fix 2a — VAE `_is_focal` flag added to `build_vae_model` (`chunk_08:210`), eliminating double imbalance during threshold search. Fix 2b — VAE epochs restored (`chunk_01:132-133`): `HPO_RETRAIN_EPOCHS 15→20`, `FINAL_TRAIN_EPOCHS 15→30` (KL annealing needs 10+ full-KL epochs). Fix 3b — recall-based HPO rejection (`chunk_21:183-190`): reject trials at LT<5 where `recall>0.95 AND precision-base_rate<0.01` (catches "always positive" gaming without killing legitimate high-recall models). Fix 3c — fallback threshold `thresholds[0]`(20.0)→`thresholds[-1]`(0.0) for all-thresholds-rejected path (`chunk_18:465-466`). | VAE double imbalance; near-constant positive HPO rejection; fallback threshold fix |
 
 ## 3.2 Cross-Reference Guide
 
@@ -1298,8 +1304,8 @@ This section records failed approaches discovered during GIS iterations. Entries
 The original §4.5 (NN Prediction Range Failures), §4.6 (XGBoost Train-Val Gap), §4.7 (Phase 5 Crash), and GIS Hyperparameter Reconfiguration (May 2026) have been archived to `shortmemory.txt` under `SPEC.md SECTION 4 ARCHIVE` to keep this section focused on findings from the GIS iteration era (iter1–7 onward).
 
 *Document generated: 2026-04-15*  
-*Last updated: 2026-07-06*  
-*Version: 3.52*
+*Last updated: 2026-07-12*  
+*Version: 3.55*
 
 
 ## PROJECT_LEXICON

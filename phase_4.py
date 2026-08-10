@@ -1,28 +1,10 @@
 """
-Chunk 18: Phase 4 - Neural Ensemble
-Ensemble model training phase
-
-## Purpose
-Phase 4 orchestrates the complete model training pipeline including:
-1. Finding optimal classification thresholds
-2. Hyperparameter optimization via Optuna
-3. Creating precision-weighted ensembles
-4. Persisting trained models for later use
-
-## Key Responsibilities
-- Data preparation with temporal weighting
-- Per-architecture threshold optimization
-- Bayesian hyperparameter optimization
-- Ensemble creation and evaluation
-- Model serialization to ./saved_models/
-
-## Dependencies
-- Input: X, y (continuous), dates, temporal_weights from Phase 3
-- Output: Trained models, optimal_thresholds, best_hyperparams for Phase 5
-
-## Pipeline Flow
-Phase 4 → Phase 5
-(RNN/LSTM models + thresholds are passed to Phase 5 for final predictions)
+phase_4.py — Phase 4: Model Training & Ensemble
+Refactored from chunk_18_phase_4_ensemble.py (2026-08-07).
+Core architecture loop (Section 1 threshold search, Section 2 HPO,
+Section 3 election, Section 4 post-HPO, Section 5 final) preserved verbatim
+for iter38 log parity. Removed: dead imports, StateManager (unused),
+validate_phase4_input/output, __main__ block.
 """
 
 import numpy as np
@@ -31,14 +13,23 @@ import sys
 from typing import Dict, List, Any
 from sklearn.preprocessing import StandardScaler  # NN-only normalization (trees are scale-invariant)
 
-from chunk_15_phase_base import BasePhase
-from chunk_02_utils_logging import Logger
-from chunk_12_evaluation_evaluator import Evaluator
-from chunk_14_models_trainer import ModelTrainer
-from chunk_13_state_manager import StateManager
-from chunk_10_models_ensemble import create_precision_ensemble, validate_ensemble_output
-from chunk_21_hyperparam_optimizer import HyperparameterOptimizer
-from chunk_XX_phase_backward_elimination import resolve_feature_indices as _resolve_be_indices
+from phases import BasePhase, resolve_feature_indices as _resolve_be_indices
+from pipeline_logging import Logger
+from evaluate import (
+    Evaluator,
+    search_coverage_thresholds,
+    inverse_log_transform,
+    format_diagnostic_string,
+    calculate_temporal_drift,
+    calculate_permutation_importance,
+    calculate_prediction_entropy,
+    calculate_logit_compression,
+    calculate_ks_test,
+    calculate_bhattacharyya_distance,
+    calculate_mutual_information,
+)
+from training import ModelTrainer, HyperparameterOptimizer
+from models import create_precision_ensemble
 
 
 def _get_arch_feature_dict(threshold_kept_indices, arch_name):
@@ -50,27 +41,23 @@ def _get_arch_feature_dict(threshold_kept_indices, arch_name):
     return threshold_kept_indices
 
 
+class ModelTraining(BasePhase):
+    """
+    Phase 4: The core training pipeline.
+    5 evaluation sections per architecture + ensemble + model saving.
+    Architecture loop: Section1(threshold search) → Section2(HPO) →
+    Section3(election) → Section4(post-HPO) → Section5(final).
+    """
+    CONTEXT_CONSUMED = ['X', 'y', 'dates', 'temporal_weights', 'raw_target_values',
+                        'feature_names', 'threshold_kept_indices',
+                        'phase1_complete', 'phase3_complete']
+    CONTEXT_PRODUCED = ['arch_names', 'arch_final_metrics', 'arch_winsor_bounds',
+                        'optimal_thresholds', 'best_hyperparams_list',
+                        'best_val_precision_list', 'final_ensemble',
+                        'ensemble_precision', 'ensemble_participants',
+                        'val_predictions', 'val_dates', 'val_y_raw',
+                        'phase4_complete']
 
-from chunk_04_utils_metrics import (
-    inverse_log_transform,
-    get_prediction_percentiles,
-    format_diagnostic_string,
-    analyze_loss_distribution,
-    calculate_temporal_drift,
-    calculate_permutation_importance,
-    calculate_prediction_entropy,
-    calculate_logit_compression,
-    calculate_ks_test,
-    calculate_bhattacharyya_distance,
-    calculate_snr,
-    calculate_mutual_information,
-    calculate_psi
-)
-
-
-class Phase4_NeuralEnsemble(BasePhase):
-    """Phase 4: Neural ensemble training and optimization"""
-    
     def __init__(self, config: Dict):
         """
         Initialize Phase 4
@@ -82,7 +69,6 @@ class Phase4_NeuralEnsemble(BasePhase):
         self.logger = Logger(config)
         self.evaluator = Evaluator(config, logger=self.logger)
         self.model_trainer = ModelTrainer(config, logger=self.logger, evaluator=self.evaluator)
-        self.state_manager = StateManager()
         self.hyperparam_optimizer = HyperparameterOptimizer(config, logger=self.logger)
     
     def _validate_diagnostics_requirements(self, dates: np.ndarray) -> None:
@@ -1130,72 +1116,15 @@ class Phase4_NeuralEnsemble(BasePhase):
                     self.logger.log(f"[section 5] {arch_tag} [final] [diagnostic] validation   " + format_diagnostic_string(val_pred, ""), 'info')
                 
                 # XGBoost-specific: coverage-rate sweep for precision targeting
-                if self.config.get('PREDICTION_XGBOOST_PRECISION_TARGETING', False) and arch_name == 'XGBoost':
-                    y_val_binary_search = (y_val_continuous >= optimal_threshold).astype(int)
-
-                    coverage_rates = self.config.get('PREDICTION_COVERAGE_RATES',
-                        [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50])
-                    target_precision = self.config.get('PREDICTION_TARGET_PRECISION', 0.97)
-                    max_coverage = self.config.get('PREDICTION_MAX_COVERAGE', 0.50)
-
-                    sorted_preds = np.sort(val_pred.flatten())
-                    n_val = len(sorted_preds)
-
-                    best_pred_threshold = self.config['PREDICTION_THRESHOLD']
-                    best_f1 = 0.0
-                    search_results = []
-                    chosen_rate = None
-
-                    for rate in sorted(coverage_rates):
-                        if rate > max_coverage:
-                            break
-                        k = max(1, int(n_val * (1.0 - rate)))
-                        pred_thresh = sorted_preds[min(k, n_val - 1)]
-
-                        val_binary_test = (val_pred >= pred_thresh).astype(int)
-
-                        if arch_name in self.config['TREE_ARCHITECTURES']:
-                            _sg = self.config['SKLEARN_SAFEGUARDS']
-                        elif arch_name in self.config['NEURAL_ARCHITECTURES']:
-                            _sg = self.config['NEURAL_SAFEGUARDS']
-                        else:
-                            _sg = {'MIN_POSITIVE_ABSOLUTE': 100, 'MIN_POSITIVE_PERCENTAGE': 0.01}
-                        _min_pos = max(_sg['MIN_POSITIVE_ABSOLUTE'], int(n_val * _sg['MIN_POSITIVE_PERCENTAGE']))
-
-                        if val_binary_test.sum() >= _min_pos:
-                            precision = self.evaluator.calculate_precision(y_val_binary_search, val_binary_test)
-                            recall = self.evaluator.calculate_recall(y_val_binary_search, val_binary_test)
-                            f1 = self.evaluator.calculate_f1(y_val_binary_search, val_binary_test)
-                            search_results.append((rate, pred_thresh, precision, recall, f1))
-
-                            if f1 > best_f1:
-                                best_f1 = f1
-
-                            if precision >= target_precision and chosen_rate is None:
-                                chosen_rate = rate
-                                best_pred_threshold = pred_thresh
-
-                    if search_results:
-                        self.logger.log(f"   [diagnostic] xgboost_coverage_sweep: tested {len(search_results)} coverage rates", 'info')
-                        for r in search_results[-5:]:
-                            self.logger.log(
-                                f"   [diag]   coverage={r[0]:.4f} thresh={r[1]:.4f}: "
-                                f"precision={r[2]:.4f} recall={r[3]:.4f} f1={r[4]:.4f}", 'info')
-                        if chosen_rate is None:
-                            best_result = max(search_results, key=lambda x: x[4])
-                            best_pred_threshold = best_result[1]
-                            self.logger.log(
-                                f"   [diagnostic] precision_target={target_precision:.2f} not met — "
-                                f"falling back to F1-optimal threshold: {best_pred_threshold:.4f} "
-                                f"(coverage={best_result[0]:.4f}, f1={best_result[4]:.4f})", 'info')
-                        else:
-                            self.logger.log(
-                                f"   [diagnostic] precision_target={target_precision:.2f} met at "
-                                f"coverage={chosen_rate:.4f}, threshold={best_pred_threshold:.4f}", 'info')
-
-                    pred_threshold = best_pred_threshold
-                else:
-                    pred_threshold = self.config['PREDICTION_THRESHOLD']
+                coverage_rates = self.config.get('PREDICTION_COVERAGE_RATES',
+                    [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50])
+                target_precision = self.config.get('PREDICTION_TARGET_PRECISION', 0.97)
+                max_coverage = self.config.get('PREDICTION_MAX_COVERAGE', 0.50)
+                pred_threshold = search_coverage_thresholds(
+                    (y_val_continuous >= optimal_threshold).astype(int),
+                    val_pred, coverage_rates, target_precision, max_coverage,
+                    self.config, evaluator=self.evaluator, logger=self.logger,
+                    arch_name=arch_name)
                 final_pred_thresholds.append(float(pred_threshold))
                 
                 train_binary = (train_pred >= pred_threshold).astype(int)
@@ -2122,98 +2051,3 @@ class Phase4_NeuralEnsemble(BasePhase):
         for key in required:
             if key not in context:
                 raise ValueError(f"Phase 4 missing required input: {key}")
-
-
-def validate_phase4_input(context: Dict) -> bool:
-    """
-    Ensure Phase 4 has required inputs
-    
-    Args:
-        context: Input context
-        
-    Returns:
-        True if valid
-    """
-    assert context.get('phase1_complete') == True, "Phase 1 must be complete"
-    assert context.get('phase3_complete') == True, "Phase 3 must be complete"
-    required = ['X', 'y', 'temporal_weights']
-    for key in required:
-        assert key in context, f"Phase 4 missing required input: {key}"
-    return True
-
-
-def validate_phase4_output(context: Dict) -> bool:
-    """
-    Validate Phase 4 output
-    
-    Args:
-        context: Output context from Phase 4
-        
-    Returns:
-        True if valid
-    """
-    required = ['models', 'final_ensemble', 'ensemble_precision', 'optimal_label_threshold', 'phase4_complete']
-    for key in required:
-        assert key in context, f"Phase 4 missing output: {key}"
-    
-    # Validate ensemble is callable
-    assert callable(context['final_ensemble']), "final_ensemble must be callable"
-    
-    # Test ensemble produces valid predictions
-    X_sample = context['X'][:5]
-    test_preds = context['final_ensemble'](X_sample)
-    assert len(test_preds) == 5, "Ensemble prediction length mismatch"
-    
-    # Validate precision is in valid range
-    assert 0 <= context['ensemble_precision'] <= 1, "Precision out of range"
-    # Note: optimal_label_threshold is a label threshold (e.g., 19.3), not a prediction threshold (0-1)
-    # So we don't validate its range here
-    assert context['phase4_complete'] == True
-    
-    return True
-
-
-if __name__ == "__main__":
-    # Self-test
-    print("Testing Phase4_NeuralEnsemble...")
-    
-    # Create test config
-    config = {
-        'latent_dim': 32,
-        'units': 64,
-        'dropout': 0.1,
-        'filters': 64,
-        'lstm_units': 32,
-        'heads': 4,
-        'dim': 64,
-        'MIN_ENSEMBLE_SIZE': 5,
-        'LOG_VERBOSITY': 0
-    }
-    
-    # Create mock context from Phase 3
-    np.random.seed(42)
-    n_samples = 100
-    n_features = 10
-    
-    context = {
-        'X': np.random.randn(n_samples, n_features).astype(np.float32),
-        'y': np.random.randint(0, 2, n_samples),
-        'dates': np.random.randint(20220101, 20230101, n_samples),
-        'temporal_weights': np.ones(n_samples),
-        'temporal_features': {'weights': np.ones(n_samples)},
-        'phase1_complete': True,
-        'phase3_complete': True
-    }
-    
-    # Run Phase 4
-    phase4 = Phase4_NeuralEnsemble(config)
-    result = phase4.execute(context.copy())
-    
-    print(f"[pass] Phase 4 executed successfully")
-    print(f"   Models trained: {len(result['models'])}")
-    print(f"   Ensemble precision: {result['ensemble_precision']:.4f}")
-    
-    # Validate
-    validate_phase4_output(result)
-    
-    print("\n[pass] Phase4_NeuralEnsemble tests passed")

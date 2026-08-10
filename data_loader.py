@@ -1,14 +1,13 @@
 """
-Chunk 05: Data Manager
-Data loading, validation, and preprocessing
+data_loader.py — Data Manager
+Refactored from chunk_05_data_manager.py + chunk_07_data_temporal.py (2026-08-07).
+Data loading, validation, preprocessing, and temporal feature extraction/weighting.
 """
 
 import os
 import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Optional
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 
 
 class DataManager:
@@ -81,8 +80,24 @@ class DataManager:
         if df.shape[1] < 3:  # Need at least features + date + target
             raise ValueError(f"Insufficient columns: {df.shape[1]} found, need at least 3")
         
-        # Auto-detect date and target columns
-        date_col_idx = self._detect_date_column(df)
+        # Auto-detect date and target columns (replaces _detect_date_column —
+        # removed; column name lookup first, value scan as fallback)
+        date_col_idx = None
+        for name in ('date', 'Date', 'DATE'):
+            if name in df.columns:
+                date_col_idx = df.columns.get_loc(name)
+                break
+        if date_col_idx is None:
+            for col_idx in range(df.shape[1]):
+                try:
+                    values = pd.to_numeric(df.iloc[:, col_idx], errors='coerce')
+                    if values.min() > 19000000 and values.max() < 21000000:
+                        date_col_idx = col_idx
+                        break
+                except Exception:
+                    continue
+        if date_col_idx is None:
+            date_col_idx = -2
         target_col_idx = self.config['TARGET_COLUMN_INDEX']
         
         # Convert negative index to actual index (e.g., -1 -> last column index)
@@ -156,6 +171,29 @@ class DataManager:
     def is_log_transform_applied(self) -> bool:
         """Check if log transform was applied to target variable."""
         return getattr(self, '_log_transform_applied', False)
+    
+    def _apply_stratified_sampling(self, X: np.ndarray, y: np.ndarray, 
+                                  dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Cap dataset to SAMPLE_SIZE most recent rows by date.
+        Always applied when USE_SAMPLING is enabled — respects SAMPLE_SIZE as upper bound.
+        
+        Args:
+            X: Feature matrix
+            y: Labels
+            dates: Temporal data
+            
+        Returns:
+            Sampled (X, y, dates) with most recent rows
+        """
+        sample_size = min(self.config['SAMPLE_SIZE'], len(y))
+        sorted_indices = np.argsort(dates)[::-1]  # Descending order
+        sampled_indices = sorted_indices[:sample_size]
+        
+        # Store sampled indices for Phase 1
+        self._sampled_indices = sampled_indices
+        
+        return X[sampled_indices], y[sampled_indices], dates[sampled_indices]
     
     def _apply_feature_engineering(self, X: np.ndarray, winsorize: bool = True) -> np.ndarray:
         """
@@ -285,51 +323,6 @@ class DataManager:
             print(f"   [feature] Total features: {original_features} -> {X.shape[1]}")
         
         return X
-    
-    def _detect_date_column(self, df: pd.DataFrame) -> int:
-        """
-        Detect date column index
-        
-        Args:
-            df: DataFrame to analyze
-            
-        Returns:
-            Index of date column
-        """
-        # Try to find a column with dates in YYYYMMDD format
-        for col_idx in range(df.shape[1]):
-            try:
-                values = pd.to_numeric(df.iloc[:, col_idx], errors='coerce')
-                if values.min() > 19000000 and values.max() < 21000000:
-                    return col_idx
-            except Exception:
-                continue
-        
-        # Default to second-to-last column
-        return -2
-    
-    def _apply_stratified_sampling(self, X: np.ndarray, y: np.ndarray, 
-                                  dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Cap dataset to SAMPLE_SIZE most recent rows by date.
-        Always applied when USE_SAMPLING is enabled — respects SAMPLE_SIZE as upper bound.
-        
-        Args:
-            X: Feature matrix
-            y: Labels
-            dates: Temporal data
-            
-        Returns:
-            Sampled (X, y, dates) with most recent rows
-        """
-        sample_size = min(self.config['SAMPLE_SIZE'], len(y))
-        sorted_indices = np.argsort(dates)[::-1]  # Descending order
-        sampled_indices = sorted_indices[:sample_size]
-        
-        # Store sampled indices for Phase 1
-        self._sampled_indices = sampled_indices
-        
-        return X[sampled_indices], y[sampled_indices], dates[sampled_indices]
     
     def augment_signal_cases(self, X: np.ndarray, y: np.ndarray, 
                             dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -481,105 +474,124 @@ class DataManager:
         # Validate dates
         assert dates.min() > 19000000, f"Dates too old: {dates.min()}"
         assert dates.max() < 21000000, f"Dates too futuristic: {dates.max()}"
-
-
-def validate_data_output(X: np.ndarray, y: np.ndarray, dates: np.ndarray, 
-                        min_samples: int = 30, config: Dict = None) -> bool:
-    """
-    Validate the standard data contract (X, y, dates)
     
-    Args:
-        X: Feature matrix
-        y: Labels
-        dates: Temporal data
-        min_samples: Minimum required samples
-        config: Optional config to check TARGET_TYPE
+    # ============================================================================
+    # Temporal feature methods (merged from chunk_07_data_temporal.py)
+    # ============================================================================
+    
+    def extract_temporal_features(self, dates: np.ndarray) -> Dict[str, np.ndarray]:
+        """
+        Extract temporal features from dates
         
-    Returns:
-        True if valid
+        Args:
+            dates: Array of dates (YYYYMMDD format as integers)
+            
+        Returns:
+            Dictionary of temporal features
+        """
+        assert isinstance(dates, np.ndarray), "dates must be np.ndarray"
+        assert dates.ndim == 1, "dates must be 1D"
         
-    Raises:
-        ValueError: If validation fails
-    """
-    # Validate types and dimensions
-    assert isinstance(X, np.ndarray), "X must be np.ndarray"
-    assert isinstance(y, np.ndarray), "y must be np.ndarray"
-    assert isinstance(dates, np.ndarray), "dates must be np.ndarray"
-    
-    assert X.ndim == 2, f"X must be 2D, got {X.ndim}D"
-    assert y.ndim == 1, f"y must be 1D, got {y.ndim}D"
-    assert dates.ndim == 1, f"dates must be 1D, got {dates.ndim}D"
-    
-    # Validate consistent lengths
-    if not (len(X) == len(y) == len(dates)):
-        raise ValueError(f"Length mismatch: X={len(X)}, y={len(y)}, dates={len(dates)}")
-    
-    # Validate minimum samples
-    if len(X) < min_samples:
-        raise ValueError(f"Insufficient samples: {len(X)} < {min_samples}")
-    
-    # Validate y is binary (only when TARGET_TYPE is not 'continuous')
-    target_type = (config or {}).get('TARGET_TYPE', 'binary')
-    if target_type != 'continuous':
-        unique_y = np.unique(y)
-        if not set(unique_y).issubset({0, 1}):
-            raise ValueError(f"y must be binary (0, 1), got {unique_y}")
-    
-    # Validate dates are reasonable (YYYYMMDD format)
-    if dates.min() < 19000000:
-        raise ValueError(f"Dates too old: {dates.min()}")
-    if dates.max() > 21000000:
-        raise ValueError(f"Dates too futuristic: {dates.max()}")
-    
-    return True
-
-
-if __name__ == "__main__":
-    # Self-test
-    print("Testing DataManager...")
-    
-    # Create test config
-    config = {
-        'DATA_PATH': 'test_data.csv',
-        'USE_SAMPLING': False,
-        'SAMPLE_SIZE': 1000,
-        'MIN_SAMPLES': 10,
-        'TARGET_TYPE': 'binary',
-        'TARGET_THRESHOLD': 0.5,
-        'AUGMENTATION_MAX_SAMPLES': 50000
-    }
-    
-    # Test with synthetic data if file doesn't exist
-    if not os.path.exists('test_data.csv'):
-        print("Creating synthetic test data...")
-        np.random.seed(42)
-        n_samples = 100
-        n_features = 10
+        features = {}
         
-        X = np.random.randn(n_samples, n_features)
-        y = np.random.randint(0, 2, n_samples)
-        dates = np.random.randint(20220101, 20230101, n_samples)
+        # Convert to pandas datetime
+        dates_str = dates.astype(str)
+        dates_dt = pd.to_datetime(dates_str, format='%Y%m%d', errors='coerce')
         
-        # Save as CSV
-        df = pd.DataFrame(X, columns=[f'feature_{i}' for i in range(n_features)])
-        df['date'] = dates
-        df['target'] = y
-        df.to_csv('test_data.csv', index=False)
-        print("[pass] Test data created")
+        # Extract components
+        features['year'] = dates_dt.year.values
+        features['month'] = dates_dt.month.values
+        features['day'] = dates_dt.day.values
+        features['dayofweek'] = dates_dt.dayofweek.values
+        features['dayofyear'] = dates_dt.dayofyear.values
+        features['quarter'] = dates_dt.quarter.values
+        features['is_weekend'] = (features['dayofweek'] >= 5).astype(int)
+        
+        # Time-based features
+        features['days_from_start'] = (dates_dt - dates_dt.min()).days
+        features['days_to_end'] = (dates_dt.max() - dates_dt).days
+        
+        return features
     
-    # Test data loading
-    try:
-        data_manager = DataManager(config)
-        X, y, dates = data_manager.load_data()
+    def apply_temporal_weighting_strategy(self, dates: np.ndarray,
+                                         strategy_config: Optional[Dict] = None) -> np.ndarray:
+        """
+        Apply temporal weighting strategy
         
-        print(f"[pass] Data loaded: X={X.shape}, y={y.shape}, dates={dates.shape}")
-        print(f"   Signal rate: {y.mean():.3f}")
-        print(f"   Date range: {dates.min()} to {dates.max()}")
+        Args:
+            dates: Array of dates (YYYYMMDD format)
+            strategy_config: Configuration for weighting strategy
+            
+        Returns:
+            Array of temporal weights (n_samples,)
+        """
+        if strategy_config is None:
+            strategy_config = {'type': 'linear', 'multiplier': 9.0}
         
-        # Validate output
-        validate_data_output(X, y, dates, config['MIN_SAMPLES'], config)
+        assert isinstance(dates, np.ndarray), "dates must be np.ndarray"
         
-    except FileNotFoundError as e:
-        print(f"[warning] File not found (expected if test_data.csv missing): {e}")
+        strategy_type = strategy_config.get('type', 'linear')
+        multiplier = strategy_config.get('multiplier', 9.0)
+        
+        # Convert dates to numeric for calculation
+        dates_numeric = pd.to_numeric(dates, errors='coerce')
+        valid_mask = ~np.isnan(dates_numeric)
+        
+        if strategy_type == 'linear':
+            # Linear decay: newer samples get higher weight
+            min_date = np.min(dates_numeric[valid_mask])
+            max_date = np.max(dates_numeric[valid_mask])
+            date_range = max_date - min_date if max_date > min_date else 1
+            
+            weights = np.ones(len(dates))
+            weights[valid_mask] = 1.0 + multiplier * (dates_numeric[valid_mask] - min_date) / date_range
+            
+        elif strategy_type == 'exponential':
+            # Exponential decay
+            min_date = np.min(dates_numeric[valid_mask])
+            max_date = np.max(dates_numeric[valid_mask])
+            date_range = max_date - min_date if max_date > min_date else 1
+            
+            weights = np.ones(len(dates))
+            normalized_dates = (dates_numeric[valid_mask] - min_date) / date_range
+            weights[valid_mask] = np.exp(multiplier * normalized_dates)
+            
+        else:
+            # Uniform weights
+            weights = np.ones(len(dates))
+        
+        # Ensure all weights are positive and finite
+        weights = np.maximum(weights, 0.1)  # Minimum weight of 0.1
+        weights = np.where(np.isfinite(weights), weights, 1.0)
+        
+        return weights
     
-    print("\n[pass] DataManager tests completed")
+    def validate_temporal_features(self, dates: np.ndarray, temporal_features: Dict) -> bool:
+        """
+        Validate temporal feature extraction
+        
+        Args:
+            dates: Original dates array
+            temporal_features: Dictionary of extracted features
+            
+        Returns:
+            True if valid
+            
+        Raises:
+            AssertionError: If validation fails
+        """
+        assert isinstance(temporal_features, dict), "temporal_features must be dict"
+        
+        # Check required keys
+        required_keys = ['year', 'month', 'day', 'dayofweek', 'weights']
+        for key in required_keys:
+            assert key in temporal_features, f"Missing temporal feature: {key}"
+            assert isinstance(temporal_features[key], np.ndarray), f"{key} must be np.ndarray"
+            assert len(temporal_features[key]) == len(dates), f"{key} length mismatch"
+        
+        # Validate weights
+        weights = temporal_features['weights']
+        assert np.all(weights > 0), "All weights must be positive"
+        assert np.all(np.isfinite(weights)), "Weights must be finite"
+        
+        return True

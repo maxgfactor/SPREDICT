@@ -272,6 +272,7 @@ def build_lightgbm_model(config: Dict, input_dim: int, y_train: np.ndarray = Non
         reg_alpha=config.get('reg_alpha', 0.1),
         reg_lambda=config.get('reg_lambda', 1.0),
         max_depth=config.get('max_depth', 8),  # Increased from 5
+        min_split_gain=config.get('min_split_gain', 0.0),
         random_state=42,
         verbose=-1,
         n_jobs=-1,

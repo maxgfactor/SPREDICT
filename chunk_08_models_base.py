@@ -91,7 +91,7 @@ class VAEClassifier(tf.keras.Model):
         self.clf_output = tf.keras.layers.Dense(1, activation='sigmoid', name='signal_output')
         
         # Decoder - configurable depth via decoder_layers HPO param
-        self.num_decoder_layers = config.get('decoder_layers', 3)
+        self.num_decoder_layers = max(config.get('decoder_layers', 2), 2)
         num_decoder_layers = self.num_decoder_layers
         decoder_widths = [64, 128, 256]
         self.decoder_blocks = []
@@ -207,6 +207,7 @@ def build_vae_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
                 loss=clf_loss,
                 metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
             )
+            model._is_focal = True  # Prevent train_model from adding redundant class_weight on top of FocalLoss
         except Exception as e:
             optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config.get('learning_rate', default_lr)
@@ -408,7 +409,7 @@ def build_rnn_model(config: Dict, input_dim: int, loss: str = 'binary_crossentro
     default_lr = config.get('DEFAULT_LEARNING_RATES', {}).get('RNN', 0.001)
     units = config.get('units', 64)
     num_layers = config.get('layers', 2)
-    dropout = config.get('dropout', 0.1)
+    dropout = max(config.get('dropout', 0.1), 0.1)
     learning_rate = config.get('learning_rate', default_lr)
     
     inputs = tf.keras.Input(shape=(input_dim, 1))

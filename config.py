@@ -1,6 +1,7 @@
 """
-Chunk 01: Configuration
-Defines CONFIG dictionary and validation
+config.py — Master Configuration
+Refactored from chunk_01_config.py (2026-08-07).
+Defines CONFIG dictionary and validation.
 """
 
 import os
@@ -18,6 +19,8 @@ CONFIG = {
     'DATA_PATH': 'sampled_184408.csv',
     'USE_SAMPLING': True,          # Enable sampling for faster testing (May 5, 2026)
     'SAMPLE_SIZE': 184408,        # Max rows to keep — pipeline caps to min(SAMPLE_SIZE, actual)
+    'USE_TEMPORAL_WEIGHTING': True,   # ADDED — gates TemporalWeighting + Inference temporal recomputation
+    'RANDOM_SEED': 42,                # ADDED — anchors all RNG for reproducibility
     'MIN_SAMPLES': 30,  # Reduced from 100 for clean dataset
     'TARGET_TYPE': 'continuous',  # Continuous targets (price changes) for stock analysis
     'LOG_TRANSFORM_TARGET': False,  # Disabled (May 5, 2026) - use raw ChangeY values, restore April 8 behavior
@@ -25,12 +28,12 @@ CONFIG = {
     'TEMPORAL_MULTIPLIER': 3.0,
     'LOG_VERBOSITY': 2,
     'AUGMENTATION_MAX_SAMPLES': 50000,
-    
+
     # ============================================================================
     # IMBALANCE HANDLING CONFIGURATION - Step 3
     # ============================================================================
     'DYNAMIC_CLASS_WEIGHTS': True,  # Calculate scale_pos_weight from actual class ratio
-    'PREDICTION_THRESHOLD_SEARCH': False,  # Disabled - use PREDICTION_THRESHOLD from config
+    'PREDICTION_THRESHOLD_SEARCH': True,  # Enabled (full-feature test) - search optimal prediction threshold
     'PREDICTION_THRESHOLD_MIN': 0.1,  # Start of prediction threshold search
     'PREDICTION_THRESHOLD_MAX': 0.5,  # End of prediction threshold search
     'PREDICTION_THRESHOLD_STEP': 0.05,  # Step size for prediction threshold search
@@ -39,7 +42,7 @@ CONFIG = {
     'PREDICTION_COVERAGE_RATES': [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50],
     'PREDICTION_TARGET_PRECISION': 0.60,
     'PREDICTION_MAX_COVERAGE': 0.50,
-    
+
     # ============================================================================
     # FEATURE ENGINEERING CONFIGURATION - Step 4
     # ============================================================================
@@ -68,17 +71,18 @@ CONFIG = {
         ('52W_Low', 'Price_to_Prev_Close'), # rank#2 × rank#7
     ],
     'BIN_RSI': True,  # Discretize RSI_14 into 4 zones (oversold/neutral/overbought)
-    
+
     # ============================================================================
     # DIAGNOSTICS AND VALIDATION - New Features (Items 1, 2, 4)
     # ============================================================================
     'FEATURE_STABILITY_ANALYSIS': True,  # Track feature ranking consistency across temporal folds
-    'TRACK_INFERENCE_LATENCY': False,  # Track prediction time per sample
-    'SLIDING_WINDOW_VALIDATION': False,  # Enable sliding window temporal validation
-    'PERMUTATION_IMPORTANCE': False,  # Run permutation importance on all models
+    'TRACK_INFERENCE_LATENCY': True,  # Track prediction time per sample
+    'SLIDING_WINDOW_VALIDATION': True,  # Enable sliding window temporal validation
+    'PERMUTATION_IMPORTANCE': True,  # Run permutation importance on all models
     'MIN_DATES_THRESHOLD': 30,  # Minimum unique dates required for diagnostics (raises ValueError if below)
     'INFERENCE_LATENCY_SAMPLE_SIZE': 10000,  # Number of samples to measure for latency
-    
+    'STABILITY_RF_ESTIMATORS': 10,   # ADDED — random forest estimators for feature stability analysis
+
     # ============================================================================
     # THRESHOLD CONFIGURATION - CRITICAL FOR UNDERSTANDING PIPELINE
     # ============================================================================
@@ -90,7 +94,7 @@ CONFIG = {
     'FIRST_THRESHOLD': 20.0,
     'LAST_THRESHOLD': 0.0,
     'THRESHOLD_STEP': -5.0,  # 5 thresholds: 20, 15, 10, 5, 0
-    
+
     # PREDICTION THRESHOLD (used to convert model outputs to binary):
     # - Model outputs probabilities (0-1) from model.predict()
     # - Binary predictions: (predictions >= 0.5).astype(int)
@@ -98,7 +102,7 @@ CONFIG = {
     'PREDICTION_THRESHOLD': 0.5,  # Threshold for converting predictions to binary
     'ZERO_DIVISION_MODE': 0,  # sklearn zero_division: 0=honest (TP=0→0.0), 1=hide (TP=0→1.0)
     'BASELINE_EPOCHS': 3,  # Epochs for section 1 baseline (was 1 — ensures meaningful predictions at high label thresholds)
-    
+
     # Model Architecture
     'latent_dim': 32,
     'units': 64,
@@ -115,7 +119,7 @@ CONFIG = {
     'encoder_layers': 2,
     'decoder_layers': 3,
     'ff_dim': 128,
-    
+
     # Per-architecture default learning rates (used for baseline, threshold search, and fallback):
     # These should align with the FLOOR of each architecture's HPO search space.
     'DEFAULT_LEARNING_RATES': {
@@ -126,7 +130,7 @@ CONFIG = {
         'Dense': 0.001,
         'Transformer': 0.0001,  # Transformer HPO range is [0.00005, 0.0002]
     },
-    
+
     # Architecture subset — empty list = run all architectures
     'ACTIVE_ARCHITECTURES': [],
     # Architecture classification groups (used for scaler/safeguard gating)
@@ -154,24 +158,47 @@ CONFIG = {
         },
     },
     'INPUT_DIM': 37,
-    
+
+    # ============================================================================
+    # AUGMENTATION CONFIGURATION
+    # ============================================================================
+    'AUGMENTATION_MIN_SIGNAL_RATE': 0.001,       # ADDED — minimum signal rate for augmentation
+    'AUGMENTATION_TARGET_SIGNAL_RATE': 0.005,    # ADDED — target signal rate for augmentation
+    'AUGMENTATION_NOISE_STD': 0.01,              # ADDED — noise std for augmentation
+
+    # ============================================================================
+    # KL ANNEALING CONFIGURATION
+    # ============================================================================
+    'KL_WARMUP_EPOCHS': 10,                      # ADDED — KL annealing warmup epochs
+    'KL_MAX_WEIGHT': 1.0,                        # ADDED — max KL weight for annealing
+    'KL_SAMPLING_MAX_WEIGHT': 0.1,               # ADDED — KL max weight override for sampling layer
+
     # Hyperparameter Optimization Configuration
     'ENABLE_HYPERPARAM_OPTIMIZATION': True,  # Enable by default
     'HYPERPARAM_OPTIMIZATION_EPOCHS': 5,
     'HYPERPARAM_OPTIMIZATION_TRIALS': 3,  # Hard cap — each arch gets exactly 3 trials (reduced from 5, Jul 11, 2026)
-    
+
     # HPO Target and Continuation (May 11, 2026 / Updated May 13, 2026)
     'HPO_TARGET_PRECISION': 0.60,  # Stop HPO when precision >= this
     'HPO_CONTINUE_UNTIL_TARGET': False,  # Hard cap at HYPERPARAM_OPTIMIZATION_TRIALS trials (May 18, 2026)
     'HPO_STAGNATION_THRESHOLD': 50,  # Stop if no improvement for N trials (was 30, raised May 13, 2026)
-    
+
+    # HPO trial rejection gates (ADDED — literals formerly hardcoded in chunk_21)
+    'HPO_DEGENERACY_STD_THRESHOLD': 0.005,       # ADDED — degeneracy gate for HPO trial rejection
+    'HPO_RECALL_GATE_MARGIN': 0.01,              # ADDED — recall-based rejection margin in HPO
+    'HPO_RNN_TP_FLOOR': 100,                     # ADDED — RNN-specific TP floor in HPO
+    'HPO_LOSS_REDUCTION_THRESHOLD': 0.05,        # ADDED — INERT (literal lives only in dead assess_learning/assess_model_learning); kept for config fidelity
+    'HPO_PRECISION_IMPROVEMENT_MIN_SHORT': 0.001,  # ADDED — INERT (same dead-code source); kept for config fidelity
+    'HPO_PRECISION_IMPROVEMENT_MIN_LONG': 0.005,   # ADDED — INERT (same dead-code source); kept for config fidelity
+    'NN_LOG_TP_ARCHS': ['Dense', 'CNN', 'RNN', 'LSTM', 'Transformer'],  # ADDED — archs using log(TP) in HPO scoring
+
     # Threshold Safeguard: minimum positive predictions required to accept a threshold
     # Prevents precision gaming (predicting almost nothing → artificially high P)
     # Dynamic calculation: max(MIN_POSITIVE_ABSOLUTE, n_samples * MIN_POSITIVE_PERCENTAGE)
     'MIN_PRECISION_OVER_BASELINE': 0.02,  # Precision must beat baseline by at least 2% (GIS Tier 2 — raised from 1%)
     'MIN_POS_PRED_RATIO': 0.0005,          # A4 — relaxed from 0.1% to 0.05% (pre-Tier-2 was 0.01%)
     'MAX_POS_PRED_RATIO': 0.65,            # A4 — relaxed from 60% to 65% (pre-Tier-2 was 70%)
-    
+
     # HPO-specific thresholds (Apr 4, 2026)
     # Lower thresholds during HPO to allow more exploration for struggling architectures
     # Architecture-specific based on MaxPred capability:
@@ -196,15 +223,15 @@ CONFIG = {
         'MIN_PRECISION_OVER_BASELINE': 0.01,  # 1% (relaxed for neural — matches SKLEARN_SAFEGUARDS)
     },
     'PATIENCE': 10,  # Top-level key for direct access (matching NEURAL_SAFEGUARDS value)
-    
+
     # Post-HPO Threshold Search (Apr 5, 2026)
     # Run a second threshold search AFTER HPO to find optimal threshold for HPO model
-    'ENABLE_POST_HPO_THRESHOLD_SEARCH': False,
+    'ENABLE_POST_HPO_THRESHOLD_SEARCH': True,
     'POST_HPO_THRESHOLD_PATIENCE': 999,  # No early stopping during post-HPO threshold sweep (999 ≈ unlimited)
-    
+
     # Focal Loss Configuration (for precision-focused training)
-    'USE_FOCAL_LOSS': False,  # Global default (disabled for safety - use per-arch config below)
-    
+    'USE_FOCAL_LOSS': True,  # Global default (enabled for full-feature test - use per-arch config below)
+
     # Per-architecture Focal Loss configuration (Option B)
     # Each architecture can have custom alpha/gamma or be disabled
     'FOCAL_LOSS_CONFIG': {
@@ -215,21 +242,21 @@ CONFIG = {
         'LSTM': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
         'Transformer': {'enabled': True, 'alpha': 0.25, 'gamma': 2.0},
     },
-    
+
     # Legacy focal loss parameters (deprecated in favor of per-arch config)
     'FOCAL_LOSS_ALPHA': 0.5,
     'FOCAL_LOSS_GAMMA': 1.0,
-    
+
     # Model Saving Configuration
     'SAVE_TRAINED_MODELS': True,  # Save best models after training
     'MODELS_PATH': './saved_models',  # Path to save trained models
-    
+
     # Date Split Configuration
     # - Top 2 newest dates are always held out (Inference + Held Out)
     # - Remaining dates split by percentage for Training vs Validation
     'VAL_SPLIT_PERCENTAGE': 0.30,  # 30% of remaining dates for validation
     'TOP_DATES_HELD_OUT': 2,  # Number of newest dates to hold out
-    
+
     # Feature Importance Analysis (Phase X)
     'FEATURE_ANALYSIS_ENABLED': True,  # Enable feature importance analysis before Phase 4
     'FEATURE_IMPORTANCE_METHODS': {    # Individual method toggles — disabled methods skipped entirely
@@ -237,19 +264,21 @@ CONFIG = {
         'tree': True,
         'permutation': True,
         'neural': True,
-        'shap': False,
+        'shap': True,
         'ablation': True,
     },
     'FEATURE_ANALYSIS_SAMPLE_SIZE': 100000,  # Subsample for faster analysis
     'FEATURE_PRUNE_PERCENTILE': 0,  # Keep all features — let XGBoost split-select
     'FEATURE_ANALYSIS_REPORT_PATH': './feature_importance_report.txt',  # Output path
-    
+    'FI_TRAIN_EPOCHS': 10,   # ADDED — feature importance training epochs
+    'FI_BATCH_SIZE': 256,    # ADDED — feature importance training batch size
+
     # Feature importance analysis internals (moved from CONFIG_FEATURE_ANALYSIS)
     'CORRELATION_THRESHOLDS': [0.0, 0.5, 1.0, 2.0],
     'TREE_ESTIMATORS': 200,
     'PERMUTATION_REPEATS': 5,
     'SHAP_SAMPLE_SIZE': 5000,
-    
+
     # Per-architecture hyperparameter search spaces (GIS RECONFIGURED - May 13, 2026)
     # Root cause: all 6 NNs had MaxPred << 0.5 (CNN:0.004, LSTM:0.032, RNN:0.066, VAE:0.092, Transformer:0.044)
     # Trees stagnated due to small spaces + missing key params (colsample, gamma)
@@ -369,7 +398,11 @@ CONFIG = {
     # Temporal Precision Gap Analysis (Phase Xb)
     'TEMPORAL_GAP_N_DAYS': 3,        # Number of unique dates in each tail (overrides FRACTION if > 0)
     'TEMPORAL_GAP_TAIL_FRACTION': 0.33,  # Fraction fallback if N_DAYS <= 0
+    'TEMPORAL_GAP_SIGNIFICANCE': 0.05,   # ADDED — temporal precision gap significance threshold
     'TREE_EARLY_STOPPING_ROUNDS': 10,  # Early stopping patience for XGBoost/LightGBM/CatBoost
+
+    # Metric percentage thresholds (ADDED — pct-above metric)
+    'METRIC_PCT_THRESHOLDS': [0.01, 0.02, 0.05, 0.10, 0.20, 0.50],
 
     # Backward Elimination Configuration (Phase BE)
     'BACKWARD_ELIMINATION_ENABLED': True,  # Master toggle — enabled for iter23
@@ -436,6 +469,15 @@ REQUIRED_CONFIG_KEYS = [
     'BE_ELIMINATION_STEPS',
     'BE_MIN_FEATURES',
     'BE_TOLERANCE',
+    # Refactor additions (2026-08-07)
+    'USE_TEMPORAL_WEIGHTING', 'RANDOM_SEED',
+    'HPO_DEGENERACY_STD_THRESHOLD', 'HPO_RECALL_GATE_MARGIN', 'HPO_RNN_TP_FLOOR',
+    'HPO_LOSS_REDUCTION_THRESHOLD', 'HPO_PRECISION_IMPROVEMENT_MIN_SHORT',
+    'HPO_PRECISION_IMPROVEMENT_MIN_LONG',
+    'AUGMENTATION_MIN_SIGNAL_RATE', 'AUGMENTATION_TARGET_SIGNAL_RATE', 'AUGMENTATION_NOISE_STD',
+    'KL_WARMUP_EPOCHS', 'KL_MAX_WEIGHT', 'KL_SAMPLING_MAX_WEIGHT',
+    'TEMPORAL_GAP_SIGNIFICANCE', 'STABILITY_RF_ESTIMATORS',
+    'FI_TRAIN_EPOCHS', 'FI_BATCH_SIZE', 'METRIC_PCT_THRESHOLDS', 'NN_LOG_TP_ARCHS',
 ]
 
 # Configuration key types for validation
@@ -553,6 +595,27 @@ CONFIG_TYPES = {
     'BE_ELIMINATION_STEPS': (int, float),
     'BE_MIN_FEATURES': int,
     'BE_TOLERANCE': (int, float),
+    # Refactor additions (2026-08-07)
+    'USE_TEMPORAL_WEIGHTING': bool,
+    'RANDOM_SEED': int,
+    'HPO_DEGENERACY_STD_THRESHOLD': (int, float),
+    'HPO_RECALL_GATE_MARGIN': (int, float),
+    'HPO_RNN_TP_FLOOR': int,
+    'HPO_LOSS_REDUCTION_THRESHOLD': (int, float),
+    'HPO_PRECISION_IMPROVEMENT_MIN_SHORT': (int, float),
+    'HPO_PRECISION_IMPROVEMENT_MIN_LONG': (int, float),
+    'AUGMENTATION_MIN_SIGNAL_RATE': (int, float),
+    'AUGMENTATION_TARGET_SIGNAL_RATE': (int, float),
+    'AUGMENTATION_NOISE_STD': (int, float),
+    'KL_WARMUP_EPOCHS': int,
+    'KL_MAX_WEIGHT': (int, float),
+    'KL_SAMPLING_MAX_WEIGHT': (int, float),
+    'TEMPORAL_GAP_SIGNIFICANCE': (int, float),
+    'STABILITY_RF_ESTIMATORS': int,
+    'FI_TRAIN_EPOCHS': int,
+    'FI_BATCH_SIZE': int,
+    'METRIC_PCT_THRESHOLDS': list,
+    'NN_LOG_TP_ARCHS': list,
 }
 
 
@@ -619,48 +682,3 @@ def validate_config_structure(config: Dict[str, Any]) -> bool:
             raise ValueError(f"PER_ARCH_WINSORIZE['{arch_name}']: low={low} must be < high={high}")
     
     return True
-
-
-def get_config() -> Dict[str, Any]:
-    """
-    Get validated configuration
-    
-    Returns:
-        Validated CONFIG dictionary
-        
-    Raises:
-        ValueError: If configuration is invalid
-    """
-    validate_config_structure(CONFIG)
-    return CONFIG.copy()
-
-
-def update_config(updates: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Update configuration with new values and validate
-    
-    Args:
-        updates: Dictionary of updates to apply
-        
-    Returns:
-        Updated and validated configuration
-    """
-    global CONFIG
-    CONFIG.update(updates)
-    validate_config_structure(CONFIG)
-    return CONFIG.copy()
-
-
-if __name__ == "__main__":
-    # Self-test
-    print("Validating configuration...")
-    try:
-        validate_config_structure(CONFIG)
-        print(f"   Total config keys: {len(CONFIG)}")
-        print(f"   Required keys present: {len(REQUIRED_CONFIG_KEYS)}")
-        print(f"   Data path: {CONFIG['DATA_PATH']}")
-        print(f"   Sample size: {CONFIG['SAMPLE_SIZE']}")
-        print(f"   Min samples: {CONFIG['MIN_SAMPLES']}")
-    except ValueError as e:
-        print(f"[error] Configuration validation failed: {e}")
-        raise

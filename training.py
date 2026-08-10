@@ -1,16 +1,413 @@
 """
-Chunk 21: Hyperparameter Optimization
-Bayesian hyperparameter optimization using Optuna
+training.py — Model Training
+Refactored from chunk_14_models_trainer.py + chunk_21_hyperparam_optimizer.py (2026-08-07).
+Model training orchestration and hyperparameter optimization.
 """
 
-import optuna
 import numpy as np
-from typing import Dict, Any, Callable, Optional, Tuple
+import tensorflow as tf
+from typing import Dict, Tuple, Optional, Any, List, NamedTuple, Callable
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score
-from chunk_01_config import PREDICTION_THRESHOLD_DEFAULT
+
+import optuna
+from config import PREDICTION_THRESHOLD_DEFAULT
+from models import SamplingLayer
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+# ============================================================================
+# Section 1: Callbacks
+# ============================================================================
+
+class KLAnnealingCallback(tf.keras.callbacks.Callback):
+    """Ramp KL weight from near-zero to max over warmup epochs to prevent posterior collapse."""
+    def __init__(self, kl_weight_var, warmup_epochs=10, max_kl_weight=1.0):
+        super().__init__()
+        self.kl_weight_var = kl_weight_var
+        self.warmup_epochs = warmup_epochs
+        self.max_kl_weight = max_kl_weight
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch < self.warmup_epochs:
+            w = self.max_kl_weight * (epoch + 1) / self.warmup_epochs
+        else:
+            w = self.max_kl_weight
+        self.kl_weight_var.assign(w)
+
+
+# TrainResult namedtuple (replaces loose tuple returns from chunk_14)
+class TrainResult(NamedTuple):
+    model: Any
+    history: Dict
+    train_loss: float
+    val_loss: float
+    training_time: float
+
+
+# ============================================================================
+# Section 2: ModelTrainer
+# ============================================================================
+
+class ModelTrainer:
+    """Orchestrates model training and architecture building"""
+    
+    def __init__(self, config: Dict, logger=None, evaluator=None):
+        """
+        Initialize trainer
+        
+        Args:
+            config: Configuration dictionary
+            logger: Logger instance (optional)
+            evaluator: Evaluator instance (required)
+        """
+        self.config = config
+        self.logger = logger
+        self.evaluator = evaluator
+        
+        assert self.evaluator is not None, "Evaluator required for threshold optimization"
+    
+    def get_loss_function(self):
+        """
+        Get the loss function based on config settings.
+        
+        Returns:
+            Loss function (string or BinaryFocalCrossentropy)
+        """
+        if self.config['USE_FOCAL_LOSS']:
+            from tensorflow.keras.losses import BinaryFocalCrossentropy
+            alpha = self.config['FOCAL_LOSS_ALPHA']
+            gamma = self.config['FOCAL_LOSS_GAMMA']
+            return BinaryFocalCrossentropy(alpha=alpha, gamma=gamma)
+        return 'binary_crossentropy'
+    
+    def build_architecture(self, arch_name: str, input_dim: int, y_train: np.ndarray = None) -> Any:
+        """
+        Build specific neural architecture
+        
+        Args:
+            arch_name: Architecture name
+            input_dim: Input dimension
+            y_train: Training labels for dynamic class weight (optional, for sklearn models)
+            
+        Returns:
+            Built model
+        """
+        # Import architecture builders from models.py
+        from models import (
+            build_vae_model, build_cnn_model, build_rnn_model, build_lstm_model, build_dense_model,
+            build_transformer_model, build_tabnet_model, build_gnn_sage_model,
+            build_gnn_gat_model, build_hybrid_cnn_lstm_model, build_hybrid_transformer_gnn_model,
+            build_stacking_meta_model, build_bagging_random_forest_model,
+            build_extra_trees_ensemble_model, build_boosting_adaptive_model,
+            build_isolation_forest_model, build_oneclass_svm_model, build_svm_model,
+            build_lightgbm_model, build_xgboost_model, build_catboost_model,
+            calculate_dynamic_class_weight
+        )
+        
+        # Architecture mapping
+        builders = {
+            'VAE': build_vae_model,
+            'CNN': build_cnn_model,
+            'RNN': build_rnn_model,
+            'LSTM': build_lstm_model,
+            'Dense': build_dense_model,
+            'Transformer': build_transformer_model,
+            'TabNet': build_tabnet_model,
+            'GNN_SAGE': build_gnn_sage_model,
+            'GNN_GAT': build_gnn_gat_model,
+            'CNN_LSTM_Hybrid': build_hybrid_cnn_lstm_model,
+            'Transformer_GNN_Hybrid': build_hybrid_transformer_gnn_model,
+            'Stacking_Meta': build_stacking_meta_model,
+            'Bagging_RandomForest': build_bagging_random_forest_model,
+            'ExtraTrees_Ensemble': build_extra_trees_ensemble_model,
+            'Boosting_Adaptive': build_boosting_adaptive_model,
+            'Isolation_Forest': build_isolation_forest_model,
+            'OneClass_SVM': build_oneclass_svm_model,
+            'SVM': build_svm_model,
+            'LightGBM': build_lightgbm_model,
+            'XGBoost': build_xgboost_model,
+            'CatBoost': build_catboost_model,
+        }
+        
+        # Get builder
+        builder = builders.get(arch_name)
+        
+        # Get loss function based on config
+        loss_fn = self.get_loss_function()
+        
+        if builder is None:
+            raise ValueError(f"Unknown architecture '{arch_name}'")
+        
+        try:
+            # Handle sklearn models differently
+            if arch_name in ['Isolation_Forest', 'OneClass_SVM', 'SVM', 
+                           'Bagging_RandomForest', 'ExtraTrees_Ensemble', 'LightGBM',
+                           'XGBoost', 'CatBoost']:
+                return builder(self.config, input_dim, y_train)
+            else:
+                return builder(self.config, input_dim, loss_fn)
+        except Exception as e:
+            raise RuntimeError(f"Failed to build {arch_name}: {e}") from e
+    
+    def build_architecture_with_params(self, arch_name: str, input_dim: int, 
+                                       hyperparams: Dict) -> tf.keras.Model:
+        """
+        Build architecture with custom hyperparameters
+        
+        Args:
+            arch_name: Architecture name
+            input_dim: Input dimension
+            hyperparams: Dictionary of hyperparameters to override defaults
+            
+        Returns:
+            Built model
+        """
+        from models import (
+            build_vae_model, build_cnn_model, build_rnn_model, build_lstm_model, build_dense_model,
+            build_transformer_model, build_boosting_adaptive_model,
+            build_lightgbm_model, build_xgboost_model, build_catboost_model
+        )
+        
+        builders = {
+            'Dense': build_dense_model,
+            'VAE': build_vae_model,
+            'CNN': build_cnn_model,
+            'RNN': build_rnn_model,
+            'LSTM': build_lstm_model,
+            'Transformer': build_transformer_model,
+            'Boosting_Adaptive': build_boosting_adaptive_model,
+            'LightGBM': build_lightgbm_model,
+            'XGBoost': build_xgboost_model,
+            'CatBoost': build_catboost_model,
+        }
+        
+        builder = builders.get(arch_name)
+        
+        # Get loss function based on config
+        loss_fn = self.get_loss_function()
+        
+        if builder is None:
+            self.logger.log(f"Warning: Unknown architecture '{arch_name}', using fallback", 'warning')
+            return build_dense_model(self.config, input_dim, loss_fn)
+        
+        try:
+            # Merge config with hyperparams (hyperparams override config)
+            merged_config = {**self.config, **hyperparams}
+            
+            # NEW: Handle loss_function parameter (binary_crossentropy vs focal_loss)
+            loss_function = hyperparams.get('loss_function', 'binary_crossentropy')
+            
+            if loss_function == 'focal_loss':
+                # Enable FocalLoss and merge alpha/gamma into FOCAL_LOSS_CONFIG
+                arch_key = arch_name
+                if 'FOCAL_LOSS_CONFIG' not in merged_config:
+                    merged_config['FOCAL_LOSS_CONFIG'] = {}
+                if arch_key not in merged_config['FOCAL_LOSS_CONFIG']:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key] = {'enabled': True}
+                else:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key]['enabled'] = True
+                
+                # Use alpha/gamma from hyperparams or defaults
+                if 'alpha' in hyperparams:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key]['alpha'] = hyperparams['alpha']
+                else:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key]['alpha'] = merged_config['FOCAL_LOSS_CONFIG'][arch_key].get('alpha', 0.75)
+                    
+                if 'gamma' in hyperparams:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key]['gamma'] = hyperparams['gamma']
+                else:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key]['gamma'] = merged_config['FOCAL_LOSS_CONFIG'][arch_key].get('gamma', 2.0)
+                
+                # Use binary_crossentropy as loss_fn (model builder will apply FocalLoss)
+                effective_loss_fn = 'binary_crossentropy'
+            else:
+                # Disable FocalLoss for binary_crossentropy
+                arch_key = arch_name
+                if 'FOCAL_LOSS_CONFIG' not in merged_config:
+                    merged_config['FOCAL_LOSS_CONFIG'] = {}
+                if arch_key not in merged_config['FOCAL_LOSS_CONFIG']:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key] = {'enabled': False}
+                else:
+                    merged_config['FOCAL_LOSS_CONFIG'][arch_key]['enabled'] = False
+                
+                effective_loss_fn = 'binary_crossentropy'
+            
+            if arch_name in ['Boosting_Adaptive']:
+                return builder(merged_config, input_dim)
+            else:
+                model = builder(merged_config, input_dim, effective_loss_fn)
+                model._is_focal = (loss_function == 'focal_loss')
+                return model
+        except Exception as e:
+            raise RuntimeError(f"Failed to build {arch_name} with params {hyperparams}: {e}") from e
+    
+    def train_model(self, model: tf.keras.Model, X: np.ndarray, y: np.ndarray,
+                   validation_data: Optional[Tuple] = None,
+                   epochs: int = 50, batch_size: int = 32,
+                   verbose: int = 0,
+                   sample_weight: Optional[np.ndarray] = None) -> Tuple[tf.keras.Model, Dict]:
+        """
+        Train TensorFlow/Keras model
+        
+        Args:
+            model: Model to train
+            X: Training features
+            y: Training labels
+            validation_data: Validation tuple (X_val, y_val)
+            epochs: Number of epochs
+            batch_size: Batch size
+            verbose: Verbosity level
+            
+        Returns:
+            Tuple of (trained_model, history)
+        """
+        # Check if sklearn model - route to sklearn trainer
+        if hasattr(model, 'sklearn_model'):
+            return self._train_sklearn_model(model, X, y, validation_data=validation_data)
+        
+        # Create validation split if not provided
+        if validation_data is None:
+            if sample_weight is not None:
+                X_train, X_val, y_train, y_val, sw_train, sw_val = train_test_split(
+                    X, y, sample_weight, test_size=0.2, random_state=42, stratify=y
+                )
+            else:
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y
+                )
+                sw_train = None
+        else:
+            X_train, y_train = X, y
+            X_val, y_val = validation_data
+            sw_train = sample_weight
+        
+        # Compute class weights for balanced training. Prevents (~99% negative) class bias.
+        # Skip when focal_loss is active — focal loss handles class imbalance internally.
+        # Combining both creates contradictory gradients (score modulation vs 259x weight).
+        # When sample_weight is provided, merge class_weight into it — Keras rejects both separately.
+        if getattr(model, '_is_focal', False):
+            class_weight_dict = None
+            self.logger.log(f"   class_weight=None (focal_loss active — skipping balanced class_weight)", 'info')
+        elif sw_train is not None:
+            from sklearn.utils.class_weight import compute_class_weight
+            classes = np.unique(y_train)
+            cw = compute_class_weight('balanced', classes=classes, y=y_train)
+            cw_map = {cls: w for cls, w in zip(classes, cw)}
+            sw_train = sw_train * np.array([cw_map[y] for y in y_train])
+            class_weight_dict = None
+            self.logger.log(f"   class_weight=balanced merged into sample_weight (Keras rejects both simultaneously)", 'info')
+        else:
+            from sklearn.utils.class_weight import compute_class_weight
+            classes = np.unique(y_train)
+            cw = compute_class_weight('balanced', classes=classes, y=y_train)
+            class_weight_dict = dict(zip(classes, cw))
+            self.logger.log(f"   class_weight=balanced (no focal_loss, no sample_weight)", 'info')
+        
+        # Handle models that expect 3D input
+        model_input_shape = getattr(model, 'input_shape', None)
+        if model_input_shape is not None and len(model_input_shape) == 3:
+            X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+            X_val = X_val.reshape(X_val.shape[0], X_val.shape[1], 1)
+        
+        # Build callbacks
+        callbacks = [
+            tf.keras.callbacks.TerminateOnNaN(),
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_loss',
+                patience=20,
+                restore_best_weights=True
+            )
+        ]
+        
+        # If VAE model (has SamplingLayer), inject KL annealing callback
+        sampling_layer = next((l for l in model.layers if isinstance(l, SamplingLayer)), None)
+        if sampling_layer is not None:
+            callbacks.append(KLAnnealingCallback(
+                sampling_layer.kl_weight, warmup_epochs=10, max_kl_weight=0.1
+            ))
+        
+        # Train model with increased patience for better convergence
+        # Only pass class_weight or sample_weight when non-None to avoid Keras validation
+        fit_kwargs = {
+            'validation_data': (X_val, y_val),
+            'epochs': epochs,
+            'batch_size': batch_size,
+            'verbose': verbose,
+            'callbacks': callbacks,
+        }
+        if class_weight_dict is not None:
+            fit_kwargs['class_weight'] = class_weight_dict
+        if sw_train is not None:
+            fit_kwargs['sample_weight'] = sw_train
+
+        history = model.fit(X_train, y_train, **fit_kwargs)
+        
+        return model, history.history
+    
+    def _train_sklearn_model(self, model_wrapper, X: np.ndarray, 
+                            y: np.ndarray,
+                            sample_weight: Optional[np.ndarray] = None,
+                            validation_data: Optional[Tuple[np.ndarray, np.ndarray]] = None) -> Tuple[Any, Dict]:
+        """
+        Train scikit-learn model
+        
+        Args:
+            model_wrapper: SklearnModelWrapper instance
+            X: Training features
+            y: Training labels
+            sample_weight: Optional sample weights
+            validation_data: Optional (X_val, y_val) tuple for early stopping
+            
+        Returns:
+            Tuple of (trained_model, dummy_history)
+        """
+        fit_kwargs = {}
+        esr = self.config.get('TREE_EARLY_STOPPING_ROUNDS', 10)
+        self.logger.log(f"   _train_sklearn_model: early_stopping_rounds={esr}, "
+                        f"eval_set={'provided' if validation_data is not None else 'None'}", 'info')
+        if sample_weight is not None:
+            fit_kwargs['sample_weight'] = sample_weight
+        if validation_data is not None:
+            fit_kwargs['eval_set'] = [validation_data]
+            if hasattr(model_wrapper, 'sklearn_model') and hasattr(model_wrapper.sklearn_model, 'set_params'):
+                model_wrapper.sklearn_model.set_params(verbose=-1, early_stopping_rounds=esr)
+        # Dynamic scale_pos_weight for XGBoost (threshold-dependent — recalculated per training call)
+        if hasattr(model_wrapper, 'sklearn_model') and 'XGB' in type(model_wrapper.sklearn_model).__name__:
+            pos = np.sum(y == 1)
+            neg = np.sum(y == 0)
+            if pos > 0:
+                spw = neg / pos
+            else:
+                spw = 1.0
+            model_wrapper.sklearn_model.set_params(scale_pos_weight=spw)
+        model_wrapper.fit(X, y, **fit_kwargs)
+        
+        # Log tree model params for lever audit
+        if hasattr(model_wrapper.sklearn_model, 'get_params'):
+            p = model_wrapper.sklearn_model.get_params()
+            mt = type(model_wrapper.sklearn_model).__name__
+            if 'XGB' in mt or 'CatBoost' in mt:
+                v = p.get('scale_pos_weight', 'N/A')
+                self.logger.log(f"   scale_pos_weight={v} (model={mt})", 'info')
+            if 'LGBM' in mt:
+                v = p.get('class_weight', 'N/A')
+                self.logger.log(f"   class_weight={v} (model={mt})", 'info')
+        
+        # Create dummy history for consistency
+        history = {
+            'loss': [0.5],  # Dummy values
+            'val_loss': [0.5],
+            'accuracy': [0.5],
+            'val_accuracy': [0.5]
+        }
+        
+        return model_wrapper, history
+
+
+# ============================================================================
+# Section 3: HyperparameterOptimizer
+# ============================================================================
 
 class HyperparameterOptimizer:
     """Bayesian hyperparameter optimization using Optuna"""
@@ -56,6 +453,10 @@ class HyperparameterOptimizer:
             
         Returns:
             Tuple of (best_hyperparameters, best_trained_model, best_validation_precision)
+            Normal path returns a 6-tuple (best_params, best_model, best_precision,
+            raw_best_model, raw_best_precision, raw_best_params). The frozen-XGBoost
+            early-return path returns a 3-tuple (best_params, best_model, best_precision).
+            Caller must branch on len() == 6 vs 3 (chunk_18:615-618).
         """
         space = self.search_space.get(arch_name, {})
         
@@ -209,7 +610,7 @@ class HyperparameterOptimizer:
                     trial_gini = trial_opt_thresh = 0.0
                     try:
                         trial_binary = (y_pred.flatten() >= self.pred_threshold).astype(int)
-                        from chunk_12_evaluation_evaluator import Evaluator
+                        from evaluate import Evaluator
                         evaluator = Evaluator(self.config)
                         trial_spec = evaluator.calculate_specificity(self.y_val, trial_binary)
                         trial_fpr = evaluator.calculate_fpr(self.y_val, trial_binary)
@@ -378,25 +779,3 @@ def create_hyperparameter_optimizer(config: Dict) -> HyperparameterOptimizer:
         HyperparameterOptimizer instance
     """
     return HyperparameterOptimizer(config)
-
-
-if __name__ == "__main__":
-    print("Testing HyperparameterOptimizer...")
-    
-    config = {
-        'HYPERPARAM_OPTIMIZATION_TRIALS': 5,
-        'HYPERPARAM_OPTIMIZATION_EPOCHS': 2,
-        'HYPERPARAM_SEARCH_SPACE': {
-            'Dense': {
-                'units': [32, 64],
-                'dropout': [0.1, 0.2],
-                'learning_rate': [0.001],
-            },
-        }
-    }
-    
-    optimizer = HyperparameterOptimizer(config)
-    print(f"Optimizer created successfully")
-    print(f"Search space summary:\n{optimizer.get_search_space_summary()}")
-    
-    print("\n[pass] HyperparameterOptimizer tests passed")

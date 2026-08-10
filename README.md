@@ -2,7 +2,7 @@
 
 **Python 3.12** · **TensorFlow 2.18.1** · **MIT License**  
 
-**Last updated**: 2026-06-22  
+**Last updated**: 2026-07-12  
 **References**: [SPEC.md](SPEC.md) (technical specification) · [GIS.md](GIS.md) (iteration strategy & results)
 
 ## Table of Contents
@@ -119,7 +119,7 @@ pip install -r requirements.txt
 | Phase BE | Per-architecture backward elimination | `{arch: {threshold: kept_indices}}` | chunk_XX_phase_backward_elimination.py |
 | Phase 4a | Threshold Search | optimal_threshold per architecture | chunk_18_phase_4_ensemble.py |
 | Phase 4b | HyperParameter Optimization | best_hyperparams per architecture | chunk_21_hyperparam_optimizer.py |
-| Phase 4c | Post-HPO Threshold Search/Re-Evaluation | Refined threshold per architecture | chunk_18_phase_4_ensemble.py |
+| Phase 4c | Post-HPO Threshold Search/Re-Evaluation *(config-disabled by default)* | Refined threshold per architecture *(requires `ENABLE_POST_HPO_THRESHOLD_SEARCH: True`)* | chunk_18_phase_4_ensemble.py |
 | Phase 4d | Ensemble Assembly | Precision-weighted predictions | chunk_18_phase_4_ensemble.py |
 | Phase 4e | Model Persistence | ./saved_models/ | chunk_18_phase_4_ensemble.py |
 | Phase 5 | Inference on newest date | Predictions, per-arch metrics, rankings | chunk_19_phase_5_optimization.py |

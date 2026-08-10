@@ -273,16 +273,25 @@ class ModelTrainer:
         
         # Compute class weights for balanced training. Prevents (~99% negative) class bias.
         # Skip when focal_loss is active — focal loss handles class imbalance internally.
-        # Combining both creates contradictory gradients (gamma modulation vs 259x weight).
+        # Combining both creates contradictory gradients (score modulation vs 259x weight).
+        # When sample_weight is provided, merge class_weight into it — Keras rejects both separately.
         if getattr(model, '_is_focal', False):
             class_weight_dict = None
             self.logger.log(f"   class_weight=None (focal_loss active — skipping balanced class_weight)", 'info')
+        elif sw_train is not None:
+            from sklearn.utils.class_weight import compute_class_weight
+            classes = np.unique(y_train)
+            cw = compute_class_weight('balanced', classes=classes, y=y_train)
+            cw_map = {cls: w for cls, w in zip(classes, cw)}
+            sw_train = sw_train * np.array([cw_map[y] for y in y_train])
+            class_weight_dict = None
+            self.logger.log(f"   class_weight=balanced merged into sample_weight (Keras rejects both simultaneously)", 'info')
         else:
             from sklearn.utils.class_weight import compute_class_weight
             classes = np.unique(y_train)
             cw = compute_class_weight('balanced', classes=classes, y=y_train)
             class_weight_dict = dict(zip(classes, cw))
-            self.logger.log(f"   class_weight=balanced (no focal_loss)", 'info')
+            self.logger.log(f"   class_weight=balanced (no focal_loss, no sample_weight)", 'info')
         
         # Handle models that expect 3D input
         model_input_shape = getattr(model, 'input_shape', None)
@@ -305,20 +314,24 @@ class ModelTrainer:
         sampling_layer = next((l for l in model.layers if isinstance(l, SamplingLayer)), None)
         if sampling_layer is not None:
             callbacks.append(KLAnnealingCallback(
-                sampling_layer.kl_weight, warmup_epochs=10, max_kl_weight=1.0
+                sampling_layer.kl_weight, warmup_epochs=10, max_kl_weight=0.1
             ))
         
         # Train model with increased patience for better convergence
-        history = model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
-            epochs=epochs,
-            batch_size=batch_size,
-            class_weight=class_weight_dict,
-            sample_weight=sw_train,
-            verbose=verbose,
-            callbacks=callbacks,
-        )
+        # Only pass class_weight or sample_weight when non-None to avoid Keras validation
+        fit_kwargs = {
+            'validation_data': (X_val, y_val),
+            'epochs': epochs,
+            'batch_size': batch_size,
+            'verbose': verbose,
+            'callbacks': callbacks,
+        }
+        if class_weight_dict is not None:
+            fit_kwargs['class_weight'] = class_weight_dict
+        if sw_train is not None:
+            fit_kwargs['sample_weight'] = sw_train
+
+        history = model.fit(X_train, y_train, **fit_kwargs)
         
         return model, history.history
     
@@ -347,9 +360,8 @@ class ModelTrainer:
             fit_kwargs['sample_weight'] = sample_weight
         if validation_data is not None:
             fit_kwargs['eval_set'] = [validation_data]
-            fit_kwargs['verbose'] = False
             if hasattr(model_wrapper, 'sklearn_model') and hasattr(model_wrapper.sklearn_model, 'set_params'):
-                model_wrapper.sklearn_model.set_params(early_stopping_rounds=esr)
+                model_wrapper.sklearn_model.set_params(verbose=-1, early_stopping_rounds=esr)
         # Dynamic scale_pos_weight for XGBoost (threshold-dependent — recalculated per training call)
         if hasattr(model_wrapper, 'sklearn_model') and 'XGB' in type(model_wrapper.sklearn_model).__name__:
             pos = np.sum(y == 1)
